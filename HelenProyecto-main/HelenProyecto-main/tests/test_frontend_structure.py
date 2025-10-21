@@ -1,8 +1,10 @@
 import re
 from pathlib import Path
-from typing import List
+from typing import List, Set
 
 import pytest
+
+from backendHelen.server import ACTIVATION_ALIASES as BACKEND_ACTIVATION_ALIASES
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -16,6 +18,16 @@ def read_text(path: Path) -> str:
 
 def extract_script_sources(html: str) -> List[str]:
     return re.findall(r'<script[^>]+src="([^"]+)"', html)
+
+
+def extract_activation_aliases(actions_js: str) -> Set[str]:
+    aliases_match = re.search(r'const ACTIVATION_ALIASES = \[(.*?)\];', actions_js, re.S)
+    assert aliases_match is not None
+    return {
+        token.strip().strip("'\"")
+        for token in aliases_match.group(1).split(',')
+        if token.strip()
+    }
 
 
 def assert_socket_stack_order(script_sources):
@@ -130,9 +142,7 @@ def test_frontend_gesture_mappings_cover_model_labels():
     action_block = actions_match.group(1)
     action_keys = {match.strip() for match in re.findall(r'\s*([a-z]+):\s*\(\)\s*=>', action_block)}
 
-    aliases_match = re.search(r'const ACTIVATION_ALIASES = \[(.*?)\];', actions_js, re.S)
-    assert aliases_match is not None
-    alias_tokens = {token.strip().strip("'\"") for token in aliases_match.group(1).split(',') if token.strip()}
+    alias_tokens = extract_activation_aliases(actions_js)
 
     known_labels = {
         value.lower()
@@ -147,3 +157,11 @@ def test_frontend_gesture_mappings_cover_model_labels():
 def test_activation_trigger_is_exposed():
     event_connector = read_text(HELEN_DIR / 'jsSignHandler' / 'eventConnector.js')
     assert 'window.triggerActivationAnimation = triggerActivationAnimation' in event_connector
+
+
+def test_backend_activation_aliases_match_frontend():
+    actions_js = read_text(HELEN_DIR / 'jsSignHandler' / 'actions.js')
+    frontend_aliases = extract_activation_aliases(actions_js)
+    backend_aliases = {alias.lower() for alias in BACKEND_ACTIVATION_ALIASES}
+
+    assert frontend_aliases == backend_aliases
