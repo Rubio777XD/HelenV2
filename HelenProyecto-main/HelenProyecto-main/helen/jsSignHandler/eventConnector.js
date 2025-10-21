@@ -1,7 +1,7 @@
 // eventConnector.js - Versión modificada
 // Conexión al socket y mejoras en la navegación
 
-// Inicializar la conexión al socket
+// Inicializar la conexión al socket (SSE)
 const DEFAULT_SOCKET_URL = 'http://127.0.0.1:5000';
 
 const resolveSocketUrl = () => {
@@ -64,10 +64,11 @@ const resolveSocketUrl = () => {
 
   const portSuffix = normalizedPort ? `:${normalizedPort}` : '';
 
-  return `${protocolCandidate}://${hostname}${portSuffix}`;
+  return `${protocolCandidate}://${hostname}${portSuffix}`.replace(/\/$/, '');
 };
 
 const SOCKET_URL = resolveSocketUrl();
+const EVENTS_URL = `${SOCKET_URL}/events`;
 
 const createNoopSocket = () => ({
   on(eventName, handler) {
@@ -77,12 +78,15 @@ const createNoopSocket = () => ({
   emit(eventName, payload) {
     console.warn('[Helen] Socket.IO no disponible. Emisión ignorada.', eventName, payload);
     return this;
+  },
+  close() {
+    return undefined;
   }
 });
 
 const socket = (() => {
-  if (typeof io !== 'function') {
-    console.warn('[Helen] Cliente de Socket.IO no encontrado. Ejecutando en modo sin conexión.');
+  if (typeof createHelenSocket !== 'function') {
+    console.warn('[Helen] Adaptador SSE no disponible. Ejecutando en modo sin conexión.');
     return createNoopSocket();
   }
 
@@ -90,17 +94,16 @@ const socket = (() => {
     return window.socket;
   }
 
-  let instance;
-
   try {
-    instance = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
+    const instance = createHelenSocket(EVENTS_URL);
+    instance.on('connect', () => console.info('[Helen] Conexión SSE establecida:', EVENTS_URL));
+    instance.on('disconnect', () => console.warn('[Helen] Conexión SSE perdida. Intentando reconectar...'));
+    window.socket = instance;
+    return instance;
   } catch (connectionError) {
-    console.error('[Helen] No se pudo iniciar la conexión Socket.IO:', connectionError);
+    console.error('[Helen] No se pudo iniciar la conexión SSE:', connectionError);
     return createNoopSocket();
   }
-
-  window.socket = instance;
-  return instance;
 })();
 
 window.socket = socket;

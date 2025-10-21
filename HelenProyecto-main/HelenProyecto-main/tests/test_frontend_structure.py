@@ -109,11 +109,13 @@ def test_default_socket_url_matches_backend():
     assert default_url_match is not None
     default_url = default_url_match.group(1)
 
-    host_match = re.search(r"host='([^']+)'", server_source)
-    port_match = re.search(r'port=(\d+)', server_source)
+    host_match = re.search(r"host\s*:\s*[^=]+=\s*['\"]([^'\"]+)['\"]", server_source)
+    port_match = re.search(r"port\s*:\s*[^=]+=\s*(\d+)", server_source)
     assert host_match is not None and port_match is not None
 
     host = host_match.group(1)
+    if host == '0.0.0.0':
+        host = '127.0.0.1'
     port = port_match.group(1)
     assert default_url == f'http://{host}:{port}'
 
