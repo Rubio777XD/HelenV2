@@ -1,99 +1,134 @@
-import sys
-import types
-from pathlib import Path
+import json
+import socket
+import threading
+from contextlib import closing
+from http.client import HTTPConnection
+from urllib.parse import urlparse
 
 import pytest
 
-pytest.importorskip('flask')
-pytest.importorskip('flask_socketio')
+from backendHelen.server import HelenRequestHandler, HelenRuntime, ThreadingHTTPServer
 
-from backendHelen.server import app, socket
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-MODEL_DIR = REPO_ROOT / 'Hellen_model_RN'
+def find_free_port() -> int:
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+        sock.bind(('127.0.0.1', 0))
+        return sock.getsockname()[1]
 
-if str(MODEL_DIR) not in sys.path:
-    sys.path.insert(0, str(MODEL_DIR))
+
+@pytest.fixture(scope='module')
+def runtime():
+    instance = HelenRuntime()
+    instance.start()
+    yield instance
+    instance.stop()
 
 
 @pytest.fixture
-def flask_app_client():
-    return app.test_client()
+def live_server(runtime):
+    port = find_free_port()
+    handler = lambda *args, **kwargs: HelenRequestHandler(*args, runtime=runtime, **kwargs)
+    server = ThreadingHTTPServer(('127.0.0.1', port), handler)
+
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f'http://127.0.0.1:{port}'
+
+    try:
+        yield base_url
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
-@pytest.fixture
-def socketio_client():
-    client = socket.test_client(app)
-    assert client.is_connected()
-    yield client
-    if client.is_connected():
-        client.disconnect()
+class SSEClient:
+    def __init__(self, base_url: str):
+        parts = urlparse(base_url)
+        self.connection = HTTPConnection(parts.hostname, parts.port, timeout=5)
+        self.connection.request('GET', '/events')
+        self.response = self.connection.getresponse()
+        if self.response.status != 200:
+            raise AssertionError(f'Unexpected SSE status: {self.response.status}')
+
+    def read_event(self, timeout: float = 5.0):
+        sock = getattr(getattr(self.response, 'fp', None), 'raw', None)
+        if sock is not None and hasattr(sock, 'settimeout'):
+            sock.settimeout(timeout)
+        data_lines = []
+        while True:
+            line = self.response.readline()
+            if not line:
+                return None
+            if line.strip() == b'':
+                if not data_lines:
+                    continue
+                payload = b''.join(data_lines).decode('utf-8')
+                return json.loads(payload)
+            if line.startswith(b'data:'):
+                data_lines.append(line[len(b'data: '):])
+
+    def close(self):
+        try:
+            self.response.close()
+        finally:
+            self.connection.close()
 
 
-def test_index_route_renders(flask_app_client):
-    response = flask_app_client.get('/')
-    assert response.status_code == 200
-    assert b'<!DOCTYPE html>' in response.data
+def test_health_endpoint_reports_status(live_server):
+    parts = urlparse(live_server)
+    conn = HTTPConnection(parts.hostname, parts.port, timeout=5)
+    conn.request('GET', '/healthz')
+    response = conn.getresponse()
+    body = response.read()
+    conn.close()
+
+    assert response.status == 200
+    payload = json.loads(body.decode('utf-8'))
+    assert payload['model_loaded'] is True
+    assert payload['status'] in {'HEALTHY', 'DEGRADED'}
+    assert 'session_id' in payload
 
 
-def test_health_endpoint_emits_socket_event(flask_app_client, socketio_client):
-    socketio_client.get_received()
+def test_pipeline_emits_events_over_sse(live_server):
+    client = SSEClient(live_server)
+    try:
+        warmup = client.read_event(timeout=3)
+        assert warmup['message'] == 'connected'
 
-    response = flask_app_client.get('/health')
-
-    assert response.status_code == 200
-    assert response.json == {'status': 'ok'}
-
-    events = socketio_client.get_received()
-    assert any(event['name'] == 'message' and event['args'][0] == {'status': 'ok'} for event in events)
-
-
-def test_publish_gesture_key_broadcasts_payload(flask_app_client, socketio_client):
-    socketio_client.get_received()
-
-    payload = {'gesture': 'Clima', 'character': 'Clima'}
-    response = flask_app_client.post('/gestures/gesture-key', json=payload)
-
-    assert response.status_code == 200
-
-    events = socketio_client.get_received()
-    assert any(event['name'] == 'message' and event['args'][0] == payload for event in events)
+        event = client.read_event(timeout=5)
+        assert event is not None
+        assert event['gesture'] in ('Start', 'Clima', 'Foco', 'Ajustes', 'Inicio', 'Dispositivos', 'Reloj', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9')
+        assert 0.0 <= event['score'] <= 1.0
+        assert 'timestamp' in event
+        assert 'session_id' not in event or isinstance(event['session_id'], str)
+    finally:
+        client.close()
 
 
-def test_unknown_route_returns_404(flask_app_client):
-    response = flask_app_client.get('/ruta-inexistente')
-    assert response.status_code == 404
+def test_http_post_broadcasts_payload(live_server):
+    client = SSEClient(live_server)
+    try:
+        client.read_event(timeout=3)  # Descarta warmup
 
+        payload = {
+            'gesture': 'Foco',
+            'character': 'Foco',
+            'score': 0.91,
+            'latency_ms': 12.5,
+            'sequence': 999,
+        }
+        parts = urlparse(live_server)
+        conn = HTTPConnection(parts.hostname, parts.port, timeout=5)
+        conn.request('POST', '/gestures/gesture-key', body=json.dumps(payload), headers={'Content-Type': 'application/json'})
+        response = conn.getresponse()
+        response.read()
+        conn.close()
+        assert response.status == 200
 
-def test_socket_reconnect_cycle():
-    client = socket.test_client(app)
-    assert client.is_connected()
-    client.disconnect()
-    assert not client.is_connected()
-
-    reconnected = client.connect()
-    assert reconnected
-    assert client.is_connected()
-    client.disconnect()
-
-
-def test_post_gesturekey_round_trip(monkeypatch, flask_app_client):
-    from Hellen_model_RN import backendConexion as model_backend
-
-    socket_client = socket.test_client(app)
-    assert socket_client.is_connected()
-    socket_client.get_received()
-
-    def fake_post(url, json):
-        response = flask_app_client.post('/gestures/gesture-key', json=json)
-        return types.SimpleNamespace(status_code=response.status_code)
-
-    monkeypatch.setattr(model_backend.requests, 'post', fake_post)
-
-    status = model_backend.post_gesturekey('Inicio')
-    assert status == 200
-
-    events = socket_client.get_received()
-    assert any(event['args'][0]['character'] == 'Inicio' for event in events)
-
-    socket_client.disconnect()
+        event = client.read_event(timeout=3)
+        assert event['gesture'] == 'Foco'
+        assert event['raw']['sequence'] == 999
+        assert event['score'] == pytest.approx(0.91)
+    finally:
+        client.close()
