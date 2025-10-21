@@ -1,292 +1,642 @@
-// ============================
-// HELEN Timer – JS adaptado a nuevo HTML/CSS
-// ============================
+// =====================================================
+// HELEN – Temporizadores persistentes (UI + Scheduler)
+// =====================================================
 
-// Estado
-let timer = null;
-let startTime = 0;        // ms timestamp al iniciar/reanudar
-let pausedMs = 0;         // ms ya transcurridos (para reanudar)
-let totalMs = 0;          // ms a contar (objetivo)
-let isRunning = false;
+(function () {
+  'use strict';
 
-// DOM (nuevo markup)
-const display = document.getElementById('timerDisplay');
-const startPauseBtn = document.getElementById('startPauseBtn');
-const resetBtn = document.getElementById('resetBtn');
-const presetsGrid = document.getElementById('presetsGrid');
-const openCustomBtn = document.getElementById('openCustomBtn');
+  const state = {
+    timers: [],
+    selectedId: null,
+    statusOverride: null,
+    statusTimeout: null,
+  };
 
-// Modal personalizado
-const customModal = document.getElementById('customTimeModal');
-const modalCloseBtn = customModal ? customModal.querySelector('.close-modal') : null;
-const customCancelBtn = document.getElementById('customCancelBtn');
-const customSetBtn = document.getElementById('customSetBtn');
-const customHours = document.getElementById('customHours');
-const customMinutes = document.getElementById('customMinutes');
-const customSeconds = document.getElementById('customSeconds');
+  let scheduler = null;
+  let displayEl;
+  let labelEl;
+  let statusEl;
+  let startPauseBtn;
+  let resetBtn;
+  let presetsGrid;
+  let openCustomBtn;
+  let timersList;
+  let noTimersMessage;
+  let customModal;
+  let modalCloseBtn;
+  let customCancelBtn;
+  let customSetBtn;
+  let customHours;
+  let customMinutes;
+  let customSeconds;
 
-// ===== Utils de formato =====
-function pad2(n) { return String(n).padStart(2, '0'); }
+  const pad2 = (value) => String(value).padStart(2, '0');
 
-function formatForDisplay(ms) {
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  return h > 0 ? `${pad2(h)}:${pad2(m)}:${pad2(s)}` : `${pad2(m)}:${pad2(s)}`;
-}
+  const formatForDisplay = (ms) => {
+    const safe = Math.max(0, Math.round(Number(ms || 0) / 1000));
+    const hours = Math.floor(safe / 3600);
+    const minutes = Math.floor((safe % 3600) / 60);
+    const seconds = safe % 60;
+    if (hours > 0) {
+      return `${pad2(hours)}:${pad2(minutes)}:${pad2(seconds)}`;
+    }
+    return `${pad2(minutes)}:${pad2(seconds)}`;
+  };
 
-function setDisplayZero() {
-  display.textContent = '00:00';
-}
+  const computeRemainingMs = (timer) => {
+    if (!timer) {
+      return 0;
+    }
+    if (timer.state === 'completed') {
+      return 0;
+    }
+    if (typeof timer.remainingMs === 'number') {
+      return Math.max(0, timer.remainingMs);
+    }
+    if (typeof timer.targetEpochMs === 'number') {
+      return Math.max(0, timer.targetEpochMs - Date.now());
+    }
+    return 0;
+  };
 
-// ===== Render =====
-function renderRemaining(nowMs) {
-  const elapsed = nowMs - startTime;          // ms transcurridos en esta “corrida”
-  const acc = pausedMs + elapsed;             // ms acumulados
-  const remaining = Math.max(0, totalMs - acc);
-
-  display.textContent = formatForDisplay(remaining);
-
-  // fin
-  if (remaining <= 0) {
-    stopInterval();
-    handleComplete();
-    return true;
-  }
-  return false;
-}
-
-// ===== Control del bucle =====
-function startInterval() {
-  stopInterval();
-  timer = setInterval(() => {
-    renderRemaining(Date.now());
-  }, 100); // 10fps es suficiente y liviano
-}
-
-function stopInterval() {
-  if (timer) clearInterval(timer);
-  timer = null;
-}
-
-// ===== Acciones =====
-function canStart() { return totalMs > 0; }
-
-function startTimer() {
-  if (!canStart()) {
-    showToast('error', 'Elige un tiempo para iniciar');
-    return;
-  }
-  if (isRunning) return;
-
-  startTime = Date.now();
-  isRunning = true;
-  startInterval();
-  // UI
-  startPauseBtn.innerHTML = '<i class="bi bi-pause-fill"></i>';
-  startPauseBtn.classList.add('primary-btn');
-  resetBtn.disabled = false;
-}
-
-function pauseTimer() {
-  if (!isRunning) return;
-  // acumular lo transcurrido
-  pausedMs += (Date.now() - startTime);
-  isRunning = false;
-  stopInterval();
-  // UI
-  startPauseBtn.innerHTML = '<i class="bi bi-play-fill"></i>';
-  startPauseBtn.classList.add('primary-btn');
-}
-
-function toggleStartPause() {
-  if (!isRunning) startTimer(); else pauseTimer();
-}
-
-function resetTimer() {
-  stopInterval();
-  isRunning = false;
-  startTime = 0;
-  pausedMs = 0;
-  totalMs = 0;
-  setDisplayZero();
-  // UI
-  startPauseBtn.innerHTML = '<i class="bi bi-play-fill"></i>';
-  resetBtn.disabled = true;
-}
-
-// ===== Setear tiempo (desde presets o modal) =====
-function setTimer(h, m, s, autoStart = true) {
-  h = Number(h) || 0; m = Number(m) || 0; s = Number(s) || 0;
-  const ms = (h * 3600 + m * 60 + s) * 1000;
-  if (ms <= 0) {
-    showToast('error', 'El tiempo debe ser mayor a 0');
-    return;
-  }
-  // Si estaba corriendo, lo pausamos
-  stopInterval();
-  isRunning = false;
-  pausedMs = 0;
-  totalMs = ms;
-  display.textContent = formatForDisplay(totalMs);
-  resetBtn.disabled = false;
-  startPauseBtn.innerHTML = '<i class="bi bi-play-fill"></i>';
-  if (autoStart) startTimer();
-}
-
-// ===== Modal personalizado =====
-function openCustomModal() {
-  if (!customModal) return;
-  // poner valores actuales (si hay) o 0
-  const cur = Math.max(0, totalMs);
-  const h = Math.floor(cur / 1000 / 3600);
-  const m = Math.floor((cur / 1000 % 3600) / 60);
-  const s = Math.floor(cur / 1000 % 60);
-  customHours.value = h || 0;
-  customMinutes.value = m || 0;
-  customSeconds.value = s || 0;
-
-  customModal.classList.add('open');
-}
-function closeCustomModal() { customModal && customModal.classList.remove('open'); }
-
-function clampInputs() {
-  if (!customHours || !customMinutes || !customSeconds) return;
-  if (customHours.value < 0) customHours.value = 0;
-  if (customHours.value > 23) customHours.value = 23;
-  if (customMinutes.value < 0) customMinutes.value = 0;
-  if (customMinutes.value > 59) customMinutes.value = 59;
-  if (customSeconds.value < 0) customSeconds.value = 0;
-  if (customSeconds.value > 59) customSeconds.value = 59;
-}
-
-// Botones +/− del modal
-function setupStepperButtons() {
-  document.querySelectorAll('.ct-plus').forEach(b => {
-    b.addEventListener('click', () => {
-      const t = b.dataset.target;
-      const el = t === 'hours' ? customHours : t === 'minutes' ? customMinutes : customSeconds;
-      let max = t === 'hours' ? 23 : 59;
-      el.value = Math.min(max, Number(el.value || 0) + 1);
-    });
-  });
-  document.querySelectorAll('.ct-minus').forEach(b => {
-    b.addEventListener('click', () => {
-      const t = b.dataset.target;
-      const el = t === 'hours' ? customHours : t === 'minutes' ? customMinutes : customSeconds;
-      el.value = Math.max(0, Number(el.value || 0) - 1);
-    });
-  });
-}
-
-// ===== Fin del temporizador =====
-function handleComplete() {
-  isRunning = false;
-  pausedMs = 0;
-
-  // Tarjeta Helen (mismo estilo que alarmas)
-  const timeStr = formatForDisplay(0);
-  const iconSVG = `
-    <svg viewBox="0 0 24 24"><path d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5-6.71V3a2 2 0 1 0-4 0v1.29A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2Z"/></svg>
-  `;
-
-  if (window.Swal) {
-    Swal.fire({
-      customClass: { popup: 'swal-helen' },
-      showConfirmButton: false,
-      html: `
-        <div class="helen-alarm-card">
-          <div class="helen-alarm-icon">${iconSVG}</div>
-          <div>
-            <div class="helen-alarm-title">¡Tiempo terminado!</div>
-            <div class="helen-alarm-time">${timeStr}</div>
-          </div>
-          <div class="helen-alarm-actions">
-            <button class="helen-stop-btn" id="helenTimerDone">Aceptar</button>
-          </div>
-        </div>
-      `,
-      allowOutsideClick: false,
-      allowEscapeKey: false,
-      background: 'transparent',
-      backdrop: 'rgba(0,0,0,.45)'
-    }).then(() => {
-      // reset visual
-      resetTimer();
-    });
-
-    setTimeout(() => {
-      const btn = document.getElementById('helenTimerDone');
-      if (btn) btn.addEventListener('click', () => Swal.close(), { once: true });
-    }, 0);
-  } else {
-    // Fallback sin SweetAlert
-    resetTimer();
-  }
-}
-
-// ===== Toast (usa tu CSS global si existe, fallback con Swal) =====
-function showToast(type, message) {
-  const t = document.getElementById('helenToast');
-  if (t) {
-    t.className = 'helen-toast';
-    t.textContent = message || '';
-    t.classList.add(type === 'error' ? 'error' : 'success');
-    t.style.display = 'block';
-    clearTimeout(showToast._timer);
-    showToast._timer = setTimeout(() => { t.style.display = 'none'; }, 3000);
-  } else if (window.Swal) {
-    Swal.fire({ toast:true, icon:type, title:message, timer:2000, showConfirmButton:false, position:'top-end' });
-  } else {
-    console.log(type?.toUpperCase(), message);
-  }
-}
-
-// ===== Eventos =====
-document.addEventListener('DOMContentLoaded', () => {
-  setDisplayZero();
-
-  // Start/Pause y Reset
-  if (startPauseBtn) startPauseBtn.addEventListener('click', toggleStartPause);
-  if (resetBtn) resetBtn.addEventListener('click', resetTimer);
-
-  // Presets grid
-  if (presetsGrid) {
-    presetsGrid.querySelectorAll('.preset-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const m = Number(btn.dataset.min || 0);
-        setTimer(0, m, 0, true); // set y auto-start
-      });
-    });
-  }
-
-  // Modal abrir/cerrar
-  if (openCustomBtn) openCustomBtn.addEventListener('click', openCustomModal);
-  if (modalCloseBtn)  modalCloseBtn.addEventListener('click', closeCustomModal);
-  if (customCancelBtn) customCancelBtn.addEventListener('click', closeCustomModal);
-  if (customSetBtn) {
-    customSetBtn.addEventListener('click', () => {
-      clampInputs();
-      setTimer(customHours.value, customMinutes.value, customSeconds.value, true);
-      closeCustomModal();
-    });
-  }
-
-  // Stepper +/−
-  setupStepperButtons();
-
-  // Para accesos por backend/gestos (API simple)
-  window.TimerAPI = {
-    set: (h=0,m=0,s=0,autostart=true) => setTimer(h,m,s,autostart),
-    start: () => startTimer(),
-    pause: () => pauseTimer(),
-    reset: () => resetTimer(),
-    running: () => isRunning,
-    remainingMs: () => {
-      if (!totalMs) return 0;
-      if (!isRunning) return Math.max(0, totalMs - pausedMs);
-      return Math.max(0, totalMs - (pausedMs + (Date.now()-startTime)));
+  const describeStatus = (timer) => {
+    if (!timer) {
+      return { text: 'Selecciona un temporizador.', icon: 'bi-clock-history' };
+    }
+    switch (timer.state) {
+      case 'running':
+        return { text: 'En curso', icon: 'bi-play-fill' };
+      case 'paused':
+        return { text: 'Pausado', icon: 'bi-pause-fill' };
+      case 'completed':
+        return { text: 'Finalizado', icon: 'bi-flag' };
+      default:
+        return { text: 'En espera', icon: 'bi-clock-history' };
     }
   };
-});
+
+  const sortTimers = (timers) => {
+    const order = { running: 0, paused: 1, completed: 2 };
+    return timers.slice().sort((a, b) => {
+      const aOrder = order[a.state] ?? 3;
+      const bOrder = order[b.state] ?? 3;
+      if (aOrder !== bOrder) {
+        return aOrder - bOrder;
+      }
+      const aKey = typeof a.targetEpochMs === 'number' ? a.targetEpochMs : (a.updatedAt || a.createdAt || 0);
+      const bKey = typeof b.targetEpochMs === 'number' ? b.targetEpochMs : (b.updatedAt || b.createdAt || 0);
+      if (aKey !== bKey) {
+        return aKey - bKey;
+      }
+      return (b.createdAt || 0) - (a.createdAt || 0);
+    });
+  };
+
+  const getSelectedTimer = () => {
+    if (!state.selectedId) {
+      return null;
+    }
+    return state.timers.find((timer) => timer.id === state.selectedId) || null;
+  };
+
+  const clearStatusOverride = () => {
+    if (state.statusTimeout) {
+      window.clearTimeout(state.statusTimeout);
+      state.statusTimeout = null;
+    }
+    state.statusOverride = null;
+  };
+
+  const setStatusOverride = (message, tone = 'info', duration = 0) => {
+    if (!statusEl) {
+      return;
+    }
+    if (!message) {
+      clearStatusOverride();
+      renderMain();
+      return;
+    }
+    if (state.statusTimeout) {
+      window.clearTimeout(state.statusTimeout);
+      state.statusTimeout = null;
+    }
+    state.statusOverride = { message, tone };
+    renderMain();
+    if (duration > 0) {
+      state.statusTimeout = window.setTimeout(() => {
+        if (state.statusOverride && state.statusOverride.message === message) {
+          clearStatusOverride();
+          renderMain();
+        }
+      }, duration);
+    }
+  };
+
+  const updateControlButtons = (timer) => {
+    if (!startPauseBtn || !resetBtn) {
+      return;
+    }
+
+    const setPrimaryButton = (disabled, icon, label) => {
+      startPauseBtn.disabled = disabled;
+      startPauseBtn.innerHTML = `<i class="bi ${icon}" aria-hidden="true"></i>`;
+      startPauseBtn.setAttribute('aria-label', label);
+      startPauseBtn.title = label;
+    };
+
+    const setResetButton = (disabled, label) => {
+      resetBtn.disabled = disabled;
+      resetBtn.innerHTML = '<i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>';
+      resetBtn.setAttribute('aria-label', label);
+      resetBtn.title = label;
+    };
+
+    if (!timer) {
+      setPrimaryButton(true, 'bi-play-fill', 'Iniciar temporizador');
+      setResetButton(true, 'Restablecer temporizador');
+      return;
+    }
+
+    const hasDuration = timer.metadata && Number(timer.metadata.durationMs) > 0;
+    setResetButton(!hasDuration, 'Restablecer temporizador');
+
+    if (timer.state === 'running') {
+      setPrimaryButton(false, 'bi-pause-fill', 'Pausar temporizador');
+    } else if (timer.state === 'paused') {
+      setPrimaryButton(false, 'bi-play-fill', 'Reanudar temporizador');
+    } else {
+      setPrimaryButton(false, 'bi-arrow-clockwise', 'Reiniciar temporizador');
+    }
+  };
+
+  const renderMain = (sorted) => {
+    if (!displayEl || !labelEl || !statusEl) {
+      return;
+    }
+
+    const timers = Array.isArray(sorted) ? sorted : sortTimers(state.timers);
+
+    if (!timers.length) {
+      state.selectedId = null;
+    } else if (!state.selectedId || !timers.some((timer) => timer.id === state.selectedId)) {
+      state.selectedId = timers[0].id;
+    }
+
+    const timer = getSelectedTimer();
+
+    if (!timer) {
+      displayEl.textContent = '00:00';
+      labelEl.textContent = 'Sin temporizador seleccionado';
+      const message = state.statusOverride ? state.statusOverride.message : 'Usa los presets para crear uno nuevo.';
+      statusEl.textContent = message;
+      statusEl.classList.toggle('is-warning', Boolean(state.statusOverride && state.statusOverride.tone === 'warning'));
+      updateControlButtons(null);
+      return;
+    }
+
+    const remaining = computeRemainingMs(timer);
+    displayEl.textContent = formatForDisplay(remaining);
+    labelEl.textContent = timer.label || 'Temporizador';
+
+    if (state.statusOverride) {
+      statusEl.textContent = state.statusOverride.message;
+      statusEl.classList.toggle('is-warning', state.statusOverride.tone === 'warning');
+    } else {
+      const descriptor = describeStatus(timer);
+      statusEl.textContent = descriptor.text;
+      statusEl.classList.remove('is-warning');
+    }
+
+    updateControlButtons(timer);
+  };
+
+  const buildTimerCard = (timer) => {
+    const article = document.createElement('article');
+    article.className = 'timer-item';
+    article.dataset.timerId = timer.id;
+    article.setAttribute('role', 'listitem');
+    if (timer.state) {
+      article.dataset.state = timer.state;
+    }
+    if (timer.id === state.selectedId) {
+      article.classList.add('is-selected');
+    }
+
+    const body = document.createElement('div');
+    body.className = 'timer-item__body';
+    body.dataset.action = 'select';
+    body.setAttribute('role', 'button');
+    body.setAttribute('tabindex', '0');
+    body.setAttribute('aria-pressed', timer.id === state.selectedId ? 'true' : 'false');
+    body.setAttribute('aria-label', `Seleccionar ${timer.label || 'temporizador'}`);
+
+    const titleRow = document.createElement('div');
+    titleRow.className = 'timer-item__title';
+    const title = document.createElement('span');
+    title.textContent = timer.label || 'Temporizador';
+    const time = document.createElement('span');
+    time.className = 'timer-item__time';
+    time.textContent = formatForDisplay(computeRemainingMs(timer));
+    titleRow.append(title, time);
+
+    const meta = document.createElement('div');
+    meta.className = 'timer-item__meta';
+    const descriptor = describeStatus(timer);
+    meta.innerHTML = `<i class="bi ${descriptor.icon}" aria-hidden="true"></i><span>${descriptor.text}</span>`;
+
+    body.append(titleRow, meta);
+
+    const actions = document.createElement('div');
+    actions.className = 'timer-item__actions';
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'timer-item__btn';
+    if (timer.state === 'running') {
+      toggleBtn.dataset.action = 'pause';
+      toggleBtn.setAttribute('aria-label', 'Pausar temporizador');
+      toggleBtn.innerHTML = '<i class="bi bi-pause-fill" aria-hidden="true"></i>';
+    } else if (timer.state === 'paused') {
+      toggleBtn.dataset.action = 'resume';
+      toggleBtn.setAttribute('aria-label', 'Reanudar temporizador');
+      toggleBtn.innerHTML = '<i class="bi bi-play-fill" aria-hidden="true"></i>';
+    } else {
+      toggleBtn.dataset.action = 'reset';
+      toggleBtn.setAttribute('aria-label', 'Reiniciar temporizador');
+      toggleBtn.innerHTML = '<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>';
+    }
+
+    const resetButton = document.createElement('button');
+    resetButton.type = 'button';
+    resetButton.className = 'timer-item__btn';
+    resetButton.dataset.action = 'reset';
+    resetButton.setAttribute('aria-label', 'Restablecer temporizador');
+    resetButton.innerHTML = '<i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>';
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'timer-item__btn';
+    deleteButton.dataset.action = 'delete';
+    deleteButton.setAttribute('aria-label', 'Eliminar temporizador');
+    deleteButton.innerHTML = '<i class="bi bi-x-lg" aria-hidden="true"></i>';
+
+    actions.append(toggleBtn, resetButton, deleteButton);
+    article.append(body, actions);
+    return article;
+  };
+
+  const renderTimersList = (sorted) => {
+    if (!timersList || !noTimersMessage) {
+      return;
+    }
+
+    const timers = Array.isArray(sorted) ? sorted : sortTimers(state.timers);
+    timersList.innerHTML = '';
+
+    if (!timers.length) {
+      timersList.setAttribute('aria-hidden', 'true');
+      noTimersMessage.hidden = false;
+      return;
+    }
+
+    noTimersMessage.hidden = true;
+    timersList.removeAttribute('aria-hidden');
+
+    timers.forEach((timer) => {
+      const card = buildTimerCard(timer);
+      timersList.appendChild(card);
+    });
+  };
+
+  const render = (sorted) => {
+    const timers = Array.isArray(sorted) ? sorted : sortTimers(state.timers);
+    if (!timers.length) {
+      state.selectedId = null;
+    } else if (!state.selectedId || !timers.some((timer) => timer.id === state.selectedId)) {
+      state.selectedId = timers[0].id;
+    }
+    renderMain(timers);
+    renderTimersList(timers);
+  };
+
+  const selectTimer = (timerId) => {
+    if (!timerId || state.selectedId === timerId) {
+      return;
+    }
+    state.selectedId = timerId;
+    clearStatusOverride();
+    render();
+  };
+
+  const handleSchedulerUpdate = (items = []) => {
+    state.timers = Array.isArray(items)
+      ? items.filter((item) => item && item.type === 'timer')
+      : [];
+    render();
+  };
+
+  const createTimer = (durationMs, labelText) => {
+    if (!scheduler) {
+      return null;
+    }
+    const duration = Number(durationMs);
+    if (!Number.isFinite(duration) || duration <= 0) {
+      setStatusOverride('El tiempo debe ser mayor a 0.', 'warning', 3200);
+      return null;
+    }
+    const trimmedLabel = labelText ? String(labelText).trim() : '';
+    const id = scheduler.createTimer({ durationMs: duration, label: trimmedLabel || undefined, autoRemove: true });
+    state.selectedId = id;
+    clearStatusOverride();
+    return id;
+  };
+
+  const findTimer = (id) => {
+    if (id) {
+      return state.timers.find((timer) => timer.id === id) || null;
+    }
+    return getSelectedTimer();
+  };
+
+  const handlePresetClick = (event) => {
+    const button = event.target.closest('.preset-btn');
+    if (!button) {
+      return;
+    }
+    const minutes = Number(button.dataset.min || 0);
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      setStatusOverride('Selecciona un preset válido.', 'warning', 2800);
+      return;
+    }
+    const durationMs = minutes * 60 * 1000;
+    const label = button.textContent ? `Temporizador ${button.textContent.trim()}` : undefined;
+    createTimer(durationMs, label);
+  };
+
+  const handlePrimaryAction = () => {
+    const timer = getSelectedTimer();
+    if (!timer || !scheduler) {
+      return;
+    }
+    if (timer.state === 'running') {
+      scheduler.pauseTimer(timer.id);
+    } else if (timer.state === 'paused') {
+      scheduler.resumeTimer(timer.id);
+    } else {
+      scheduler.resetTimer(timer.id);
+    }
+  };
+
+  const handleResetAction = () => {
+    const timer = getSelectedTimer();
+    if (!timer || !scheduler) {
+      return;
+    }
+    scheduler.resetTimer(timer.id);
+  };
+
+  const handleTimersListClick = (event) => {
+    const actionEl = event.target.closest('[data-action]');
+    if (!actionEl) {
+      return;
+    }
+    const timerItem = actionEl.closest('.timer-item');
+    if (!timerItem) {
+      return;
+    }
+    const timerId = timerItem.dataset.timerId;
+    if (!timerId) {
+      return;
+    }
+    const action = actionEl.dataset.action;
+    switch (action) {
+      case 'select':
+        selectTimer(timerId);
+        break;
+      case 'pause':
+        scheduler && scheduler.pauseTimer(timerId);
+        break;
+      case 'resume':
+        scheduler && scheduler.resumeTimer(timerId);
+        break;
+      case 'reset':
+        scheduler && scheduler.resetTimer(timerId);
+        break;
+      case 'delete':
+        scheduler && scheduler.cancelTimer(timerId);
+        if (state.selectedId === timerId) {
+          state.selectedId = null;
+        }
+        break;
+      default:
+        break;
+    }
+  };
+
+  const handleTimersListKeydown = (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return;
+    }
+    const body = event.target.closest('.timer-item__body[data-action="select"]');
+    if (!body) {
+      return;
+    }
+    const timerItem = body.closest('.timer-item');
+    if (!timerItem || !timerItem.dataset.timerId) {
+      return;
+    }
+    event.preventDefault();
+    selectTimer(timerItem.dataset.timerId);
+  };
+
+  const openCustomModal = () => {
+    if (!customModal) {
+      return;
+    }
+    if (customHours) customHours.value = 0;
+    if (customMinutes) customMinutes.value = 0;
+    if (customSeconds) customSeconds.value = 0;
+    customModal.classList.add('open');
+  };
+
+  const closeCustomModal = () => {
+    if (customModal) {
+      customModal.classList.remove('open');
+    }
+  };
+
+  const clampInputs = () => {
+    if (customHours) {
+      const value = Number(customHours.value || 0);
+      customHours.value = Math.min(23, Math.max(0, value));
+    }
+    if (customMinutes) {
+      const value = Number(customMinutes.value || 0);
+      customMinutes.value = Math.min(59, Math.max(0, value));
+    }
+    if (customSeconds) {
+      const value = Number(customSeconds.value || 0);
+      customSeconds.value = Math.min(59, Math.max(0, value));
+    }
+  };
+
+  const setupStepperButtons = () => {
+    document.querySelectorAll('.ct-plus').forEach((button) => {
+      button.addEventListener('click', () => {
+        const target = button.dataset.target;
+        if (!target) return;
+        const element = target === 'hours' ? customHours : target === 'minutes' ? customMinutes : customSeconds;
+        if (!element) return;
+        const max = target === 'hours' ? 23 : 59;
+        element.value = Math.min(max, Number(element.value || 0) + 1);
+      });
+    });
+
+    document.querySelectorAll('.ct-minus').forEach((button) => {
+      button.addEventListener('click', () => {
+        const target = button.dataset.target;
+        if (!target) return;
+        const element = target === 'hours' ? customHours : target === 'minutes' ? customMinutes : customSeconds;
+        if (!element) return;
+        element.value = Math.max(0, Number(element.value || 0) - 1);
+      });
+    });
+  };
+
+  const handleCustomCreate = () => {
+    clampInputs();
+    const hours = Number(customHours && customHours.value ? customHours.value : 0);
+    const minutes = Number(customMinutes && customMinutes.value ? customMinutes.value : 0);
+    const seconds = Number(customSeconds && customSeconds.value ? customSeconds.value : 0);
+    const totalSeconds = (hours * 3600) + (minutes * 60) + seconds;
+    if (totalSeconds <= 0) {
+      setStatusOverride('El tiempo debe ser mayor a 0.', 'warning', 3200);
+      return;
+    }
+    const labelParts = [];
+    if (hours) labelParts.push(`${hours}h`);
+    if (minutes) labelParts.push(`${minutes}m`);
+    if (seconds) labelParts.push(`${seconds}s`);
+    const label = labelParts.length ? `Temporizador ${labelParts.join(' ')}` : undefined;
+    createTimer(totalSeconds * 1000, label);
+    closeCustomModal();
+  };
+
+  const exposeTimerAPI = () => {
+    window.TimerAPI = {
+      set: (h = 0, m = 0, s = 0, autostart = true) => {
+        const durationMs = ((Number(h) || 0) * 3600 + (Number(m) || 0) * 60 + (Number(s) || 0)) * 1000;
+        const id = createTimer(durationMs);
+        if (!autostart && id) {
+          scheduler.pauseTimer(id);
+        }
+        return id;
+      },
+      start: (id) => {
+        const timer = findTimer(id);
+        if (timer && timer.state !== 'running') {
+          scheduler.resumeTimer(timer.id);
+        }
+      },
+      pause: (id) => {
+        const timer = findTimer(id);
+        if (timer && timer.state === 'running') {
+          scheduler.pauseTimer(timer.id);
+        }
+      },
+      reset: (id) => {
+        const timer = findTimer(id);
+        if (timer) {
+          scheduler.resetTimer(timer.id);
+        }
+      },
+      cancel: (id) => {
+        const timer = findTimer(id);
+        if (timer) {
+          scheduler.cancelTimer(timer.id);
+        }
+      },
+      running: (id) => {
+        const timer = findTimer(id);
+        return Boolean(timer && timer.state === 'running');
+      },
+      remainingMs: (id) => {
+        const timer = findTimer(id);
+        return computeRemainingMs(timer);
+      },
+      list: () => scheduler.list('timer'),
+    };
+  };
+
+  const init = () => {
+    scheduler = window.HelenScheduler;
+    if (!scheduler) {
+      console.warn('[Timer] HelenScheduler no está disponible.');
+      return;
+    }
+
+    displayEl = document.getElementById('timerDisplay');
+    labelEl = document.getElementById('timerLabel');
+    statusEl = document.getElementById('timerStatus');
+    startPauseBtn = document.getElementById('startPauseBtn');
+    resetBtn = document.getElementById('resetBtn');
+    presetsGrid = document.getElementById('presetsGrid');
+    openCustomBtn = document.getElementById('openCustomBtn');
+    timersList = document.getElementById('timersList');
+    noTimersMessage = document.getElementById('noTimersMessage');
+    customModal = document.getElementById('customTimeModal');
+    modalCloseBtn = customModal ? customModal.querySelector('.close-modal') : null;
+    customCancelBtn = document.getElementById('customCancelBtn');
+    customSetBtn = document.getElementById('customSetBtn');
+    customHours = document.getElementById('customHours');
+    customMinutes = document.getElementById('customMinutes');
+    customSeconds = document.getElementById('customSeconds');
+
+    if (presetsGrid) {
+      presetsGrid.addEventListener('click', handlePresetClick);
+    }
+    if (startPauseBtn) {
+      startPauseBtn.addEventListener('click', handlePrimaryAction);
+    }
+    if (resetBtn) {
+      resetBtn.addEventListener('click', handleResetAction);
+    }
+    if (openCustomBtn) {
+      openCustomBtn.addEventListener('click', openCustomModal);
+    }
+    if (modalCloseBtn) {
+      modalCloseBtn.addEventListener('click', closeCustomModal);
+    }
+    if (customCancelBtn) {
+      customCancelBtn.addEventListener('click', closeCustomModal);
+    }
+    if (customSetBtn) {
+      customSetBtn.addEventListener('click', handleCustomCreate);
+    }
+    if (customModal) {
+      customModal.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          closeCustomModal();
+        }
+      });
+    }
+    if (timersList) {
+      timersList.addEventListener('click', handleTimersListClick);
+      timersList.addEventListener('keydown', handleTimersListKeydown);
+    }
+
+    setupStepperButtons();
+    exposeTimerAPI();
+
+    scheduler.on('update', handleSchedulerUpdate);
+    scheduler.ready().then(() => {
+      handleSchedulerUpdate(scheduler.list('timer'));
+    });
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();

@@ -37,16 +37,18 @@
           </div>
         </div>
 
-        <!-- Display principal -->
-        <div class="timer-display" id="timerDisplay">00:00</div>
+        <div class="timer-main">
+          <span class="timer-label" id="timerLabel">Sin temporizador seleccionado</span>
+          <div class="timer-display" id="timerDisplay">00:00</div>
+          <span class="timer-status" id="timerStatus">Usa los presets para crear uno nuevo.</span>
+        </div>
 
-        <!-- Controles -->
-        <div class="timer-actions">
-          <button id="startPauseBtn" class="primary-btn icon-btn" title="Iniciar / Pausar">
-            <i class="bi bi-play-fill"></i>
+        <div class="timer-actions" role="group" aria-label="Controles del temporizador seleccionado">
+          <button id="startPauseBtn" class="primary-btn icon-btn" type="button" title="Iniciar o pausar temporizador" aria-label="Iniciar temporizador" disabled>
+            <i class="bi bi-play-fill" aria-hidden="true"></i>
           </button>
-          <button id="resetBtn" class="ghost-btn icon-btn" title="Reiniciar" disabled>
-            <i class="bi bi-arrow-counterclockwise"></i>
+          <button id="resetBtn" class="ghost-btn icon-btn" type="button" title="Restablecer temporizador" aria-label="Restablecer temporizador" disabled>
+            <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
           </button>
         </div>
       </div>
@@ -129,17 +131,23 @@
     </div>
   </div>
 
-  <!-- Toast global (opcional, mismo que alarmas) -->
-  <div id="helenToast" class="helen-toast" aria-live="polite" aria-atomic="true"></div>
+    <section class="active-timers" aria-labelledby="activeTimersTitle">
+      <div class="active-timers__header">
+        <h2 id="activeTimersTitle">Temporizadores activos</h2>
+        <p class="active-timers__hint">Puedes crear varios temporizadores y seguirán contando aunque cambies de pantalla.</p>
+      </div>
+      <div id="timersList" class="timers-list" role="list" aria-live="polite"></div>
+      <div id="noTimersMessage" class="timers-empty" role="status">No hay temporizadores activos. Usa un preset o personaliza el tiempo.</div>
+    </section>
+
+  </div>
 
   <!-- Scripts del proyecto (compat con backend y señas) -->
+  <script src="../jsFrontend/alarm-core.js"></script>
   <script src="../jsFrontend/timer.js"></script>
   <script src="../../jsSignHandler/SocketIO.js"></script>
   <script src="../../jsSignHandler/eventConnector.js"></script>
   <script src="../../jsSignHandler/actions.js"></script>
   <script src="../../jsSignHandler/loadingScreenLoader.js"></script>
-
-  <!-- Motor de alarmas global (no interfiere, solo por sonido si coincide con alarmas) -->
-  <script src="../jsFrontend/alarm-core.js" defer></script>
 </body>
 </html>

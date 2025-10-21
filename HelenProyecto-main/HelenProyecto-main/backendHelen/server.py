@@ -23,10 +23,15 @@ import argparse
 import contextlib
 import json
 import logging
+import platform
+import shutil
 import socketserver
+import subprocess
 import sys
+import tempfile
 import threading
 import time
+import urllib.request
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
@@ -36,6 +41,7 @@ from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Deque, Dict, Iterable, List, Optional, Tuple
+from xml.sax.saxutils import escape
 
 try:  # pragma: no cover - optional dependency in CI
     import cv2  # type: ignore
@@ -130,6 +136,350 @@ HEALTH_ENDPOINTS = {"/health", "/healthz"}
 
 def _iso_timestamp(timestamp: float) -> str:
     return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+
+
+PLATFORM = platform.system().lower()
+IS_WINDOWS = PLATFORM.startswith("win")
+IS_LINUX = PLATFORM.startswith("linux")
+
+
+def _command_exists(command: str) -> bool:
+    return bool(shutil.which(command))
+
+
+def _run_command(args: Iterable[str], *, timeout: float = 10.0) -> subprocess.CompletedProcess:
+    try:
+        return subprocess.run(
+            list(args),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+            shell=False,
+        )
+    except FileNotFoundError as exc:  # pragma: no cover - depends on environment
+        raise RuntimeError(f"Comando no disponible: {args!r}") from exc
+    except subprocess.TimeoutExpired as exc:  # pragma: no cover - environment dependent
+        raise RuntimeError(f"El comando '{args!r}' excedió el tiempo límite") from exc
+
+
+def check_online_status(timeout: float = 3.0) -> Dict[str, Any]:
+    url = "http://clients3.google.com/generate_204"
+    result: Dict[str, Any] = {"online": False, "checked_at": time.time()}
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            result["online"] = response.status == 204
+            result["http_status"] = response.status
+    except Exception as exc:  # pragma: no cover - network dependent
+        result["online"] = False
+        result["message"] = str(exc)
+    return result
+
+
+def _parse_percent(value: str) -> Optional[int]:
+    candidate = value.rstrip("% ")
+    try:
+        return int(candidate)
+    except (TypeError, ValueError):
+        return None
+
+
+def _scan_windows_networks() -> List[Dict[str, Any]]:
+    if not _command_exists("netsh"):
+        raise RuntimeError("La herramienta 'netsh' no está disponible en este sistema.")
+
+    result = _run_command(["netsh", "wlan", "show", "networks", "mode=bssid"], timeout=15.0)
+    if result.returncode != 0:
+        message = result.stderr.strip() or "netsh devolvió un error al escanear redes"
+        raise RuntimeError(message)
+
+    networks: Dict[str, Dict[str, Any]] = {}
+    current_ssid: Optional[str] = None
+
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("SSID"):
+            parts = line.split(":", 1)
+            if len(parts) != 2:
+                continue
+            ssid = parts[1].strip()
+            if not ssid or ssid.lower() == "<desconocido>":
+                current_ssid = None
+                continue
+            current_ssid = ssid
+            networks.setdefault(ssid, {"ssid": ssid, "signal": None, "security": ""})
+            continue
+        if not current_ssid:
+            continue
+
+        entry = networks[current_ssid]
+        lowered = line.lower()
+        if lowered.startswith("signal"):
+            parts = line.split(":", 1)
+            if len(parts) == 2:
+                value = _parse_percent(parts[1].strip())
+                if value is not None:
+                    previous = entry.get("signal")
+                    if previous is None or value > previous:
+                        entry["signal"] = value
+        elif lowered.startswith("authentication"):
+            parts = line.split(":", 1)
+            if len(parts) == 2:
+                entry["security"] = parts[1].strip()
+
+    return list(networks.values())
+
+
+def _scan_nmcli_networks() -> List[Dict[str, Any]]:
+    if not _command_exists("nmcli"):
+        raise RuntimeError("nmcli no está disponible en este sistema.")
+
+    result = _run_command(["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi"], timeout=15.0)
+    if result.returncode != 0:
+        message = result.stderr.strip() or "nmcli devolvió un error al escanear redes"
+        raise RuntimeError(message)
+
+    networks: List[Dict[str, Any]] = []
+    seen: Dict[str, Dict[str, Any]] = {}
+
+    for raw_line in result.stdout.splitlines():
+        parts = raw_line.split(":", 2)
+        if len(parts) < 3:
+            continue
+        ssid = parts[0].strip()
+        if not ssid:
+            continue
+        signal = _parse_percent(parts[1].strip())
+        security = parts[2].strip()
+        entry = seen.setdefault(ssid, {"ssid": ssid, "signal": signal, "security": security})
+        if signal is not None:
+            existing = entry.get("signal")
+            if existing is None or signal > existing:
+                entry["signal"] = signal
+        if security:
+            entry["security"] = security
+
+    networks.extend(seen.values())
+    return networks
+
+
+def scan_wifi_networks() -> List[Dict[str, Any]]:
+    if IS_WINDOWS:
+        return _scan_windows_networks()
+    if _command_exists("nmcli"):
+        return _scan_nmcli_networks()
+    raise RuntimeError("Escaneo Wi-Fi no soportado en esta plataforma.")
+
+
+def _windows_wifi_status() -> Dict[str, Any]:
+    if not _command_exists("netsh"):
+        return {}
+
+    result = _run_command(["netsh", "wlan", "show", "interfaces"], timeout=10.0)
+    if result.returncode != 0:
+        return {}
+
+    status: Dict[str, Any] = {}
+    current: Dict[str, Any] = {}
+
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.strip()
+        if not line:
+            if current.get("state", "").lower().startswith("connected"):
+                status = current
+                break
+            current = {}
+            continue
+
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip().lower()
+        value = value.strip()
+
+        if key == "name":
+            current["iface"] = value
+        elif key == "state":
+            current["state"] = value
+        elif key == "ssid" and value:
+            current["connected_ssid"] = value
+        elif key == "signal":
+            parsed = _parse_percent(value)
+            if parsed is not None:
+                current["signal"] = parsed
+        elif key == "authentication":
+            current["security"] = value
+        elif key.startswith("ipv4") and value:
+            current["ipv4"] = value.split("(")[0].strip()
+
+    if not status and current.get("state", "").lower().startswith("connected"):
+        status = current
+
+    return {k: v for k, v in status.items() if k in {"iface", "state", "connected_ssid", "signal", "security", "ipv4"}}
+
+
+def _nmcli_wifi_status() -> Dict[str, Any]:
+    if not _command_exists("nmcli"):
+        return {}
+
+    status: Dict[str, Any] = {}
+
+    result = _run_command(["nmcli", "-t", "-f", "DEVICE,STATE,CONNECTION", "dev", "status"], timeout=8.0)
+    if result.returncode != 0:
+        return {}
+
+    active_device: Optional[str] = None
+    for raw_line in result.stdout.splitlines():
+        parts = raw_line.split(":", 2)
+        if len(parts) < 3:
+            continue
+        device, state, connection = parts
+        if state == "connected":
+            active_device = device
+            status["connected_ssid"] = connection
+            status["iface"] = device
+            break
+
+    if not active_device:
+        return status
+
+    result_signal = _run_command(["nmcli", "-t", "-f", "ACTIVE,SSID,SIGNAL", "dev", "wifi"], timeout=8.0)
+    if result_signal.returncode == 0:
+        for raw_line in result_signal.stdout.splitlines():
+            parts = raw_line.split(":", 2)
+            if len(parts) < 3:
+                continue
+            active, ssid, signal = parts
+            if active == "yes":
+                if ssid:
+                    status["connected_ssid"] = ssid
+                parsed = _parse_percent(signal.strip())
+                if parsed is not None:
+                    status["signal"] = parsed
+                break
+
+    result_ip = _run_command(["nmcli", "-t", "-f", "IP4.ADDRESS", "dev", "show", active_device], timeout=8.0)
+    if result_ip.returncode == 0:
+        for raw_line in result_ip.stdout.splitlines():
+            if ":" not in raw_line:
+                continue
+            _, value = raw_line.split(":", 1)
+            value = value.strip()
+            if value:
+                status["ipv4"] = value.split("/")[0]
+                break
+
+    return status
+
+
+def current_wifi_status() -> Dict[str, Any]:
+    if IS_WINDOWS:
+        return _windows_wifi_status()
+    if _command_exists("nmcli"):
+        return _nmcli_wifi_status()
+    return {}
+
+
+def _build_windows_profile(ssid: str, password: str) -> str:
+    ssid_text = escape(ssid)
+    ssid_hex = ssid.encode("utf-8").hex()
+    if password:
+        auth_block = """
+                <authentication>WPA2PSK</authentication>
+                <encryption>AES</encryption>
+                <useOneX>false</useOneX>
+        """
+        key_block = f"""
+            <sharedKey>
+                <keyType>passPhrase</keyType>
+                <protected>false</protected>
+                <keyMaterial>{escape(password)}</keyMaterial>
+            </sharedKey>
+        """
+    else:
+        auth_block = """
+                <authentication>open</authentication>
+                <encryption>none</encryption>
+                <useOneX>false</useOneX>
+        """
+        key_block = ""
+
+    return f"""<?xml version=\"1.0\"?>
+<WLANProfile xmlns=\"http://www.microsoft.com/networking/WLAN/profile/v1\">
+    <name>{ssid_text}</name>
+    <SSIDConfig>
+        <SSID>
+            <hex>{ssid_hex}</hex>
+            <name>{ssid_text}</name>
+        </SSID>
+    </SSIDConfig>
+    <connectionType>ESS</connectionType>
+    <connectionMode>auto</connectionMode>
+    <MSM>
+        <security>
+            <authEncryption>
+{auth_block}
+            </authEncryption>
+{key_block}
+        </security>
+    </MSM>
+</WLANProfile>
+"""
+
+
+def _connect_wifi_windows(ssid: str, password: str) -> Tuple[bool, str]:
+    if not _command_exists("netsh"):
+        return False, "La herramienta 'netsh' no está disponible."
+
+    profile_xml = _build_windows_profile(ssid, password)
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False, encoding="utf-8") as handle:
+            handle.write(profile_xml)
+            profile_path = handle.name
+    except OSError as exc:  # pragma: no cover - filesystem dependent
+        raise RuntimeError(f"No se pudo crear un perfil temporal de Wi-Fi: {exc}") from exc
+
+    try:
+        _run_command(["netsh", "wlan", "delete", "profile", f"name={ssid}"], timeout=6.0)
+        added = _run_command(["netsh", "wlan", "add", "profile", f"filename={profile_path}", "user=all"], timeout=10.0)
+        if added.returncode != 0:
+            message = added.stderr.strip() or "No se pudo registrar el perfil Wi-Fi."
+            return False, message
+        connected = _run_command(["netsh", "wlan", "connect", f"name={ssid}", f"ssid={ssid}"], timeout=15.0)
+        if connected.returncode != 0:
+            message = connected.stderr.strip() or "No se pudo iniciar la conexión Wi-Fi."
+            return False, message
+        return True, ""
+    finally:
+        with contextlib.suppress(OSError):
+            Path(profile_path).unlink(missing_ok=True)
+
+
+def _connect_wifi_nmcli(ssid: str, password: str) -> Tuple[bool, str]:
+    if not _command_exists("nmcli"):
+        return False, "nmcli no está disponible."
+
+    command = ["nmcli", "dev", "wifi", "connect", ssid]
+    if password:
+        command.extend(["password", password])
+
+    result = _run_command(command, timeout=25.0)
+    if result.returncode != 0:
+        message = result.stderr.strip() or "No se pudo establecer la conexión Wi-Fi."
+        return False, message
+    return True, ""
+
+
+def connect_wifi(ssid: str, password: str) -> Tuple[bool, str]:
+    if not ssid:
+        raise RuntimeError("SSID requerido para conectar.")
+    if IS_WINDOWS:
+        return _connect_wifi_windows(ssid, password)
+    if _command_exists("nmcli"):
+        return _connect_wifi_nmcli(ssid, password)
+    raise RuntimeError("Conexión Wi-Fi no soportada en esta plataforma.")
 
 
 @dataclass
@@ -572,7 +922,7 @@ class HelenRuntime:
                 _notify_missing_dataset(dataset_path)
                 raise RuntimeError("No hay dataset disponible para el clasificador de respaldo") from error
             fallback = SimpleGestureClassifier(dataset_path)
-            return fallback, {"source": "synthetic", "loaded": False}
+            return fallback, {"source": "synthetic", "loaded": True}
 
     # ------------------------------------------------------------------
     def _create_stream(self) -> Tuple[Any, Dict[str, Any]]:
@@ -757,26 +1107,56 @@ class HelenRequestHandler(SimpleHTTPRequestHandler):
         self.runtime = runtime
         super().__init__(*args, directory=str(FRONTEND_ROOT), **kwargs)
 
+    def _write_json(self, payload: Dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
     # ------------------------------------------------------------------
     def log_message(self, fmt: str, *args: Any) -> None:  # pragma: no cover - forwarded to logging
         LOGGER.info("HTTP %s - %s", self.address_string(), fmt % args)
 
     # ------------------------------------------------------------------
     def do_GET(self) -> None:  # noqa: D401 - inherited API
-        if self.path in {"", "/"}:
-            self.path = "/index.html"
+        path = self.path.split("?", 1)[0]
 
-        if self.path in HEALTH_ENDPOINTS:
+        if path in {"", "/"}:
+            self.path = "/index.html"
+        else:
+            self.path = path
+
+        if path in HEALTH_ENDPOINTS:
             snapshot = self.runtime.health()
-            payload = json.dumps(snapshot.__dict__).encode("utf-8")
-            self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(payload)
+            self._write_json(snapshot.__dict__)
             return
 
-        if self.path.startswith("/events"):
+        if path == "/net/online":
+            payload = check_online_status()
+            status_info = current_wifi_status()
+            if status_info.get("iface") and not payload.get("iface"):
+                payload["iface"] = status_info.get("iface")
+            if status_info.get("connected_ssid") and not payload.get("connected_ssid"):
+                payload["connected_ssid"] = status_info.get("connected_ssid")
+            self._write_json(payload)
+            return
+
+        if path == "/net/scan":
+            try:
+                networks = scan_wifi_networks()
+            except RuntimeError as error:
+                self._write_json({"networks": [], "error": str(error)}, status=HTTPStatus.BAD_GATEWAY)
+                return
+            self._write_json({"networks": networks, "timestamp": time.time()})
+            return
+
+        if path == "/net/status":
+            self._write_json(current_wifi_status())
+            return
+
+        if path.startswith("/events"):
             self._handle_sse()
             return
 
@@ -784,7 +1164,41 @@ class HelenRequestHandler(SimpleHTTPRequestHandler):
 
     # ------------------------------------------------------------------
     def do_POST(self) -> None:  # noqa: D401 - inherited API
-        if self.path == "/gestures/gesture-key":
+        path = self.path.split("?", 1)[0]
+
+        if path == "/net/connect":
+            length = int(self.headers.get("Content-Length", "0"))
+            raw_body = self.rfile.read(length) if length else b"{}"
+            try:
+                data = json.loads(raw_body.decode("utf-8"))
+            except json.JSONDecodeError:
+                self._write_json({"connected": False, "reason": "JSON inválido"}, status=HTTPStatus.BAD_REQUEST)
+                return
+
+            ssid = str(data.get("ssid", "")).strip()
+            password = data.get("password", "")
+            if not ssid:
+                self._write_json({"connected": False, "reason": "SSID requerido"}, status=HTTPStatus.BAD_REQUEST)
+                return
+
+            try:
+                success, reason = connect_wifi(ssid, str(password or ""))
+            except RuntimeError as error:
+                self._write_json({"connected": False, "reason": str(error)}, status=HTTPStatus.BAD_GATEWAY)
+                return
+
+            status_info = current_wifi_status()
+            connected_ssid = status_info.get("connected_ssid", "")
+            is_connected = bool(success and connected_ssid and connected_ssid.lower() == ssid.lower())
+            payload = {
+                "connected": is_connected,
+                "reason": reason or "",
+                "status": status_info,
+            }
+            self._write_json(payload)
+            return
+
+        if path == "/gestures/gesture-key":
             length = int(self.headers.get("Content-Length", "0"))
             raw_body = self.rfile.read(length) if length else b"{}"
             try:

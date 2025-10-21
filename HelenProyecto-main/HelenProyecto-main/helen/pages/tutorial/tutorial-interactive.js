@@ -4,6 +4,7 @@
   const trainers = Array.from(document.querySelectorAll('.gesture-trainer'));
   const motionButtons = Array.from(document.querySelectorAll('[data-action="toggle-motion"]'));
   const gestureKeys = ['gesture', 'character', 'label', 'command', 'action', 'key'];
+  const navigationGestures = new Set(['clima', 'weather', 'reloj', 'hora', 'inicio', 'home', 'alarma', 'alarmas', 'ajustes', 'configuracion', 'dispositivos', 'devices']);
   const trainerStates = new Map();
   const body = document.body;
 
@@ -361,4 +362,19 @@
   } else {
     console.warn('[Helen] Tutorial interactivo: no hay conexión SSE para validar las señas.');
   }
+
+  const interceptNavigation = (gestureKey, normalizedGesture) => {
+    const candidate = collapseGesture(gestureKey || normalizedGesture || '');
+    return navigationGestures.has(candidate);
+  };
+
+  window.helenTutorial = {
+    interceptNavigation,
+  };
+
+  window.addEventListener('unload', () => {
+    if (window.helenTutorial && window.helenTutorial.interceptNavigation === interceptNavigation) {
+      delete window.helenTutorial;
+    }
+  });
 })();

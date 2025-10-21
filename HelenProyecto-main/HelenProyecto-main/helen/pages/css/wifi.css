@@ -40,11 +40,6 @@
   transition:transform var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast);
 }
 
-html, body {
-  height: 100%;
-  overflow: hidden;              /* elimina cualquier scroll */
-}
-
 .back-button:hover{ transform:translateY(-2px); border-color:rgba(190,210,230,.22); box-shadow:0 18px 36px rgba(0,0,0,.28) }
 .wifi-header-text{ display:flex; flex-direction:column; gap:4px }
 .wifi-header-text h1{
@@ -67,7 +62,8 @@ html, body {
   cursor:pointer; transition:transform var(--t-fast), filter var(--t-fast), box-shadow var(--t-fast);
 }
 .pill:hover{ transform:translateY(-2px); filter:brightness(1.06) }
-.pill-icon{ animation:spin 1.1s linear infinite }
+.pill-icon{ display:inline-flex; align-items:center; }
+.pill.scanning .pill-icon{ animation:spin 1.1s linear infinite }
 @keyframes spin{ to{ transform:rotate(360deg) } }
 
 /* -------- contenido (todo CENTRADO) -------- */
@@ -75,6 +71,53 @@ html, body {
   display:flex; flex-direction:column; align-items:center;
   gap:22px; margin-top:8px;
 }
+.wifi-status-card{
+  width: min(1240px, 98%);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 20px;
+  border-radius: 20px;
+  border: 1px solid var(--card-border);
+  background: linear-gradient(170deg, rgba(16,26,44,.92), rgba(12,21,36,.86));
+  box-shadow: var(--shadow-card);
+}
+.wifi-status-card.is-offline{ border-color: rgba(255,120,140,.3); }
+.wifi-status-card.is-online{ border-color: rgba(80,220,170,.35); }
+.wifi-status-card.is-connecting{ border-color: rgba(120,180,255,.28); }
+.wifi-status-dot{
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ff6b6b;
+  box-shadow: 0 0 16px rgba(255,107,107,.38);
+  transition: background .25s ease, box-shadow .25s ease;
+}
+.wifi-status-card.is-online .wifi-status-dot{
+  background: #2fe6a6;
+  box-shadow: 0 0 16px rgba(47,230,166,.32);
+}
+.wifi-status-card.is-connecting .wifi-status-dot{
+  background: #79b2ff;
+  box-shadow: 0 0 16px rgba(121,178,255,.36);
+}
+.wifi-status-info h2{
+  margin: 0;
+  font-size: clamp(18px, 2.6vw, 24px);
+  color: var(--fg-strong, #fff);
+}
+.wifi-status-info p{
+  margin: 4px 0 0 0;
+  color: var(--fg-soft);
+  font-size: 14px;
+}
+.wifi-status-meta{
+  justify-self: end;
+  font-size: 13px;
+  color: rgba(220,230,255,.7);
+}
+.wifi-status-meta span{ display: block; }
 .networks-title{
   width:100%; text-align:center;
   margin:18px 0 6px; color:#dfe9ff;
@@ -190,6 +233,15 @@ html, body {
   width:40px; height:36px; border:none; border-radius:10px;
   background:rgba(255,255,255,.08); color:#e9f6ff; cursor:pointer; display:grid; place-items:center;
 }
+
+.connect-feedback{
+  min-height: 18px;
+  margin: 0 0 4px 0;
+  font-size: 13px;
+  color: var(--fg-soft);
+}
+.connect-feedback--error{ color: #ff98a4; }
+.connect-feedback--success{ color: #72f0c8; }
 .connect-button{
   min-width:160px; height:44px; border-radius:12px; border:1px solid var(--card-border);
   background:radial-gradient(60% 60% at 30% 30%, var(--blue-a), var(--blue-b));
@@ -200,10 +252,14 @@ html, body {
 .connect-button:not(:disabled):hover{ transform:translateY(-2px); filter:brightness(1.06) }
 .loader{
   width:16px; height:16px; border-radius:50%;
-  border:2px solid #fff; border-right-color:transparent;
+  border:2px solid rgba(255,255,255,.35);
+  border-top-color:#fff;
   display:none; animation:spin .8s linear infinite;
 }
 .connecting-text{ display:none }
+.connect-button.is-loading .loader{ display:inline-block }
+.connect-button.is-loading #connect-text{ display:none }
+.connect-button.is-loading .connecting-text{ display:inline }
 
 /* -------- footer -------- */
 .wifi-footer hr{ border:none; border-top:1px solid rgba(190,210,230,.14); margin:12px 0 }
@@ -220,6 +276,8 @@ html, body {
   .wifi-item{ padding:14px; grid-template-columns:64px 1fr auto }
   .wifi-signal{ width:56px; height:56px; border-radius:14px; font-size:24px }
   .wifi-strength i{ font-size:24px }
+  .wifi-status-card{ grid-template-columns:auto 1fr; grid-template-rows:auto auto; gap:12px }
+  .wifi-status-meta{ grid-column:1 / -1; justify-self:start }
 }
 
 .networks-card{ background:transparent; border:none; box-shadow:none; padding:0 }

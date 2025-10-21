@@ -32,6 +32,15 @@
 
     <!-- Contenido -->
     <main class="wifi-content">
+      <section class="wifi-status-card" id="wifi-status" role="status" aria-live="polite">
+        <div class="wifi-status-dot" aria-hidden="true"></div>
+        <div class="wifi-status-info">
+          <h2 id="wifi-status-primary">Sin conexión</h2>
+          <p id="wifi-status-secondary">Escanea para buscar redes disponibles.</p>
+        </div>
+        <div class="wifi-status-meta" id="wifi-status-extra"></div>
+      </section>
+
       <h2 class="networks-title">Redes Disponibles</h2>
 
       <!-- (Sin “card” visible en estado buscando) -->
@@ -57,6 +66,8 @@
             </button>
           </div>
         </div>
+
+        <p class="connect-feedback" id="connect-feedback" aria-live="assertive"></p>
 
         <button class="connect-button" id="connect-wifi-button" disabled>
           <span class="loader" id="connect-loader"></span>

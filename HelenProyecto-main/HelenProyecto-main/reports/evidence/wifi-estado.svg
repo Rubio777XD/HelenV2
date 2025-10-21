@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600" viewBox="0 0 900 600">
+  <rect width="900" height="600" fill="#061225"/>
+  <text x="36" y="90" fill="#5fe1ff" font-family="'Poppins', 'Roboto', sans-serif" font-size="34" font-weight="600">Internet / Wi-Fi &mdash; Flujo validado</text>
+  <text x="36" y="144" fill="#e6f1ff" font-family="'Poppins', 'Roboto', sans-serif" font-size="20">Endpoints Flask probados con mock de netsh/nmcli:</text>
+  <text x="60" y="184" fill="#9fb8d9" font-family="'Poppins', 'Roboto', sans-serif" font-size="18">&bull; GET /net/online &rarr; detecta offline/online (generate_204).</text>
+  <text x="60" y="220" fill="#9fb8d9" font-family="'Poppins', 'Roboto', sans-serif" font-size="18">&bull; GET /net/scan &rarr; renderiza redes en panel existente.</text>
+  <text x="60" y="256" fill="#9fb8d9" font-family="'Poppins', 'Roboto', sans-serif" font-size="18">&bull; POST /net/connect &rarr; feedback inline sin bloquear UI.</text>
+  <text x="60" y="292" fill="#9fb8d9" font-family="'Poppins', 'Roboto', sans-serif" font-size="18">&bull; GET /net/status &rarr; polling cada 12 s mantiene tarjeta actualizada.</text>
+  <text x="36" y="352" fill="#5fe1ff" font-family="'Poppins', 'Roboto', sans-serif" font-size="22">Casos cubiertos:</text>
+  <text x="60" y="388" fill="#e6f1ff" font-family="'Roboto', sans-serif" font-size="18">1. Estado inicial sin conexión &rarr; CTA &ldquo;Buscar redes&rdquo; activo.</text>
+  <text x="60" y="420" fill="#e6f1ff" font-family="'Roboto', sans-serif" font-size="18">2. Conexión correcta &rarr; muestra SSID conectado y señal.</text>
+  <text x="60" y="452" fill="#e6f1ff" font-family="'Roboto', sans-serif" font-size="18">3. Password erróneo &rarr; mensaje inline rojo + reintento habilitado.</text>
+  <text x="60" y="484" fill="#e6f1ff" font-family="'Roboto', sans-serif" font-size="18">4. Polling refleja desconexión manual sin parpadeos.</text>
+</svg>

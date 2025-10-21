@@ -119,8 +119,8 @@ let currentRingState = 'idle';
 
 const DEACTIVATION_DELAY = 3000;
 const ABSOLUTE_URL_REGEX = /^(?:[a-z]+:)?\/\//i;
-const RING_DETECTION_MS = 1000;
-const RING_ACTIVE_LINGER_MS = 2200;
+const RING_DETECTION_MS = 900;
+const RING_ACTIVE_LINGER_MS = 5000;
 const RING_FADE_MS = 650;
 const RING_ERROR_MS = 900;
 

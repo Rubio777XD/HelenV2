@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="560" viewBox="0 0 900 560">
+  <rect width="900" height="560" fill="#071020"/>
+  <text x="36" y="84" fill="#5fe1ff" font-family="'Poppins', 'Roboto', sans-serif" font-size="34" font-weight="600">Ring de activación &mdash; Ciclo completo</text>
+  <text x="36" y="140" fill="#e6f1ff" font-family="'Poppins', 'Roboto', sans-serif" font-size="20">Estados verificados con señales válidas y espera de 5 s:</text>
+  <text x="60" y="182" fill="#9fb8d9" font-family="'Poppins', 'Roboto', sans-serif" font-size="18">1. <tspan fill="#5fe1ff">Detección</tspan> &rarr; halo se muestra con micro bump inferior.</text>
+  <text x="60" y="218" fill="#9fb8d9" font-family="'Poppins', 'Roboto', sans-serif" font-size="18">2. <tspan fill="#5fe1ff">Activo</tspan> &rarr; breathing 3.6 s, halo completo borde pantalla.</text>
+  <text x="60" y="254" fill="#9fb8d9" font-family="'Poppins', 'Roboto', sans-serif" font-size="18">3. <tspan fill="#5fe1ff">Reposo</tspan> &rarr; auto fade-out a los 5000 ms sin residuos ni blur.</text>
+  <text x="36" y="314" fill="#5fe1ff" font-family="'Poppins', 'Roboto', sans-serif" font-size="22">Notas de QA:</text>
+  <text x="60" y="350" fill="#e6f1ff" font-family="'Roboto', sans-serif" font-size="18">&bull; pointer-events: none mantiene interacción con UI.</text>
+  <text x="60" y="382" fill="#e6f1ff" font-family="'Roboto', sans-serif" font-size="18">&bull; Clase helen-gesture-confirmed activa el bump (0.32 s).</text>
+  <text x="60" y="414" fill="#e6f1ff" font-family="'Roboto', sans-serif" font-size="18">&bull; Sin sombras residuales tras múltiples activaciones consecutivas.</text>
+</svg>
