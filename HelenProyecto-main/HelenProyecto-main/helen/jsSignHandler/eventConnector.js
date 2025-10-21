@@ -114,6 +114,7 @@ let lastNotification = "";
 let ringTransitionTimer;
 let ringFadeTimer;
 let ringErrorTimer;
+let gestureConfirmTimer;
 let currentRingState = 'idle';
 
 const DEACTIVATION_DELAY = 3000;
@@ -192,6 +193,32 @@ const prefersReducedMotion = () => {
   }
 };
 
+const updateBodyActivationState = (isActive) => {
+  if (!document || !document.body) {
+    return;
+  }
+  document.body.classList.toggle('helen-active', Boolean(isActive));
+  if (!isActive) {
+    document.body.classList.remove('helen-gesture-confirmed');
+  }
+};
+
+const triggerGestureConfirmationEffect = () => {
+  if (!document || !document.body) {
+    return;
+  }
+  document.body.classList.add('helen-gesture-confirmed');
+  if (gestureConfirmTimer) {
+    window.clearTimeout(gestureConfirmTimer);
+  }
+  gestureConfirmTimer = window.setTimeout(() => {
+    gestureConfirmTimer = undefined;
+    if (document && document.body) {
+      document.body.classList.remove('helen-gesture-confirmed');
+    }
+  }, 600);
+};
+
 const ensureActivationRingElement = () => {
   let ring = document.querySelector('.activation-ring');
   if (ring) {
@@ -240,6 +267,10 @@ const clearRingTimers = () => {
     clearTimeout(ringErrorTimer);
     ringErrorTimer = undefined;
   }
+  if (gestureConfirmTimer) {
+    clearTimeout(gestureConfirmTimer);
+    gestureConfirmTimer = undefined;
+  }
 };
 
 const scheduleFadeOut = (delayMs) => {
@@ -266,9 +297,11 @@ const setRingState = (state, options = {}) => {
     clearRingTimers();
     ring.classList.remove('is-detected', 'is-active', 'is-error', 'is-visible');
     currentRingState = 'idle';
+    updateBodyActivationState(false);
     return;
   }
 
+  updateBodyActivationState(true);
   ring.classList.add('is-visible');
 
   if (state === 'error') {
@@ -297,6 +330,7 @@ const setRingState = (state, options = {}) => {
   clearRingTimers();
   currentRingState = 'detected';
   ring.classList.remove('is-active', 'is-error');
+  triggerGestureConfirmationEffect();
 
   if (reduceMotion) {
     ring.classList.remove('is-detected');

@@ -74,7 +74,14 @@
 
             <div class="panel panel--trainer">
                 <div class="trainer-layout">
-                    <div class="gesture-trainer" data-module="clima" data-success="¡Perfecto! HELEN detectó la secuencia de clima.">
+                    <div
+                        class="gesture-trainer"
+                        data-module="clima"
+                        data-success="¡Perfecto! HELEN detectó la secuencia de clima."
+                        data-feedback-start="HELEN activada. Pide el clima."
+                        data-feedback-clima="Clima actualizado en la pantalla principal."
+                        data-feedback-inicio="Volviendo al panel principal."
+                    >
                         <div class="gesture-trainer__visual">
                             <div class="gesture-visual" role="group" aria-label="Práctica interactiva de la seña Clima">
                                 <img class="gesture-visual__media" src="../../assets/tutorial/gesture-clima.svg" alt="Mano virtual realizando la seña de clima" loading="lazy" />
@@ -85,6 +92,14 @@
                                 </button>
                                 <div class="gesture-visual__status" role="status" aria-live="polite" data-default="Pulsa “Iniciar práctica” y realiza cada seña frente a la cámara.">
                                     Pulsa “Iniciar práctica” y realiza cada seña frente a la cámara.
+                                </div>
+                                <div class="module-preview" data-module-preview="clima" aria-live="polite">
+                                    <div class="module-preview__halo" aria-hidden="true"></div>
+                                    <div class="module-preview__icon" aria-hidden="true"><i class="bi bi-cloud-sun"></i></div>
+                                    <div class="module-preview__title">Clima</div>
+                                    <div class="module-preview__status" data-module-status>
+                                        Haz la seña “Clima” cuando HELEN esté lista.
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -150,7 +165,14 @@
 
             <div class="panel panel--trainer">
                 <div class="trainer-layout">
-                    <div class="gesture-trainer" data-module="hora" data-success="¡Excelente! Ya dominas la seña de reloj.">
+                    <div
+                        class="gesture-trainer"
+                        data-module="hora"
+                        data-success="¡Excelente! Ya dominas la seña de reloj."
+                        data-feedback-start="HELEN activada. Pide la hora."
+                        data-feedback-reloj="Hora consultada y mostrada en pantalla."
+                        data-feedback-inicio="Regresando al inicio."
+                    >
                         <div class="gesture-trainer__visual">
                             <div class="gesture-visual" role="group" aria-label="Práctica interactiva de la seña Hora">
                                 <img class="gesture-visual__media" src="../../assets/tutorial/gesture-hora.svg" alt="Mano virtual realizando la seña de reloj" loading="lazy" />
@@ -161,6 +183,14 @@
                                 </button>
                                 <div class="gesture-visual__status" role="status" aria-live="polite" data-default="Haz cada seña en orden y espera el brillo de confirmación.">
                                     Haz cada seña en orden y espera el brillo de confirmación.
+                                </div>
+                                <div class="module-preview" data-module-preview="hora" aria-live="polite">
+                                    <div class="module-preview__halo" aria-hidden="true"></div>
+                                    <div class="module-preview__icon" aria-hidden="true"><i class="bi bi-clock-history"></i></div>
+                                    <div class="module-preview__title">Hora</div>
+                                    <div class="module-preview__status" data-module-status>
+                                        Haz la seña “Reloj” cuando HELEN esté lista.
+                                    </div>
                                 </div>
                             </div>
                         </div>
