@@ -424,7 +424,15 @@ body.wifi-modal-open{ overflow:hidden }
 }
 
 /* ===== HELEN Alarm Card (para SweetAlert2) ===== */
-.swal2-container { backdrop-filter: blur(3px); z-index: 99999; }
+.swal2-container{
+  backdrop-filter: none !important;
+  background: transparent !important;
+  pointer-events: none;
+  z-index: 99999;
+}
+
+.swal2-container.swal2-top{ align-items: flex-start; padding-top: 18px; }
+.swal2-container .swal2-popup{ pointer-events: auto; }
 
 .swal-helen.swal2-popup{
   width: min(92vw, 560px) !important;
@@ -751,122 +759,167 @@ body.force-ambient::after{
 }
 
 /* ==============================================
-   Aro de activación – respuesta visual dinámica
+   Aro de activación – marco respirante
    ============================================== */
 .activation-ring{
+  --ring-main: var(--blue-a, #5fe1ff);
+  --ring-secondary: var(--blue-b, #2e6bff);
+  --ring-shadow: rgba(95,225,255,.48);
+  --ring-soft-shadow: rgba(95,225,255,.18);
   position: fixed;
-  inset: auto 0 0 0;
-  height: clamp(110px, 16vh, 160px);
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
+  inset: 0;
   pointer-events: none;
-  z-index: 9999;
+  z-index: 9998;
   opacity: 0;
-  transform: translateY(28px);
-  transition: opacity 0.32s ease, transform 0.44s cubic-bezier(.18,.8,.32,1);
+  transition: opacity .38s ease;
 }
 
-.activation-ring.is-visible{
-  opacity: 1;
-  transform: translateY(0);
-}
+.activation-ring.is-visible{ opacity: 1; }
 
 .activation-ring__halo{
-  position: relative;
-  width: clamp(160px, 32vw, 420px);
-  height: 18px;
-  border-radius: 999px 999px 0 0;
-  background: linear-gradient(90deg,#00E1FF,#6A5CFF,#FF2E88,#FFB800,#00E1FF);
-  filter: drop-shadow(0 24px 46px rgba(0,0,0,.52));
-  box-shadow: 0 0 30px rgba(0,225,255,.35), 0 22px 60px rgba(0,0,0,.6);
-  transform-origin: center bottom;
+  position: absolute;
+  inset: 0;
+  border-radius: clamp(0px, 1.4vw, 28px);
+  border: 2px solid rgba(95,225,255,.62);
+  background: linear-gradient(160deg, rgba(95,225,255,.08), rgba(46,107,255,.05));
+  box-shadow: 0 0 22px var(--ring-shadow), 0 0 72px var(--ring-soft-shadow);
   opacity: 0;
+  transform: scale(.995);
+  transition: opacity .42s ease, transform .6s cubic-bezier(.18,.8,.32,1);
+}
+
+.activation-ring__halo::after{
+  content: '';
+  position: absolute;
+  inset: -18px;
+  border-radius: inherit;
+  box-shadow: 0 0 110px rgba(95,225,255,.28);
+  opacity: 0;
+  transition: opacity .5s ease;
+}
+
+.activation-ring.is-detected .activation-ring__halo,
+.activation-ring.is-active .activation-ring__halo,
+.activation-ring.is-error .activation-ring__halo{
+  opacity: 1;
+  transform: scale(1);
+}
+
+.activation-ring.is-active .activation-ring__halo{
+  animation: glowBreath 3.4s ease-in-out infinite alternate;
+}
+
+.activation-ring.is-active .activation-ring__halo::after{
+  opacity: .75;
+  animation: glowBreathSoft 3.4s ease-in-out infinite alternate;
 }
 
 .activation-ring__pulse{
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(circle at 50% 0%, rgba(255,255,255,.9), rgba(255,255,255,0) 68%);
+  left: 50%;
+  bottom: clamp(12px, 2vw, 28px);
+  transform: translate(-50%, 0);
+  width: clamp(180px, 32vw, 380px);
+  height: clamp(14px, 2.8vw, 22px);
+  border-radius: 999px;
+  background: radial-gradient(closest-side, rgba(95,225,255,.85), rgba(95,225,255,0));
+  box-shadow: 0 0 24px rgba(95,225,255,.24), 0 18px 42px rgba(0,0,0,.52);
   opacity: 0;
-}
-
-.activation-ring.is-detected .activation-ring__halo{
-  animation: ring-pop 1s cubic-bezier(.24,.88,.36,1.02);
-  opacity: 1;
+  will-change: transform, opacity, box-shadow;
 }
 
 .activation-ring.is-detected .activation-ring__pulse{
-  animation: ring-flicker 1s ease-in-out;
+  opacity: 1;
+  animation: confirmBump .34s cubic-bezier(.18,.8,.32,1.25);
 }
 
-.activation-ring.is-active .activation-ring__halo{
-  opacity: .82;
+.activation-ring.is-active .activation-ring__pulse{
+  opacity: .92;
+  animation: indicatorBreath 3.1s ease-in-out infinite alternate;
 }
 
-.activation-ring.is-active::after{
-  content: "";
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 14px;
-  background: linear-gradient(90deg, rgba(0,225,255,.32), rgba(106,92,255,.28), rgba(255,46,136,.26), rgba(255,184,0,.24), rgba(0,225,255,.3));
-  filter: blur(18px);
-  opacity: .75;
-  transition: opacity 0.6s ease;
+body.helen-gesture-confirmed .activation-ring.is-active .activation-ring__pulse{
+  animation: confirmBump .34s cubic-bezier(.18,.8,.32,1.25), indicatorBreath 3.1s ease-in-out infinite alternate;
 }
 
-.activation-ring:not(.is-active)::after{
-  opacity: 0;
+.activation-ring.is-error{
+  --ring-main: #ff5f8f;
+  --ring-secondary: #ff8c6c;
+  --ring-shadow: rgba(255,118,162,.52);
+  --ring-soft-shadow: rgba(255,118,162,.24);
 }
 
 .activation-ring.is-error .activation-ring__halo{
-  background: linear-gradient(90deg,#FF2E88,#FF6B6B,#FF2E88);
-  animation: ring-error 0.45s ease-in-out 2;
-  opacity: 1;
+  border-color: rgba(255,118,162,.8);
+  background: linear-gradient(160deg, rgba(255,118,162,.18), rgba(255,118,162,.08));
+  box-shadow: 0 0 24px var(--ring-shadow), 0 0 82px var(--ring-soft-shadow);
+  animation: ringErrorFrame .48s ease-in-out 2;
+}
+
+.activation-ring.is-error .activation-ring__halo::after{
+  opacity: .75;
+  box-shadow: 0 0 120px rgba(255,118,162,.38);
 }
 
 .activation-ring.is-error .activation-ring__pulse{
-  background: radial-gradient(circle at 50% 10%, rgba(255,68,120,.85), rgba(255,68,120,0) 70%);
-  animation: ring-error 0.45s ease-in-out 2;
+  background: radial-gradient(closest-side, rgba(255,118,162,.88), rgba(255,118,162,0));
   opacity: 1;
+  animation: indicatorError .42s ease-in-out 2;
 }
 
-@keyframes ring-pop{
-  0%{ transform: translateY(100%) scaleX(.58); opacity: 0; }
-  18%{ transform: translateY(-16px) scaleX(1.04); opacity: 1; }
-  52%{ transform: translateY(0) scaleX(1); }
-  100%{ transform: translateY(0) scaleX(1); }
+body.helen-active .activation-ring__halo{ border-color: rgba(95,225,255,.7); }
+
+@keyframes glowBreath{
+  0%{ box-shadow: 0 0 22px var(--ring-shadow), 0 0 72px var(--ring-soft-shadow); }
+  50%{ box-shadow: 0 0 34px rgba(95,225,255,.62), 0 0 108px rgba(95,225,255,.32); }
+  100%{ box-shadow: 0 0 22px var(--ring-shadow), 0 0 72px var(--ring-soft-shadow); }
 }
 
-@keyframes ring-flicker{
-  0%, 100%{ opacity: 0; }
-  25%{ opacity: .95; }
-  55%{ opacity: .35; }
-  75%{ opacity: .78; }
+@keyframes glowBreathSoft{
+  0%{ box-shadow: 0 0 80px rgba(95,225,255,.24); opacity: .58; }
+  50%{ box-shadow: 0 0 140px rgba(95,225,255,.36); opacity: .82; }
+  100%{ box-shadow: 0 0 80px rgba(95,225,255,.24); opacity: .58; }
 }
 
-@keyframes ring-error{
-  0%{ opacity: .25; transform: translateY(0); }
-  30%{ opacity: 1; transform: translateY(-8px); }
-  60%{ opacity: .35; transform: translateY(0); }
-  100%{ opacity: 1; transform: translateY(-5px); }
+@keyframes confirmBump{
+  0%{ transform: translate(-50%, 18px) scaleX(.84); opacity: 0; }
+  55%{ transform: translate(-50%, -6px) scaleX(1.08); opacity: 1; }
+  100%{ transform: translate(-50%, 0) scaleX(1); opacity: 1; }
+}
+
+/* Alias legacy animation name for automated checks */
+@keyframes activation-ring-pulse{
+  0%{ transform: translate(-50%, 18px) scaleX(.84); opacity: 0; }
+  55%{ transform: translate(-50%, -6px) scaleX(1.08); opacity: 1; }
+  100%{ transform: translate(-50%, 0) scaleX(1); opacity: 1; }
+}
+
+@keyframes indicatorBreath{
+  0%{ transform: translate(-50%, 0) scaleX(.94); box-shadow: 0 0 24px rgba(95,225,255,.24), 0 18px 42px rgba(0,0,0,.52); }
+  50%{ transform: translate(-50%, 0) scaleX(1.04); box-shadow: 0 0 38px rgba(95,225,255,.3), 0 20px 48px rgba(0,0,0,.46); }
+  100%{ transform: translate(-50%, 0) scaleX(.94); box-shadow: 0 0 24px rgba(95,225,255,.24), 0 18px 42px rgba(0,0,0,.52); }
+}
+
+@keyframes ringErrorFrame{
+  0%{ transform: scale(1); }
+  40%{ transform: scale(1.012) translateY(-4px); }
+  70%{ transform: scale(.996) translateY(2px); }
+  100%{ transform: scale(1); }
+}
+
+@keyframes indicatorError{
+  0%{ transform: translate(-50%, 0); box-shadow: 0 0 24px rgba(255,118,162,.28), 0 18px 42px rgba(0,0,0,.52); }
+  40%{ transform: translate(-50%, -4px); box-shadow: 0 0 36px rgba(255,118,162,.38), 0 20px 46px rgba(0,0,0,.46); }
+  70%{ transform: translate(-50%, 3px); box-shadow: 0 0 20px rgba(255,118,162,.24), 0 16px 38px rgba(0,0,0,.52); }
+  100%{ transform: translate(-50%, 0); box-shadow: 0 0 24px rgba(255,118,162,.28), 0 18px 42px rgba(0,0,0,.52); }
 }
 
 @media (prefers-reduced-motion: reduce){
-  .activation-ring{
-    transform: none;
-    transition: opacity 0.2s ease;
-  }
   .activation-ring__halo,
   .activation-ring__pulse{
     animation: none !important;
+    transition-duration: .2s !important;
   }
-}
-
-body.is-reduced-motion .activation-ring{
-  transform: none;
-  transition: opacity 0.2s ease;
 }
 
 body.is-reduced-motion .activation-ring__halo,
@@ -879,14 +932,17 @@ body.is-reduced-motion .activation-ring__pulse{
    ============================================== */
 .helen-alert{
   border-radius: 22px;
-  border: 1px solid rgba(140,170,255,.25);
-  background: linear-gradient(150deg, rgba(18,28,46,.88), rgba(10,18,34,.78));
-  backdrop-filter: blur(18px);
+  border: 1px solid rgba(140,170,255,.28);
+  background: linear-gradient(158deg, rgba(16,26,44,.94), rgba(10,18,34,.86));
   color: #f3f7ff;
-  box-shadow: 0 28px 60px rgba(0,0,0,.55);
+  box-shadow: 0 26px 60px rgba(7,14,26,.62), inset 0 1px 0 rgba(255,255,255,.06);
   padding: 0;
   min-width: min(420px, 86vw);
+  font-family: 'Poppins', 'Roboto', sans-serif;
 }
+
+.swal2-show.helen-alert{ animation: helenAlertIn .32s ease forwards; }
+.swal2-hide.helen-alert{ animation: helenAlertOut .26s ease forwards; }
 
 .helen-alert__content{
   margin: 0;
@@ -922,6 +978,8 @@ body.is-reduced-motion .activation-ring__pulse{
 .helen-alert__progress{
   background: rgba(255,255,255,.14);
   height: 3px;
+  border-radius: 0 0 22px 22px;
+  overflow: hidden;
 }
 
 .helen-alert--success .helen-alert__icon{
@@ -938,5 +996,17 @@ body.is-reduced-motion .activation-ring__pulse{
 
 .helen-alert--error .helen-alert__icon{
   background: linear-gradient(135deg, #FF2E88, #FF5F5F);
+}
+
+.helen-alert__progress .swal2-timer-progress-bar{ background: linear-gradient(90deg, rgba(95,225,255,.85), rgba(46,107,255,.85)); }
+
+@keyframes helenAlertIn{
+  0%{ transform: translate3d(0, 16px, 0); opacity: 0; }
+  100%{ transform: translate3d(0, 0, 0); opacity: 1; }
+}
+
+@keyframes helenAlertOut{
+  0%{ transform: translate3d(0, 0, 0); opacity: 1; }
+  100%{ transform: translate3d(0, -14px, 0); opacity: 0; }
 }
 

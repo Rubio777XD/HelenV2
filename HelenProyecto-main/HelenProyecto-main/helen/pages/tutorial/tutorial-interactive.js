@@ -53,6 +53,93 @@
     return titleEl ? titleEl.textContent.trim() : 'la seña';
   };
 
+  const parseFeedbackMessages = (trainer) => {
+    const map = {};
+    const entries = Object.entries(trainer.dataset || {});
+    for (const [key, value] of entries) {
+      if (typeof value !== 'string') continue;
+      if (!key || !key.startsWith('feedback')) continue;
+      const stageKey = collapseGesture(key.replace(/^feedback/, ''));
+      if (stageKey) {
+        map[stageKey] = value.trim();
+      }
+    }
+    return map;
+  };
+
+  const setModuleStage = (state, stage, options = {}) => {
+    if (!state.modulePreview) {
+      return;
+    }
+
+    const preview = state.modulePreview;
+    const statusEl = state.moduleStatus;
+    const stageKey = collapseGesture(stage) || 'idle';
+    const transient = Boolean(options.transient);
+    const duration = typeof options.duration === 'number' ? options.duration : 2000;
+
+    if (!transient && state.previewTimer) {
+      window.clearTimeout(state.previewTimer);
+      state.previewTimer = null;
+    }
+
+    preview.classList.remove('is-animate');
+    preview.classList.remove('is-primed', 'is-triggered', 'is-complete', 'is-reset');
+
+    let message = state.feedbackMessages[stageKey];
+    if (!message) {
+      if (stageKey === 'start') {
+        message = state.feedbackMessages.start || 'HELEN activada. Sigue las instrucciones en pantalla.';
+      } else if (stageKey === state.moduleKey) {
+        const label = state.moduleLabel || state.moduleKey;
+        message = state.feedbackMessages[state.moduleKey] || `Seña ${label} detectada.`;
+      } else if (stageKey === 'inicio') {
+        message = state.feedbackMessages.inicio || 'Regresando al inicio.';
+      } else if (stageKey === 'complete') {
+        message = state.feedbackMessages.complete || state.successMessage;
+      } else {
+        message = state.moduleDefaultStatus || state.defaultMessage || '';
+      }
+    }
+
+    switch (stageKey) {
+      case 'start':
+        preview.classList.add('is-primed');
+        break;
+      case state.moduleKey:
+        preview.classList.add('is-triggered');
+        break;
+      case 'inicio':
+        preview.classList.add('is-reset');
+        break;
+      case 'complete':
+        preview.classList.add('is-complete');
+        break;
+      default:
+        preview.classList.add('is-reset');
+        break;
+    }
+
+    // Reactiva la animación
+    void preview.offsetWidth;
+    preview.classList.add('is-animate');
+    state.moduleStage = stageKey;
+
+    if (statusEl && typeof message === 'string') {
+      statusEl.textContent = message;
+    }
+
+    if (transient) {
+      if (state.previewTimer) {
+        window.clearTimeout(state.previewTimer);
+      }
+      state.previewTimer = window.setTimeout(() => {
+        state.previewTimer = null;
+        setModuleStage(state, 'idle');
+      }, Math.max(600, duration));
+    }
+  };
+
   const updateStatus = (state, message, positive = false) => {
     if (!state.statusEl) return;
     state.statusEl.textContent = message;
@@ -88,6 +175,7 @@
     resetSteps(state);
     highlightCurrentStep(state);
     updatePracticeButton(state);
+    setModuleStage(state, 'start');
 
     const firstStep = state.steps[state.current];
     if (firstStep) {
@@ -104,6 +192,7 @@
     state.trainer.classList.add('is-complete');
     updatePracticeButton(state);
     highlightCurrentStep(state);
+    setModuleStage(state, 'complete');
     updateStatus(state, state.successMessage, true);
   };
 
@@ -112,6 +201,9 @@
     if (!step) {
       return;
     }
+
+    const stepId = step.node.dataset.stepId || '';
+    setModuleStage(state, stepId);
 
     step.node.classList.remove('is-current');
     step.node.classList.add('is-completed');
@@ -146,6 +238,14 @@
 
     const practiceButton = trainer.querySelector('[data-action="toggle-practice"]');
     const statusEl = trainer.querySelector('.gesture-visual__status');
+    const modulePreview = trainer.querySelector('[data-module-preview]');
+    const moduleStatus = modulePreview ? modulePreview.querySelector('[data-module-status]') : null;
+    const moduleDefaultStatus = moduleStatus ? moduleStatus.textContent.trim() : '';
+    const moduleLabelEl = modulePreview ? modulePreview.querySelector('.module-preview__title') : null;
+    const moduleLabel = moduleLabelEl ? moduleLabelEl.textContent.trim() : '';
+    const moduleKey = collapseGesture(trainer.dataset.module || '');
+    const feedbackMessages = parseFeedbackMessages(trainer);
+
     const state = {
       trainer,
       steps,
@@ -155,9 +255,23 @@
       active: false,
       successMessage: trainer.dataset.success || '¡Práctica completada! HELEN te entendió.',
       defaultMessage: statusEl ? (statusEl.dataset.default || statusEl.textContent.trim()) : '',
+      modulePreview,
+      moduleStatus,
+      moduleDefaultStatus,
+      moduleLabel,
+      moduleKey,
+      feedbackMessages,
+      moduleStage: 'idle',
+      previewTimer: null,
     };
 
+    state.feedbackMessages.complete = state.successMessage;
+    if (!state.feedbackMessages.idle && state.moduleDefaultStatus) {
+      state.feedbackMessages.idle = state.moduleDefaultStatus;
+    }
+
     trainerStates.set(trainer, state);
+    setModuleStage(state, 'idle');
 
     if (practiceButton) {
       practiceButton.addEventListener('click', () => {
@@ -173,7 +287,11 @@
     }
 
     trainerStates.forEach((state) => {
+      const isModuleGesture = state.moduleKey && collapsed === state.moduleKey;
       if (!state.active) {
+        if (collapsed === 'start' || isModuleGesture || collapsed === 'inicio') {
+          setModuleStage(state, collapsed, { transient: true });
+        }
         return;
       }
 
