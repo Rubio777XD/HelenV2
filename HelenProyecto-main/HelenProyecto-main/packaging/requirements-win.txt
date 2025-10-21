@@ -1,8 +1,10 @@
-mediapipe==0.10.21
-opencv-python==4.9.0.80
+# Runtime dependencies for the frozen HELEN backend on Windows
 numpy==1.26.4
+scipy==1.16.2
 scikit-learn==1.4.2
 xgboost==2.1.4
-requests==2.31.0
-PyInstaller==6.6.0
-pyinstaller-hooks-contrib==2024.6
+opencv-python==4.9.0.80
+mediapipe==0.10.21
+sounddevice==0.4.7
+
+# Build tooling is installed separately in the workflow to keep this list focused

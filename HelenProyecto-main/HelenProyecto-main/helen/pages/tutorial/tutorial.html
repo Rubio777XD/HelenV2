@@ -25,27 +25,32 @@
                 </button>
                 <div class="title-col">
                     <h1>Tutorial</h1>
-                    <p class="subtitle">Elige qué aprender: clima, hora o instrucciones</p>
+                    <p class="subtitle">Aprende las señas de HELEN con práctica guiada y retroalimentación instantánea.</p>
                 </div>
+                <button type="button" class="motion-toggle" data-action="toggle-motion" aria-pressed="false">
+                    <i class="bi bi-wind" aria-hidden="true"></i>
+                    <span class="motion-toggle__label">Modo sin animaciones</span>
+                    <span class="motion-toggle__state">Desactivado</span>
+                </button>
             </header>
 
             <div class="tut-grid">
                 <a class="qcard" href="#clima">
                     <span class="qcard__icon" aria-hidden="true"><i class="bi bi-cloud-sun"></i></span>
                     <span class="qcard__title">Consultar Clima</span>
-                    <span class="qcard__subtitle">Señas: H → C → (I)</span>
+                    <span class="qcard__subtitle">Práctica interactiva con la seña real</span>
                 </a>
 
                 <a class="qcard" href="#hora">
-                    <span class="qcard__icon" aria-hidden="true"><i class="bi bi-clock"></i></span>
+                    <span class="qcard__icon" aria-hidden="true"><i class="bi bi-clock-history"></i></span>
                     <span class="qcard__title">Consultar Hora</span>
-                    <span class="qcard__subtitle">Señas: H → R → (I)</span>
+                    <span class="qcard__subtitle">Sigue la secuencia guiada paso a paso</span>
                 </a>
 
                 <a class="qcard" href="#instrucciones">
                     <span class="qcard__icon" aria-hidden="true"><i class="bi bi-mortarboard"></i></span>
                     <span class="qcard__title">Instrucciones</span>
-                    <span class="qcard__subtitle">Guía rápida para la prueba</span>
+                    <span class="qcard__subtitle">Tips para aprovechar HELEN en clase</span>
                 </a>
             </div>
         </section>
@@ -58,52 +63,70 @@
                 </a>
                 <div class="title-col">
                     <h1>Consultar Clima</h1>
-                    <p class="subtitle">Secuencia de señas con apoyo visual</p>
+                    <p class="subtitle">Practica la secuencia real con guía visual y feedback instantáneo.</p>
                 </div>
+                <button type="button" class="motion-toggle" data-action="toggle-motion" aria-pressed="false">
+                    <i class="bi bi-wind" aria-hidden="true"></i>
+                    <span class="motion-toggle__label">Modo sin animaciones</span>
+                    <span class="motion-toggle__state">Desactivado</span>
+                </button>
             </header>
 
-            <div class="panel">
-                <div class="steps-grid">
-                    <div class="step-card">
-                        <div class="step-icon mark">H</div>
-                        <p>Activa HELEN</p>
+            <div class="panel panel--trainer">
+                <div class="trainer-layout">
+                    <div class="gesture-trainer" data-module="clima" data-success="¡Perfecto! HELEN detectó la secuencia de clima.">
+                        <div class="gesture-trainer__visual">
+                            <div class="gesture-visual" role="group" aria-label="Práctica interactiva de la seña Clima">
+                                <img class="gesture-visual__media" src="../../assets/tutorial/gesture-clima.svg" alt="Mano virtual realizando la seña de clima" loading="lazy" />
+                                <div class="gesture-visual__glow" aria-hidden="true"></div>
+                                <button type="button" class="gesture-visual__practice" data-action="toggle-practice" aria-pressed="false">
+                                    <span class="practice-label practice-label--start"><i class="bi bi-play-fill" aria-hidden="true"></i> Iniciar práctica</span>
+                                    <span class="practice-label practice-label--restart"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Reiniciar</span>
+                                </button>
+                                <div class="gesture-visual__status" role="status" aria-live="polite" data-default="Pulsa “Iniciar práctica” y realiza cada seña frente a la cámara.">
+                                    Pulsa “Iniciar práctica” y realiza cada seña frente a la cámara.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="gesture-trainer__steps" aria-live="polite">
+                            <ol class="gesture-steps">
+                                <li class="gesture-step" data-step-id="start" data-match="start|activar|heyhelen|holahelen|oyehelen|wake">
+                                    <span class="gesture-step__icon">H</span>
+                                    <div class="gesture-step__body">
+                                        <span class="gesture-step__title">Activa HELEN</span>
+                                        <span class="gesture-step__hint">Gestos válidos: Start, Activar, Hey Helen</span>
+                                    </div>
+                                    <span class="gesture-step__status" aria-hidden="true"></span>
+                                </li>
+                                <li class="gesture-step" data-step-id="clima" data-match="clima|weather">
+                                    <span class="gesture-step__icon"><i class="bi bi-cloud-sun" aria-hidden="true"></i></span>
+                                    <div class="gesture-step__body">
+                                        <span class="gesture-step__title">Pide el clima</span>
+                                        <span class="gesture-step__hint">Gestos válidos: Clima, Weather</span>
+                                    </div>
+                                    <span class="gesture-step__status" aria-hidden="true"></span>
+                                </li>
+                                <li class="gesture-step" data-step-id="inicio" data-match="inicio|home">
+                                    <span class="gesture-step__icon"><i class="bi bi-house-door" aria-hidden="true"></i></span>
+                                    <div class="gesture-step__body">
+                                        <span class="gesture-step__title">Vuelve al inicio</span>
+                                        <span class="gesture-step__hint">Gestos válidos: Inicio, Home</span>
+                                    </div>
+                                    <span class="gesture-step__status" aria-hidden="true"></span>
+                                </li>
+                            </ol>
+                        </div>
                     </div>
 
-                    <div class="step-card">
-                        <div class="step-icon"><i class="bi bi-lightbulb"></i></div>
-                        <p>HELEN lista</p>
-                    </div>
-
-                    <div class="step-card">
-                        <div class="step-icon mark">C</div>
-                        <p>Ir a Clima</p>
-                    </div>
-
-                    <div class="step-card">
-                        <div class="step-icon"><i class="bi bi-thermometer-sun"></i></div>
-                        <p>Ver temperatura y previsión</p>
-                    </div>
-
-                    <div class="step-card">
-                        <div class="step-icon mark">H</div>
-                        <p>Activar de nuevo</p>
-                    </div>
-
-                    <div class="step-card">
-                        <div class="step-icon mark">I</div>
-                        <p>Volver al inicio</p>
-                    </div>
-                </div>
-
-                <div class="notes-row">
-                    <div class="note">
-                        <i class="bi bi-exclamation-triangle"></i>
-                        <span>Si una seña sale mal, repite: <b>H</b> y luego el comando.</span>
-                    </div>
-                    <div class="note">
-                        <i class="bi bi-cloud"></i>
-                        <span>Requiere conexión a una fuente de clima.</span>
-                    </div>
+                    <aside class="trainer-notes">
+                        <h2>Consejos rápidos</h2>
+                        <ul>
+                            <li><i class="bi bi-camera-video" aria-hidden="true"></i> Mantén la mano centrada y a la altura del pecho.</li>
+                            <li><i class="bi bi-lightning-charge" aria-hidden="true"></i> Observa el resplandor inferior: confirma que HELEN escuchó.</li>
+                            <li><i class="bi bi-info-circle" aria-hidden="true"></i> Si fallas, reinicia con la seña H (Start) y repite el comando.</li>
+                        </ul>
+                    </aside>
                 </div>
             </div>
         </section>
@@ -116,52 +139,70 @@
                 </a>
                 <div class="title-col">
                     <h1>Consultar Hora</h1>
-                    <p class="subtitle">Secuencia de señas con apoyo visual</p>
+                    <p class="subtitle">Domina la secuencia para pedir la hora con confirmaciones visuales.</p>
                 </div>
+                <button type="button" class="motion-toggle" data-action="toggle-motion" aria-pressed="false">
+                    <i class="bi bi-wind" aria-hidden="true"></i>
+                    <span class="motion-toggle__label">Modo sin animaciones</span>
+                    <span class="motion-toggle__state">Desactivado</span>
+                </button>
             </header>
 
-            <div class="panel">
-                <div class="steps-grid">
-                    <div class="step-card">
-                        <div class="step-icon mark">H</div>
-                        <p>Activa HELEN</p>
+            <div class="panel panel--trainer">
+                <div class="trainer-layout">
+                    <div class="gesture-trainer" data-module="hora" data-success="¡Excelente! Ya dominas la seña de reloj.">
+                        <div class="gesture-trainer__visual">
+                            <div class="gesture-visual" role="group" aria-label="Práctica interactiva de la seña Hora">
+                                <img class="gesture-visual__media" src="../../assets/tutorial/gesture-hora.svg" alt="Mano virtual realizando la seña de reloj" loading="lazy" />
+                                <div class="gesture-visual__glow" aria-hidden="true"></div>
+                                <button type="button" class="gesture-visual__practice" data-action="toggle-practice" aria-pressed="false">
+                                    <span class="practice-label practice-label--start"><i class="bi bi-play-fill" aria-hidden="true"></i> Iniciar práctica</span>
+                                    <span class="practice-label practice-label--restart"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Reiniciar</span>
+                                </button>
+                                <div class="gesture-visual__status" role="status" aria-live="polite" data-default="Haz cada seña en orden y espera el brillo de confirmación.">
+                                    Haz cada seña en orden y espera el brillo de confirmación.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="gesture-trainer__steps" aria-live="polite">
+                            <ol class="gesture-steps">
+                                <li class="gesture-step" data-step-id="start" data-match="start|activar|heyhelen|holahelen|oyehelen|wake">
+                                    <span class="gesture-step__icon">H</span>
+                                    <div class="gesture-step__body">
+                                        <span class="gesture-step__title">Activa HELEN</span>
+                                        <span class="gesture-step__hint">Gestos válidos: Start, Activar, Hey Helen</span>
+                                    </div>
+                                    <span class="gesture-step__status" aria-hidden="true"></span>
+                                </li>
+                                <li class="gesture-step" data-step-id="reloj" data-match="reloj|hora|clock|time">
+                                    <span class="gesture-step__icon"><i class="bi bi-clock" aria-hidden="true"></i></span>
+                                    <div class="gesture-step__body">
+                                        <span class="gesture-step__title">Pide la hora</span>
+                                        <span class="gesture-step__hint">Gestos válidos: Reloj, Hora, Clock</span>
+                                    </div>
+                                    <span class="gesture-step__status" aria-hidden="true"></span>
+                                </li>
+                                <li class="gesture-step" data-step-id="inicio" data-match="inicio|home">
+                                    <span class="gesture-step__icon"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i></span>
+                                    <div class="gesture-step__body">
+                                        <span class="gesture-step__title">Regresa al inicio</span>
+                                        <span class="gesture-step__hint">Gestos válidos: Inicio, Home</span>
+                                    </div>
+                                    <span class="gesture-step__status" aria-hidden="true"></span>
+                                </li>
+                            </ol>
+                        </div>
                     </div>
 
-                    <div class="step-card">
-                        <div class="step-icon"><i class="bi bi-lightbulb"></i></div>
-                        <p>HELEN lista</p>
-                    </div>
-
-                    <div class="step-card">
-                        <div class="step-icon mark">R</div>
-                        <p>Ir a Reloj</p>
-                    </div>
-
-                    <div class="step-card">
-                        <div class="step-icon"><i class="bi bi-clock-history"></i></div>
-                        <p>Ver hora actual</p>
-                    </div>
-
-                    <div class="step-card">
-                        <div class="step-icon mark">H</div>
-                        <p>Activar de nuevo</p>
-                    </div>
-
-                    <div class="step-card">
-                        <div class="step-icon mark">I</div>
-                        <p>Volver al inicio</p>
-                    </div>
-                </div>
-
-                <div class="notes-row">
-                    <div class="note">
-                        <i class="bi bi-exclamation-triangle"></i>
-                        <span>Si una seña sale mal, repite: <b>H</b> y luego el comando.</span>
-                    </div>
-                    <div class="note">
-                        <i class="bi bi-watch"></i>
-                        <span>Se usa la hora del dispositivo / fuente de tiempo.</span>
-                    </div>
+                    <aside class="trainer-notes">
+                        <h2>Recomendaciones</h2>
+                        <ul>
+                            <li><i class="bi bi-broadcast" aria-hidden="true"></i> Mantente frente a la cámara hasta escuchar la respuesta de HELEN.</li>
+                            <li><i class="bi bi-emoji-smile" aria-hidden="true"></i> Sonríe y realiza movimientos suaves para mejorar la detección.</li>
+                            <li><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Puedes repetir la seña de Reloj para actualizar la hora en cualquier momento.</li>
+                        </ul>
+                    </aside>
                 </div>
             </div>
         </section>
@@ -174,8 +215,13 @@
                 </a>
                 <div class="title-col">
                     <h1>Instrucciones</h1>
-                    <p class="subtitle">Guía rápida para estudiantes</p>
+                    <p class="subtitle">Guía rápida para estudiantes y docentes.</p>
                 </div>
+                <button type="button" class="motion-toggle" data-action="toggle-motion" aria-pressed="false">
+                    <i class="bi bi-wind" aria-hidden="true"></i>
+                    <span class="motion-toggle__label">Modo sin animaciones</span>
+                    <span class="motion-toggle__state">Desactivado</span>
+                </button>
             </header>
 
             <div class="panel">
@@ -183,32 +229,32 @@
                     <div class="gstep">
                         <div class="gicon mark">1</div>
                         <div class="gbody">
-                            <h4>Activar HELEN</h4>
-                            <p>Seña <b>H</b>. Verás señal visual de “lista”.</p>
+                            <h4>Activa la práctica</h4>
+                            <p>Pulsa “Iniciar práctica” en la sección elegida. El estado te dirá qué seña realizar.</p>
                         </div>
                     </div>
 
                     <div class="gstep">
                         <div class="gicon mark">2</div>
                         <div class="gbody">
-                            <h4>Clima</h4>
-                            <p>Seña <b>C</b>. Mira temperatura y previsión.</p>
+                            <h4>Sigue el halo inferior</h4>
+                            <p>El resplandor en la parte baja indica detección correcta. Cambia de color en errores.</p>
                         </div>
                     </div>
 
                     <div class="gstep">
                         <div class="gicon mark">3</div>
                         <div class="gbody">
-                            <h4>Regresar</h4>
-                            <p><b>H</b> y luego <b>I</b> para ir al inicio.</p>
+                            <h4>Gestos principales</h4>
+                            <p><b>H</b> (Start) para activar, <b>C</b> para clima, <b>R</b> para reloj, <b>I</b> para volver.</p>
                         </div>
                     </div>
 
                     <div class="gstep">
                         <div class="gicon mark">4</div>
                         <div class="gbody">
-                            <h4>Hora</h4>
-                            <p><b>H</b> → <b>R</b> para ver la hora actual.</p>
+                            <h4>Repite si es necesario</h4>
+                            <p>Si una seña no se reconoce, reinicia con H y vuelve a intentarlo. El halo rojo te avisará.</p>
                         </div>
                     </div>
 
@@ -217,14 +263,14 @@
                         <div>
                             <h5>Tip</h5>
                             <ul class="bullet">
-                                <li>Haz las señas claras y centradas en cámara.</li>
-                                <li>Si no responde, repite <b>H</b> y el comando.</li>
+                                <li>Modo sin animaciones disponible para sesiones sensibles al movimiento.</li>
+                                <li>Los íconos explican cada paso: cámara, brillo inferior y resultado.</li>
+                                <li>Consulta el botón de práctica cada vez que quieras reforzar una seña.</li>
                             </ul>
                         </div>
                     </div>
                 </div>
             </div>
-
         </section>
     </main>
 
@@ -233,7 +279,7 @@
     <script src="../../jsSignHandler/eventConnector.js"></script>
     <script src="../../jsSignHandler/actions.js"></script>
     <script src="../../jsSignHandler/loadingScreenLoader.js"></script>
-    <script src="../jsFrontend/alarm-core.js" defer></script>
+    <script src="./tutorial-interactive.js" defer></script>
 
     <!-- Navegación hash mínima (sin backend) -->
     <script>

@@ -95,6 +95,12 @@ const triggerActivationRing = () => {
     }
 };
 
+const resetRingToIdle = () => {
+    if (typeof window.setActivationRingState === 'function') {
+        window.setActivationRingState('idle');
+    }
+};
+
 socket.on('message', (data = {}) => {
     console.log('Mensaje recibido del servidor:', data);
 
@@ -102,6 +108,7 @@ socket.on('message', (data = {}) => {
         isActive = false;
         console.log('Sistema desactivado desde el backend.');
         showPopup('Sistema desactivado desde el backend.', 'info');
+        resetRingToIdle();
         return;
     }
 
@@ -127,6 +134,7 @@ socket.on('message', (data = {}) => {
     if (!isActive) {
         console.log('Sistema inactivo. Usa la seña "Start" para activarlo.');
         showPopup('Sistema inactivo. Usa la seña "Start" para activarlo.', 'info');
+        resetRingToIdle();
         return;
     }
 

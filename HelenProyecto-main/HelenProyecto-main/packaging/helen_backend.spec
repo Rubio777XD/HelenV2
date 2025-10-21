@@ -53,6 +53,10 @@ _datas += collect_data_files(BACKEND_PACKAGE, includes=["templates/*", "static/*
 for file in glob(str(MODEL_DIR / "*.p*")):
     _datas.append((file, "Hellen_model_RN"))
 
+# Metadatos adicionales del modelo (por ejemplo ``model.json``)
+for file in glob(str(MODEL_DIR / "*.json")):
+    _datas.append((file, "Hellen_model_RN"))
+
 # Assets de MediaPipe (modelos .tflite, configs, etc.)
 _datas += collect_data_files("mediapipe")
 # (Opcional) Archivos de cv2 si los hooks no los copian: descomenta si hiciera falta
@@ -64,6 +68,34 @@ _binaries += collect_dynamic_libs("cv2")         # OpenCV (videoio, codecs)
 _binaries += collect_dynamic_libs("mediapipe")   # MediaPipe (grafo/ops nativas)
 _binaries += collect_dynamic_libs("sounddevice") # PortAudio para micrófono
 _binaries += collect_dynamic_libs("xgboost")     # XGBoost (xgboost.dll) ← ¡clave para el modelo!
+
+# PyInstaller a veces no detecta ``xgboost.dll`` automáticamente. Verifica de forma
+# proactiva que el binario quede empaquetado aunque los hooks fallen.
+try:  # pragma: no cover - solo se ejecuta en el proceso de build
+    import xgboost  # type: ignore
+except Exception:
+    pass
+else:
+    package_dir = pathlib.Path(getattr(xgboost, "__file__", "")).resolve().parent
+    candidates = [
+        package_dir / "lib" / "xgboost.dll",
+        package_dir / "xgboost.dll",
+    ]
+    existing_sources = {pathlib.Path(src).resolve() for src, _ in _binaries}
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        resolved = candidate.resolve()
+        if resolved in existing_sources:
+            break
+        try:
+            relative_parent = candidate.parent.relative_to(package_dir)
+        except ValueError:
+            dest_dir = "xgboost"
+        else:
+            dest_dir = str(pathlib.Path("xgboost") / relative_parent)
+        _binaries.append((str(resolved), dest_dir))
+        break
 
 # --- Análisis ---
 analysis = Analysis(
