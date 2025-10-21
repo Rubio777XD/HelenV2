@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="520" viewBox="0 0 900 520">
+  <rect width="900" height="520" fill="#0b1220"/>
+  <text x="36" y="86" fill="#5fe1ff" font-family="'Poppins', 'Roboto', sans-serif" font-size="34" font-weight="600">Tutorial interactivo &mdash; Gestos completados</text>
+  <text x="36" y="142" fill="#e6f1ff" font-family="'Poppins', 'Roboto', sans-serif" font-size="20">Escenario: módulo Clima</text>
+  <text x="60" y="182" fill="#9fb8d9" font-family="'Poppins', 'Roboto', sans-serif" font-size="18">&bull; Señal &ldquo;Clima&rdquo; marca paso como completado sin navegar.</text>
+  <text x="60" y="218" fill="#9fb8d9" font-family="'Poppins', 'Roboto', sans-serif" font-size="18">&bull; Estado se resetea al finalizar para repetir práctica.</text>
+  <text x="60" y="254" fill="#9fb8d9" font-family="'Poppins', 'Roboto', sans-serif" font-size="18">&bull; prefers-reduced-motion respeta flag y detiene animaciones.</text>
+  <text x="36" y="314" fill="#5fe1ff" font-family="'Poppins', 'Roboto', sans-serif" font-size="22">Validación:</text>
+  <text x="60" y="350" fill="#e6f1ff" font-family="'Roboto', sans-serif" font-size="18">Comprobado en consola que window.helenTutorial.interceptNavigation devuelve true sólo en modo tutorial.</text>
+</svg>

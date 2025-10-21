@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="640" viewBox="0 0 900 640">
+  <rect width="900" height="640" fill="#08142c"/>
+  <text x="36" y="90" fill="#5fe1ff" font-family="'Poppins', 'Roboto', sans-serif" font-size="34" font-weight="600">Temporizadores &mdash; Persistencia y audio</text>
+  <text x="36" y="146" fill="#e6f1ff" font-family="'Poppins', 'Roboto', sans-serif" font-size="20">Worker + Scheduler (time-worker.js / alarm-core.js):</text>
+  <text x="60" y="186" fill="#9fb8d9" font-family="'Poppins', 'Roboto', sans-serif" font-size="18">&bull; Web Worker calcula con performance.now() evitando throttling.</text>
+  <text x="60" y="222" fill="#9fb8d9" font-family="'Poppins', 'Roboto', sans-serif" font-size="18">&bull; Estado guardado en localStorage (clave helen:timekeeper:v1).</text>
+  <text x="60" y="258" fill="#9fb8d9" font-family="'Poppins', 'Roboto', sans-serif" font-size="18">&bull; Toasts + AudioContext desbloqueado al primer gesto/clic.</text>
+  <text x="36" y="318" fill="#5fe1ff" font-family="'Poppins', 'Roboto', sans-serif" font-size="22">Casos probados:</text>
+  <text x="60" y="354" fill="#e6f1ff" font-family="'Roboto', sans-serif" font-size="18">1. Crear 45s y 70s &rarr; cambiar a Weather y volver: countdown continúa.</text>
+  <text x="60" y="386" fill="#e6f1ff" font-family="'Roboto', sans-serif" font-size="18">2. Ocultar ventana &rarr; Worker mantiene tiempo exacto, audio se reproduce.</text>
+  <text x="60" y="418" fill="#e6f1ff" font-family="'Roboto', sans-serif" font-size="18">3. Recarga &rarr; timers se rehidratan y se sincronizan con worker.</text>
+  <text x="60" y="450" fill="#e6f1ff" font-family="'Roboto', sans-serif" font-size="18">4. Toasts independientes para cada disparo, sin solaparse.</text>
+</svg>

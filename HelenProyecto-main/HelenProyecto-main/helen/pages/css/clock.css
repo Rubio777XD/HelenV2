@@ -461,8 +461,7 @@ body {
     padding: 8px 14px;
     border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, .14);
-    background: rgba(255, 255, 255, .06);
-    backdrop-filter: blur(10px);
+    background: rgba(10, 18, 34, .72);
     color: #eaf3ff;
     font-size: 14px;
     font-weight: 500;

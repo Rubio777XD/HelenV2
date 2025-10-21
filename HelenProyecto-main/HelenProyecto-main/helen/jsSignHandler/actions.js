@@ -101,6 +101,17 @@ const resetRingToIdle = () => {
     }
 };
 
+const shouldInterceptNavigation = (collapsedGesture, normalizedGesture) => {
+    if (window.helenTutorial && typeof window.helenTutorial.interceptNavigation === 'function') {
+        try {
+            return Boolean(window.helenTutorial.interceptNavigation(collapsedGesture, normalizedGesture));
+        } catch (error) {
+            console.warn('No se pudo interceptar la navegación en modo tutorial:', error);
+        }
+    }
+    return false;
+};
+
 socket.on('message', (data = {}) => {
     console.log('Mensaje recibido del servidor:', data);
 
@@ -156,6 +167,9 @@ socket.on('message', (data = {}) => {
     if (typeof action === 'function') {
         console.log(`Ejecutando acción para la seña: ${normalizedGesture}`);
         triggerActivationRing();
+        if (shouldInterceptNavigation(collapsedGesture, normalizedGesture)) {
+            return;
+        }
         action();
         return;
     }

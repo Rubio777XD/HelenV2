@@ -265,9 +265,8 @@
   position: fixed; inset: 0;
   display: none; /* .open => visible */
   align-items: center; justify-content: center;
-  background: rgba(0,0,0,.48);
+  background: rgba(5,10,18,.72);
   z-index: 1000;
-  backdrop-filter: blur(3px);
 }
 .modal.open{ display: flex; }
 
@@ -459,7 +458,11 @@
 }
 
 /* ===== HELEN Alarm Card (para SweetAlert2) ===== */
-.swal2-container { backdrop-filter: blur(3px); z-index: 99999; }
+.swal2-container {
+  backdrop-filter: none;
+  background: rgba(5,10,18,.68);
+  z-index: 99999;
+}
 
 .swal-helen.swal2-popup{
   width: min(92vw, 560px) !important;
