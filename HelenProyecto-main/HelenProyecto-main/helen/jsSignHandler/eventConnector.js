@@ -2,26 +2,250 @@
 // Conexión al socket y mejoras en la navegación
 
 // Inicializar la conexión al socket
-const socket = io('http://127.0.0.1:5000');
+const DEFAULT_SOCKET_URL = 'http://127.0.0.1:5000';
+
+const resolveSocketUrl = () => {
+  if (typeof window === 'undefined') {
+    return DEFAULT_SOCKET_URL;
+  }
+
+  const { HELEN_SOCKET_URL, HELEN_SOCKET_HOST, HELEN_SOCKET_PORT, HELEN_SOCKET_PROTOCOL } = window;
+
+  if (typeof HELEN_SOCKET_URL === 'string' && HELEN_SOCKET_URL.trim()) {
+    return HELEN_SOCKET_URL.trim();
+  }
+
+  const hostnameRaw = (typeof HELEN_SOCKET_HOST === 'string' && HELEN_SOCKET_HOST.trim())
+    ? HELEN_SOCKET_HOST.trim()
+    : (window.location && window.location.hostname ? window.location.hostname : '127.0.0.1');
+
+  if (!hostnameRaw) {
+    return DEFAULT_SOCKET_URL;
+  }
+
+  let hostnamePart = hostnameRaw;
+  let portFromHost = '';
+
+  const isBracketedIPv6 = hostnameRaw.startsWith('[') && hostnameRaw.includes(']');
+
+  if (isBracketedIPv6) {
+    const closingIndex = hostnameRaw.indexOf(']');
+    hostnamePart = hostnameRaw.slice(0, closingIndex + 1);
+    if (hostnameRaw.length > closingIndex + 1 && hostnameRaw[closingIndex + 1] === ':') {
+      portFromHost = hostnameRaw.slice(closingIndex + 2);
+    }
+  } else {
+    const colonMatches = hostnameRaw.match(/:/g) || [];
+    if (colonMatches.length === 1) {
+      const splitIndex = hostnameRaw.lastIndexOf(':');
+      hostnamePart = hostnameRaw.slice(0, splitIndex);
+      portFromHost = hostnameRaw.slice(splitIndex + 1);
+    }
+  }
+
+  if (!hostnamePart) {
+    hostnamePart = '127.0.0.1';
+  }
+
+  portFromHost = portFromHost.trim();
+
+  const hostname = hostnamePart.includes(':') && !hostnamePart.startsWith('[')
+    ? `[${hostnamePart}]`
+    : hostnamePart;
+
+  const protocolCandidate = (typeof HELEN_SOCKET_PROTOCOL === 'string' && HELEN_SOCKET_PROTOCOL.trim())
+    ? HELEN_SOCKET_PROTOCOL.trim().replace(/:$/, '')
+    : (window.location && typeof window.location.protocol === 'string' && window.location.protocol.startsWith('http')
+      ? window.location.protocol.replace(/:$/, '')
+      : 'http');
+
+  const portValue = HELEN_SOCKET_PORT != null ? HELEN_SOCKET_PORT : (portFromHost || 5000);
+  const normalizedPort = String(portValue).trim().replace(/^:/, '') || '5000';
+
+  const portSuffix = normalizedPort ? `:${normalizedPort}` : '';
+
+  return `${protocolCandidate}://${hostname}${portSuffix}`;
+};
+
+const SOCKET_URL = resolveSocketUrl();
+
+const createNoopSocket = () => ({
+  on(eventName, handler) {
+    console.warn(`[Helen] Socket.IO no disponible. No se escuchará "${eventName}".`);
+    return this;
+  },
+  emit(eventName, payload) {
+    console.warn('[Helen] Socket.IO no disponible. Emisión ignorada.', eventName, payload);
+    return this;
+  }
+});
+
+const socket = (() => {
+  if (typeof io !== 'function') {
+    console.warn('[Helen] Cliente de Socket.IO no encontrado. Ejecutando en modo sin conexión.');
+    return createNoopSocket();
+  }
+
+  if (window.socket && typeof window.socket.on === 'function') {
+    return window.socket;
+  }
+
+  let instance;
+
+  try {
+    instance = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
+  } catch (connectionError) {
+    console.error('[Helen] No se pudo iniciar la conexión Socket.IO:', connectionError);
+    return createNoopSocket();
+  }
+
+  window.socket = instance;
+  return instance;
+})();
+
+window.socket = socket;
 
 let isActive = false;
 let timeoutId;
 let lastNotification = "";
+let activationTimeoutId;
 
 const DEACTIVATION_DELAY = 3000;
+const ACTIVATION_RING_DURATION = 2600;
+const ABSOLUTE_URL_REGEX = /^(?:[a-z]+:)?\/\//i;
 
-// Función para determinar la ruta base según el contexto
-const getBasePath = () => {
-  const path = window.location.pathname;
-  if (path.includes('/pages/')) {
-    return '../';
+const resolveTargetUrl = (targetUrl = '') => {
+  if (!targetUrl) return null;
+
+  if (ABSOLUTE_URL_REGEX.test(targetUrl)) {
+    return targetUrl;
   }
-  return '../';
+
+  const sanitizedTarget = targetUrl.replace(/^\.\/+/, '');
+  const pathname = window.location.pathname.replace(/\\/g, '/');
+  const segments = pathname.split('/');
+  const pagesIndex = segments.lastIndexOf('pages');
+  const inPagesDirectory = pagesIndex !== -1;
+
+  const ensureLeadingSlash = (parts) => {
+    if (!parts.length) {
+      return '';
+    }
+    const clone = [...parts];
+    if (clone[0] !== '') {
+      clone.unshift('');
+    }
+    return clone.join('/');
+  };
+
+  if (!sanitizedTarget.includes('/')) {
+    if (sanitizedTarget === 'index.html') {
+      const rootSegments = inPagesDirectory ? segments.slice(0, pagesIndex) : segments.slice(0, -1);
+      if (!rootSegments.length) {
+        return sanitizedTarget.startsWith('/') ? sanitizedTarget : `/${sanitizedTarget}`;
+      }
+      return `${ensureLeadingSlash(rootSegments)}/${sanitizedTarget}`;
+    }
+
+    if (inPagesDirectory) {
+      const currentDirSegments = segments.slice(0, -1);
+      if (!currentDirSegments.length) {
+        return sanitizedTarget;
+      }
+      return `${ensureLeadingSlash(currentDirSegments)}/${sanitizedTarget}`;
+    }
+
+    const baseSegments = segments.slice(0, -1);
+    if (!baseSegments.length) {
+      return sanitizedTarget.startsWith('/') ? sanitizedTarget : `/${sanitizedTarget}`;
+    }
+    return `${ensureLeadingSlash(baseSegments)}/${sanitizedTarget}`;
+  }
+
+  const baseSegments = inPagesDirectory ? segments.slice(0, pagesIndex) : segments.slice(0, -1);
+  if (!baseSegments.length) {
+    return sanitizedTarget.startsWith('/') ? sanitizedTarget : `/${sanitizedTarget}`;
+  }
+  return `${ensureLeadingSlash(baseSegments)}/${sanitizedTarget.replace(/^\/+/, '')}`;
+};
+
+const prefersReducedMotion = () => {
+  if (typeof window.matchMedia !== 'function') return false;
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch (error) {
+    console.warn('No se pudo evaluar prefers-reduced-motion:', error);
+    return false;
+  }
+};
+
+const ensureActivationRingElement = () => {
+  let ring = document.querySelector('.activation-ring');
+  if (ring) {
+    return ring;
+  }
+
+  ring = document.createElement('div');
+  ring.className = 'activation-ring';
+  ring.setAttribute('aria-hidden', 'true');
+
+  const halo = document.createElement('div');
+  halo.className = 'activation-ring__halo';
+
+  const pulse = document.createElement('div');
+  pulse.className = 'activation-ring__pulse';
+
+  ring.appendChild(halo);
+  ring.appendChild(pulse);
+
+  const attach = () => {
+    if (!document.body) {
+      return;
+    }
+    document.body.appendChild(ring);
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', attach, { once: true });
+  } else {
+    attach();
+  }
+
+  return ring;
+};
+
+const triggerActivationAnimation = () => {
+  if (prefersReducedMotion()) {
+    return;
+  }
+
+  const ring = ensureActivationRingElement();
+  if (!ring) {
+    return;
+  }
+
+  if (activationTimeoutId) {
+    clearTimeout(activationTimeoutId);
+  }
+
+  ring.classList.remove('is-active');
+  // Forzar reflujo para reiniciar las animaciones CSS
+  void ring.offsetWidth;
+  ring.classList.add('is-active');
+
+  activationTimeoutId = window.setTimeout(() => {
+    ring.classList.remove('is-active');
+  }, ACTIVATION_RING_DURATION);
 };
 
 const showPopup = (message, type) => {
     if (message === lastNotification) return;
     lastNotification = message;
+    if (typeof Swal === 'undefined') {
+        console.warn('Swal no está disponible. Mensaje:', message);
+        return;
+    }
+
     Swal.fire({
         title: message,
         icon: type,
@@ -49,35 +273,45 @@ const goToPageWithLoading = (targetUrl, pageName) => {
         return;
     }
     
-    const basePath = getBasePath();
-    const fullTargetUrl = targetUrl.startsWith('/') ? targetUrl : basePath + targetUrl;
-    
-    if (window.loadingScreen) {
-        console.log(`Mostrando pantalla de carga para: ${pageName}`);
-        
-        const navigationFunction = async () => {
+    const resolvedTarget = resolveTargetUrl(targetUrl);
+    if (!resolvedTarget) {
+        console.warn('No se pudo resolver la ruta de destino:', targetUrl);
+        return;
+    }
 
-            await new Promise(resolve => setTimeout(resolve, 800));
-            console.log(`Navegando a: ${fullTargetUrl}`);
-            
-            if (window.myAPI && window.myAPI.navigate) {
-                window.myAPI.navigate(fullTargetUrl);
-            } else {
-                window.location.href = fullTargetUrl;
-            }
-        };
-        
-        window.loadingScreen.showAndExecute(
-            navigationFunction,
-            `Cargando ${pageName}...`
-        );
-    } else {
-        console.log(`Navegando a: ${fullTargetUrl}`);
-        if (window.myAPI && window.myAPI.navigate) {
-            window.myAPI.navigate(fullTargetUrl);
+    let resolvedHref = resolvedTarget;
+    try {
+        resolvedHref = new URL(resolvedTarget, window.location.href).href;
+    } catch (error) {
+        console.warn('Error resolviendo URL destino:', error);
+    }
+
+    const currentHref = window.location.href;
+    if (currentHref === resolvedHref) {
+        console.log(`Ya estás en ${resolvedHref}, no se necesita redirección.`);
+        return;
+    }
+
+    const performNavigation = () => {
+        if (window.myAPI && typeof window.myAPI.navigate === 'function') {
+            window.myAPI.navigate(targetUrl);
         } else {
-            window.location.href = fullTargetUrl;
+            window.location.href = resolvedHref;
         }
+    };
+
+    const navigateWithLoading = async () => {
+        await new Promise(resolve => setTimeout(resolve, 800));
+        console.log(`Navegando a: ${resolvedHref}`);
+        performNavigation();
+    };
+
+    if (window.loadingScreen && typeof window.loadingScreen.showAndExecute === 'function') {
+        console.log(`Mostrando pantalla de carga para: ${pageName}`);
+        window.loadingScreen.showAndExecute(navigateWithLoading, `Cargando ${pageName}...`);
+    } else {
+        console.log(`Navegando a: ${resolvedHref}`);
+        performNavigation();
     }
 };
 
@@ -94,3 +328,16 @@ window.goToDevices = enhancedGoToDevices;
 window.goToHome = enhancedGoToHome;
 window.goToAlarm = enhancedGoToAlarm;
 window.goToSettings = enhancedGoToSettings;
+window.triggerActivationAnimation = triggerActivationAnimation;
+window.goToPageWithLoading = goToPageWithLoading;
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!prefersReducedMotion()) {
+      ensureActivationRingElement();
+    }
+  }, { once: true });
+} else if (!prefersReducedMotion()) {
+  ensureActivationRingElement();
+}
+
