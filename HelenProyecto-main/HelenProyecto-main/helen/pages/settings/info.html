@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HELEN – Información</title>
+
+  <!-- Estilos base del proyecto -->
+  <link rel="stylesheet" href="../../css/globals.css" />
+  <!-- Íconos (mismo CDN que settings) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+  <!-- Estilos locales de esta pantalla -->
+  <link rel="stylesheet" href="../css/info.css" />
+</head>
+
+<body>
+  <main class="info-wrap">
+    <!-- =============== MENÚ (2x2) =============== -->
+    <section id="menu" class="info-view is-active" data-title="Información">
+      <header class="info-header">
+        <button class="back-button" onclick="window.location.href='settings.html'">
+          <i class="bi bi-arrow-left"></i>
+        </button>
+        <div class="title-col">
+          <h1>Información</h1>
+          <p class="subtitle">Conoce más sobre HELEN y nuestro equipo</p>
+        </div>
+      </header>
+
+      <div class="info-grid">
+        <a class="qcard" href="#introduccion">
+          <span class="qcard__icon" aria-hidden="true"><i class="bi bi-book"></i></span>
+          <span class="qcard__title">Introducción</span>
+          <span class="qcard__subtitle">Conoce más sobre HELEN</span>
+        </a>
+
+        <a class="qcard" href="#tecnologias">
+          <span class="qcard__icon" aria-hidden="true"><i class="bi bi-cpu"></i></span>
+          <span class="qcard__title">Tecnologías</span>
+          <span class="qcard__subtitle">Stack tecnológico utilizado</span>
+        </a>
+
+        <a class="qcard" href="#equipo">
+          <span class="qcard__icon" aria-hidden="true"><i class="bi bi-people"></i></span>
+          <span class="qcard__title">Equipo de desarrollo</span>
+          <span class="qcard__subtitle">Nuestro equipo de trabajo</span>
+        </a>
+
+        <a class="qcard" href="#contacto">
+          <span class="qcard__icon" aria-hidden="true"><i class="bi bi-envelope"></i></span>
+          <span class="qcard__title">Contacto</span>
+          <span class="qcard__subtitle">Ponte en contacto con nosotros</span>
+        </a>
+      </div>
+    </section>
+
+    <!-- =============== INTRODUCCIÓN =============== -->
+    <section id="introduccion" class="info-view" data-title="Introducción">
+      <header class="info-header">
+        <button class="back-button" onclick="window.location.href='#menu'">
+          <i class="bi bi-arrow-left"></i>
+        </button>
+        <div class="title-col">
+          <h1>Introducción</h1>
+          <p class="subtitle">Detalles y recursos adicionales</p>
+        </div>
+      </header>
+
+      <div class="panel">
+        <p>
+          HELEN es un asistente virtual interactivo enfocado en mejorar la accesibilidad de personas sordas,
+          proporcionando herramientas visuales como reloj, clima y avisos importantes integrados.
+        </p>
+      </div>
+
+      <div class="panel">
+        <h2>Objetivos</h2>
+        <p>
+          Brindar una plataforma accesible e inclusiva para personas con discapacidad auditiva mediante
+          la integración de herramientas visuales, interpretación de señas y avisos importantes integrados.
+        </p>
+      </div>
+    </section>
+
+    <!-- =============== TECNOLOGÍAS =============== -->
+    <section id="tecnologias" class="info-view" data-title="Tecnologías">
+      <header class="info-header">
+        <button class="back-button" onclick="window.location.href='#menu'">
+          <i class="bi bi-arrow-left"></i>
+        </button>
+        <div class="title-col">
+          <h1>Tecnologías</h1>
+          <p class="subtitle">Detalles y recursos adicionales</p>
+        </div>
+      </header>
+
+      <div class="panel">
+
+        <p>HELEN ha sido desarrollado utilizando tecnologías web e IA para ofrecer una experiencia óptima.</p>
+
+        <div class="tech-grid">
+          <div class="tech-pill"><span class="dot"></span>React.js + Typescript</div>
+          <div class="tech-pill"><span class="dot"></span>Node.js</div>
+          <div class="tech-pill"><span class="dot"></span>Streaming Azure</div>
+          <div class="tech-pill"><span class="dot"></span>MongoDB</div>
+          <div class="tech-pill"><span class="dot"></span>Traducción API</div>
+          <div class="tech-pill"><span class="dot"></span>Bootstrap</div>
+          <div class="tech-pill"><span class="dot"></span>Señas 3D</div>
+          <div class="tech-pill"><span class="dot"></span>Función Sígnar</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =============== EQUIPO =============== -->
+    <section id="equipo" class="info-view" data-title="Equipo de desarrollo">
+      <header class="info-header">
+        <button class="back-button" onclick="window.location.href='#menu'">
+          <i class="bi bi-arrow-left"></i>
+        </button>
+        <div class="title-col">
+          <h1>Equipo de desarrollo</h1>
+          <p class="subtitle">Detalles y recursos adicionales</p>
+        </div>
+      </header>
+
+      <div class="panel">
+        <p> Nuestro equipo multidisciplinario está compuesto por profesionales apasionados por crear soluciones
+          tecnológicas inclusivas.
+        </p>
+
+        <div class="team-grid">
+          <div class="team-card">
+            <div class="avatar">👤</div>
+            <div class="team-meta">
+              <h3>Juan Carlos Sánchez Delgado</h3>
+              <p>Director de Proyecto</p>
+            </div>
+          </div>
+          <div class="team-card">
+            <div class="avatar">👤</div>
+            <div class="team-meta">
+              <h3>Christian Uriel Huerta Ibarra</h3>
+              <p>Desarrollador Full Stack</p>
+            </div>
+          </div>
+          <div class="team-card">
+            <div class="avatar">👤</div>
+            <div class="team-meta">
+              <h3>Hugo Soldevilla Gómez Preciado</h3>
+              <p>Arquitecto de Software</p>
+            </div>
+          </div>
+          <div class="team-card">
+            <div class="avatar">👤</div>
+            <div class="team-meta">
+              <h3>Walter Reynaldo Calzada Contreras</h3>
+              <p>Ingeniero de Sistemas</p>
+            </div>
+          </div>
+          <div class="team-card">
+            <div class="avatar">👤</div>
+            <div class="team-meta">
+              <h3>Erick Manuel Flores García</h3>
+              <p>Especialista en UX/UI</p>
+            </div>
+          </div>
+          <div class="team-card">
+            <div class="avatar">👤</div>
+            <div class="team-meta">
+              <h3>Luis Ángel López García</h3>
+              <p>Desarrollador Backend</p>
+            </div>
+          </div>
+          <div class="team-card">
+            <div class="avatar">👤</div>
+            <div class="team-meta">
+              <h3>Abel Lázaro Bárcenas Juárez</h3>
+              <p>Analista de Sistemas</p>
+            </div>
+          </div>
+          <div class="team-card">
+            <div class="avatar">👤</div>
+            <div class="team-meta">
+              <h3>Arlet Monserrat Martínez Millán</h3>
+              <p>Diseñadora UI/UX</p>
+            </div>
+          </div>
+          <div class="team-card">
+            <div class="avatar">⭐</div>
+            <div class="team-meta">
+              <h3>Isaac Alexander Rubio Velarde</h3>
+              <p>Diseñador UI/UX • Backend • Integración Front/Back y Analytics</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =============== CONTACTO =============== -->
+    <section id="contacto" class="info-view" data-title="Contacto">
+      <header class="info-header">
+        <button class="back-button" onclick="window.location.href='#menu'">
+          <i class="bi bi-arrow-left"></i>
+        </button>
+        <div class="title-col">
+          <h1>Contacto</h1>
+          <p class="subtitle">Detalles y recursos adicionales</p>
+        </div>
+      </header>
+
+      <div class="panel">
+        <p>¿Tienes preguntas o sugerencias? Escríbenos:</p>
+
+        <div class="contact-grid">
+          <a class="contact-card" href="mailto:christian.huerta@upaep.edu.mx">
+            <div class="contact-icon">📧</div>
+            <div class="contact-meta">
+              <h3>Email Principal</h3>
+              <p>christian.huerta@upaep.edu.mx</p>
+            </div>
+          </a>
+
+          <a class="contact-card" href="mailto:juancarlos.sanchez@upaep.mx">
+            <div class="contact-icon">🛠️</div>
+            <div class="contact-meta">
+              <h3>Soporte Técnico</h3>
+              <p>juancarlos.sanchez@upaep.mx</p>
+            </div>
+          </a>
+
+          <a class="contact-card" href="mailto:walter.calzada@upaep.edu.mx">
+            <div class="contact-icon">🤝</div>
+            <div class="contact-meta">
+              <h3>Colaboraciones</h3>
+              <p>walter.calzada@upaep.edu.mx</p>
+            </div>
+          </a>
+
+          <a class="contact-card" href="mailto:jose.reynoso@upaep.edu.mx">
+            <div class="contact-icon">ℹ️</div>
+            <div class="contact-meta">
+              <h3>Información General</h3>
+              <p>jose.reynoso@upaep.edu.mx</p>
+            </div>
+          </a>
+
+          <a class="contact-card" href="mailto:rubio.isaac@uabc.edu.mx">
+            <div class="contact-icon">⭐</div>
+            <div class="contact-meta">
+              <h3>Coordinación / UX–Backend</h3>
+              <p>rubio.isaac@uabc.edu.mx</p>
+            </div>
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Navegación por hash (igual que antes, sin tocar backend) -->
+  <script>
+    (function () {
+      const views = [...document.querySelectorAll('.info-view')];
+      const title = (v) => v?.dataset?.title || 'Información';
+      function showView(hash) {
+        const id = (hash || '#menu').replace('#', '');
+        views.forEach(v => v.classList.toggle('is-active', v.id === id));
+        document.title = 'HELEN – ' + title(document.getElementById(id));
+      }
+      window.addEventListener('hashchange', () => showView(location.hash));
+      showView(location.hash || '#menu');
+    })();
+  </script>
+</body>
+
+</html>

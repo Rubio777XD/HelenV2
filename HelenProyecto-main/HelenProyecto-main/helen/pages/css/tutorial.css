@@ -1,0 +1,300 @@
+/* ===========================================================
+   HELEN – TUTORIAL (CSS robusto para el index que enviaste)
+   - Alineado a globals (colores, sombras, radios)
+   - Menú con 3 tarjetas (responsive 3→2→1)
+   - Pasos visuales con iconos grandes
+   - Back-button unificado
+   - Anti-desbordes, accesibilidad, motion-aware
+   =========================================================== */
+
+/* -------- Fallbacks por si algún token faltara en globals -------- */
+:root{
+  --card-top: rgba(18,28,46,.92);
+  --card-bot: rgba(14,23,39,.92);
+  --card-border: rgba(160,190,220,.14);
+  --fg: #e7f0ff;
+  --fg-soft: #a9b9cf;
+  --blue-a: #5fe1ff;
+  --blue-b: #2e6bff;
+  --r-lg: 26px;
+  --r-md: 18px;
+  --shadow-card: 0 26px 60px rgba(0,0,0,.38);
+  --shadow-tile: 0 22px 44px rgba(0,0,0,.34);
+  --t-fast: 160ms;
+}
+
+/* ================== Layout general ================== */
+.tutorial-wrap{
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;   /* mucho contenido → inicia arriba */
+  padding: 32px 22px;
+  gap: 20px;
+  overflow-x: hidden;            /* previene scroll lateral */
+}
+
+.tutorial-wrap{
+  min-height: 100svh;              /* usa svh para móviles */
+  display: flex;
+  flex-direction: column;
+  align-items: center;              /* centra horizontal */
+  justify-content: center;          /* centra vertical */
+  padding: 32px 22px;
+  gap: 20px;                        /* separación entre secciones */
+}
+/* Safe areas (iOS) */
+@supports (padding: max(0px)){
+  .tutorial-wrap{
+    padding-left: max(22px, env(safe-area-inset-left));
+    padding-right: max(22px, env(safe-area-inset-right));
+    padding-top: max(28px, env(safe-area-inset-top));
+    padding-bottom: max(28px, env(safe-area-inset-bottom));
+  }
+}
+
+/* ================== Encabezado ================== */
+.tut-header{
+  width: min(1200px, 96vw);
+  margin: 4px auto 6px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Back button (estándar del proyecto) */
+.back-button{
+  width: 46px; height: 46px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.10));
+  color: #fff;
+  display: grid; place-items: center;
+  box-shadow: var(--shadow-tile);
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform var(--t-fast) ease, border-color var(--t-fast) ease, box-shadow var(--t-fast) ease;
+}
+@media (hover:hover){
+  .back-button:hover{
+    transform: translateY(-2px);
+    border-color: rgba(190,210,230,.22);
+    box-shadow: 0 18px 36px rgba(0,0,0,.28);
+  }
+}
+
+.title-col h1{
+  margin: 0;
+  font-size: 48px;
+  font-weight: 700;
+  letter-spacing: -.3px;
+  color: var(--fg-strong, #fff);
+}
+.subtitle{
+  margin: 2px 0 0 0;
+  color: var(--fg-soft);
+  font-size: clamp(14px, 2.2vw, 18px);
+  margin-bottom: 10px;
+}
+
+/* ================== Vistas (hash) ================== */
+.tut-view{ display: none; }
+.tut-view.is-active{ display: block; }
+
+/* ================== Menú (3 tarjetas) ================== */
+.tut-grid{
+  width: min(1200px, 96vw);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  gap: 24px;
+}
+@media (max-width: 1020px){
+  .tut-grid{ grid-template-columns: repeat(2, minmax(0,1fr)); gap: 20px; }
+}
+@media (max-width: 640px){
+  .tut-grid{ grid-template-columns: 1fr; gap: 16px; }
+}
+
+.qcard{
+  display: grid; place-items: center; gap: 8px;
+  text-align: center; text-decoration: none;
+  padding: 28px 16px; min-height: 200px;
+  background: linear-gradient(180deg, var(--card-top), var(--card-bot));
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+  color: #fff;
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.qcard:hover{ transform: translateY(-4px); border-color: rgba(190,210,230,.22); }
+
+.qcard__icon{
+  width: 84px; height: 84px; border-radius: 22px;
+  display: grid; place-items: center;
+  background: radial-gradient(60% 60% at 30% 30%, var(--blue-a), var(--blue-b));
+  box-shadow: 0 18px 36px rgba(46,107,255,.35), 0 0 0 12px rgba(46,107,255,.14) inset;
+}
+.qcard__icon i{ color: #ecf6ff; font-size: 34px; }
+.qcard__title{ font-size: clamp(18px, 2.6vw, 22px); font-weight: 700; letter-spacing: .2px; }
+.qcard__subtitle{ color: rgba(240,247,255,.86); font-size: 13.5px; letter-spacing: .15px; }
+
+/* ================== Panel contenedor ================== */
+.panel{
+  width: min(1200px, 96vw);
+  margin: 8px auto 16px;
+  padding: clamp(18px, 3.2vw, 28px);
+  background: linear-gradient(180deg, var(--card-top), var(--card-bot));
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+  overflow: clip; /* evita que algo se salga del borde redondo */
+}
+
+/* ================== Pasos visuales (Clima/Hora) ================== */
+.steps-grid{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  gap: 14px;
+}
+@media (max-width: 1020px){
+  .steps-grid{ grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+}
+@media (max-width: 640px){
+  .steps-grid{ grid-template-columns: 1fr; gap: 10px; }
+}
+
+.step-card{
+  background: rgba(15,26,43,.60);
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-tile);
+  padding: 14px;
+  display: grid; gap: 8px; place-items: center;
+  text-align: center;
+}
+.step-icon{
+  width: 56px; height: 56px; border-radius: 16px;
+  display: grid; place-items: center;
+  background: radial-gradient(60% 60% at 30% 30%, var(--blue-a), var(--blue-b));
+  box-shadow: 0 12px 26px rgba(46,107,255,.35);
+  color: #fff; font-size: 26px; font-weight: 700;
+}
+.step-icon.mark{ font-size: 20px; }
+.step-card p{ margin: 0; color: var(--fg); font-size: 14px; }
+
+/* Notas rápidas bajo pasos */
+.notes-row{
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  margin-top: 14px;
+}
+@media (max-width: 640px){
+  .notes-row{ grid-template-columns: 1fr; }
+}
+.note{
+  display: flex; gap: 10px; align-items: center;
+  background: rgba(255,255,255,.06);
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  color: #ecf6ff;
+}
+.note i{ font-size: 18px; }
+
+/* ================== Guía rápida (Instrucciones) ================== */
+.guide-steps{ display: grid; gap: 12px; }
+.gstep{
+  display: grid; grid-template-columns: 52px 1fr; gap: 12px;
+  background: rgba(15,26,43,.60);
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-tile);
+  padding: 14px;
+}
+.gicon{
+  width: 52px; height: 52px; border-radius: 14px;
+  display: grid; place-items: center;
+  background: radial-gradient(60% 60% at 30% 30%, var(--blue-a), var(--blue-b));
+  color: #fff; font-weight: 800;
+  box-shadow: 0 12px 26px rgba(46,107,255,.35);
+}
+.gicon.mark{ font-size: 18px; }
+.gbody h4{ margin: 0 0 4px 0; color:#fff; font-size: 16px; }
+.gbody p{ margin: 0; color: var(--fg); }
+.panel-note{
+  display: grid; grid-template-columns: 28px 1fr; gap: 10px;
+  background: linear-gradient(180deg, rgba(46,107,255,.18), rgba(46,107,255,.08));
+  border: 1px solid rgba(46,107,255,.28);
+  border-radius: var(--r-md);
+  padding: 12px 14px; margin-top: 8px;
+  color: #ecf6ff;
+}
+.panel-note i{ font-size: 20px; align-self: start; }
+.panel-note h5{ margin: 0 0 4px 0; color: #fff; }
+.bullet{ margin: 0; padding-left: 1.2em; }
+.bullet li{ margin: 4px 0; }
+
+/* Mantén contenidos al 100% del panel (anti-desborde) */
+.panel > :is(.steps-grid, .notes-row, .guide-steps){
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* ================== Accesibilidad & motion ================== */
+.qcard, .step-card, .note, .gstep, .back-button{ outline: none; }
+:focus-visible{ outline: 2px solid rgba(95,225,255,.9); outline-offset: 2px; }
+.qcard:focus-visible, .step-card:focus-visible,
+.note:focus-visible, .gstep:focus-visible, .back-button:focus-visible{
+  box-shadow: 0 0 0 3px rgba(95,225,255,.25), var(--shadow-card);
+  border-color: rgba(95,225,255,.55);
+}
+.qcard:active, .step-card:active, .note:active, .gstep:active, .back-button:active{
+  transform: translateY(1px) scale(.995);
+}
+
+@media (prefers-reduced-motion: reduce){
+  *{ animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+@media (prefers-reduced-motion: no-preference){
+  .qcard, .step-card, .note, .gstep, .back-button{
+    transition: transform var(--t-fast) ease, border-color var(--t-fast) ease, box-shadow var(--t-fast) ease;
+  }
+}
+
+/* ================== Extra responsive tuning ================== */
+@media (min-width: 1280px){
+  .qcard__icon{ width: 92px; height: 92px; }
+  .qcard__icon i{ font-size: 36px; }
+  .step-icon{ width: 60px; height: 60px; font-size: 28px; }
+}
+@media (max-width: 640px){
+  .tutorial-wrap{ padding: 22px 16px; }
+  .tut-header{ width: min(1200px, 94vw); }
+  .qcard{ padding: 22px 14px; min-height: 180px; }
+  .panel{ padding: 18px; }
+  .step-card{ padding: 12px; }
+}
+
+/* ================== Scrollbar sutil (opcional) ================== */
+*::-webkit-scrollbar{ width:10px; height:10px; }
+*::-webkit-scrollbar-track{ background: rgba(255,255,255,.06); }
+*::-webkit-scrollbar-thumb{
+  background: linear-gradient(180deg, var(--blue-a), var(--blue-b));
+  border-radius: 12px;
+  border: 2px solid rgba(0,0,0,.25);
+}
+
+/* ================== Print ================== */
+@media print{
+  .back-button, .qcard__icon, .panel-note i{ display: none !important; }
+  .tutorial-wrap{ padding: 0; }
+  .panel{ box-shadow: none; border-color: #999; }
+  .qcard, .step-card, .gstep{ break-inside: avoid; }
+}
+
+html, body {
+  overflow: hidden;
+  height: 100%;
+}

@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HELEN – Tutorial</title>
+
+    <!-- Base del proyecto -->
+    <link rel="stylesheet" href="../../css/globals.css" />
+    <!-- Íconos -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+    <!-- Estilos locales -->
+    <link rel="stylesheet" href="../css/tutorial.css" />
+</head>
+
+<body>
+    <main class="tutorial-wrap">
+
+        <!-- ================= MENÚ ================= -->
+        <section id="menu" class="tut-view is-active" data-title="Tutorial">
+            <header class="tut-header">
+                <button class="back-button" onclick="window.location.href='../../index.html'">
+                    <i class="bi bi-arrow-left"></i>
+                </button>
+                <div class="title-col">
+                    <h1>Tutorial</h1>
+                    <p class="subtitle">Elige qué aprender: clima, hora o instrucciones</p>
+                </div>
+            </header>
+
+            <div class="tut-grid">
+                <a class="qcard" href="#clima">
+                    <span class="qcard__icon" aria-hidden="true"><i class="bi bi-cloud-sun"></i></span>
+                    <span class="qcard__title">Consultar Clima</span>
+                    <span class="qcard__subtitle">Señas: H → C → (I)</span>
+                </a>
+
+                <a class="qcard" href="#hora">
+                    <span class="qcard__icon" aria-hidden="true"><i class="bi bi-clock"></i></span>
+                    <span class="qcard__title">Consultar Hora</span>
+                    <span class="qcard__subtitle">Señas: H → R → (I)</span>
+                </a>
+
+                <a class="qcard" href="#instrucciones">
+                    <span class="qcard__icon" aria-hidden="true"><i class="bi bi-mortarboard"></i></span>
+                    <span class="qcard__title">Instrucciones</span>
+                    <span class="qcard__subtitle">Guía rápida para la prueba</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- =============== CLIMA =============== -->
+        <section id="clima" class="tut-view" data-title="Clima">
+            <header class="tut-header">
+                <a href="#menu" class="back-button" aria-label="Volver">
+                    <i class="bi bi-arrow-left"></i>
+                </a>
+                <div class="title-col">
+                    <h1>Consultar Clima</h1>
+                    <p class="subtitle">Secuencia de señas con apoyo visual</p>
+                </div>
+            </header>
+
+            <div class="panel">
+                <div class="steps-grid">
+                    <div class="step-card">
+                        <div class="step-icon mark">H</div>
+                        <p>Activa HELEN</p>
+                    </div>
+
+                    <div class="step-card">
+                        <div class="step-icon"><i class="bi bi-lightbulb"></i></div>
+                        <p>HELEN lista</p>
+                    </div>
+
+                    <div class="step-card">
+                        <div class="step-icon mark">C</div>
+                        <p>Ir a Clima</p>
+                    </div>
+
+                    <div class="step-card">
+                        <div class="step-icon"><i class="bi bi-thermometer-sun"></i></div>
+                        <p>Ver temperatura y previsión</p>
+                    </div>
+
+                    <div class="step-card">
+                        <div class="step-icon mark">H</div>
+                        <p>Activar de nuevo</p>
+                    </div>
+
+                    <div class="step-card">
+                        <div class="step-icon mark">I</div>
+                        <p>Volver al inicio</p>
+                    </div>
+                </div>
+
+                <div class="notes-row">
+                    <div class="note">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <span>Si una seña sale mal, repite: <b>H</b> y luego el comando.</span>
+                    </div>
+                    <div class="note">
+                        <i class="bi bi-cloud"></i>
+                        <span>Requiere conexión a una fuente de clima.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- =============== HORA =============== -->
+        <section id="hora" class="tut-view" data-title="Hora">
+            <header class="tut-header">
+                <a href="#menu" class="back-button" aria-label="Volver">
+                    <i class="bi bi-arrow-left"></i>
+                </a>
+                <div class="title-col">
+                    <h1>Consultar Hora</h1>
+                    <p class="subtitle">Secuencia de señas con apoyo visual</p>
+                </div>
+            </header>
+
+            <div class="panel">
+                <div class="steps-grid">
+                    <div class="step-card">
+                        <div class="step-icon mark">H</div>
+                        <p>Activa HELEN</p>
+                    </div>
+
+                    <div class="step-card">
+                        <div class="step-icon"><i class="bi bi-lightbulb"></i></div>
+                        <p>HELEN lista</p>
+                    </div>
+
+                    <div class="step-card">
+                        <div class="step-icon mark">R</div>
+                        <p>Ir a Reloj</p>
+                    </div>
+
+                    <div class="step-card">
+                        <div class="step-icon"><i class="bi bi-clock-history"></i></div>
+                        <p>Ver hora actual</p>
+                    </div>
+
+                    <div class="step-card">
+                        <div class="step-icon mark">H</div>
+                        <p>Activar de nuevo</p>
+                    </div>
+
+                    <div class="step-card">
+                        <div class="step-icon mark">I</div>
+                        <p>Volver al inicio</p>
+                    </div>
+                </div>
+
+                <div class="notes-row">
+                    <div class="note">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <span>Si una seña sale mal, repite: <b>H</b> y luego el comando.</span>
+                    </div>
+                    <div class="note">
+                        <i class="bi bi-watch"></i>
+                        <span>Se usa la hora del dispositivo / fuente de tiempo.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ INSTRUCCIONES ============ -->
+        <section id="instrucciones" class="tut-view" data-title="Instrucciones">
+            <header class="tut-header">
+                <a href="#menu" class="back-button" aria-label="Volver">
+                    <i class="bi bi-arrow-left"></i>
+                </a>
+                <div class="title-col">
+                    <h1>Instrucciones</h1>
+                    <p class="subtitle">Guía rápida para estudiantes</p>
+                </div>
+            </header>
+
+            <div class="panel">
+                <div class="guide-steps">
+                    <div class="gstep">
+                        <div class="gicon mark">1</div>
+                        <div class="gbody">
+                            <h4>Activar HELEN</h4>
+                            <p>Seña <b>H</b>. Verás señal visual de “lista”.</p>
+                        </div>
+                    </div>
+
+                    <div class="gstep">
+                        <div class="gicon mark">2</div>
+                        <div class="gbody">
+                            <h4>Clima</h4>
+                            <p>Seña <b>C</b>. Mira temperatura y previsión.</p>
+                        </div>
+                    </div>
+
+                    <div class="gstep">
+                        <div class="gicon mark">3</div>
+                        <div class="gbody">
+                            <h4>Regresar</h4>
+                            <p><b>H</b> y luego <b>I</b> para ir al inicio.</p>
+                        </div>
+                    </div>
+
+                    <div class="gstep">
+                        <div class="gicon mark">4</div>
+                        <div class="gbody">
+                            <h4>Hora</h4>
+                            <p><b>H</b> → <b>R</b> para ver la hora actual.</p>
+                        </div>
+                    </div>
+
+                    <div class="panel-note">
+                        <i class="bi bi-info-circle"></i>
+                        <div>
+                            <h5>Tip</h5>
+                            <ul class="bullet">
+                                <li>Haz las señas claras y centradas en cámara.</li>
+                                <li>Si no responde, repite <b>H</b> y el comando.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- Navegación hash mínima (sin backend) -->
+    <script>
+        (function () {
+            const views = [...document.querySelectorAll('.tut-view')];
+            const title = (v) => v?.dataset?.title || 'Tutorial';
+            function showView(hash) {
+                const id = (hash || '#menu').replace('#', '');
+                views.forEach(v => v.classList.toggle('is-active', v.id === id));
+                document.title = 'HELEN – ' + title(document.getElementById(id));
+            }
+            window.addEventListener('hashchange', () => showView(location.hash));
+            showView(location.hash || '#menu');
+        })();
+    </script>
+</body>
+
+</html>>
