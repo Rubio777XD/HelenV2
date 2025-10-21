@@ -9,7 +9,6 @@
     <meta name="description" content="Helen">
 
     <!-- CSS -->
-    <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <!-- <link rel="stylesheet" href="css/normalize.css"> -->
     <!-- <link rel="stylesheet" href="css/header.css"> -->
@@ -24,9 +23,6 @@
     <!-- <link rel="stylesheet" href="css/footer.css"> -->
 
     <!-- JavaScript -->
-    <script src="./node_modules/jquery/dist/jquery.min.js"></script>
-    <script src="./node_modules/axios/dist/axios.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <!-- title -->
     <title>Helen</title>
@@ -40,17 +36,18 @@
 
     <!-- Botón WiFi en la esquina superior derecha -->
     <div class="wifi-button-container">
-        <button class="wifi-button" id="wifi-button">
-            <i class="bi bi-wifi-off wifi-icon" id="wifi-status-icon"></i>
+        <button class="wifi-button" id="wifi-button" aria-haspopup="dialog" aria-controls="wifi-modal">
+            <i class="bi bi-wifi-off wifi-icon" id="wifi-status-icon" aria-hidden="true"></i>
+            <span class="visually-hidden">Abrir panel de WiFi</span>
         </button>
     </div>
 
     <!-- Modal de WiFi mejorado -->
-    <div class="wifi-modal" id="wifi-modal">
+    <div class="wifi-modal" id="wifi-modal" role="dialog" aria-modal="true" aria-labelledby="wifi-modal-title">
         <div class="wifi-modal-content">
             <div class="wifi-modal-header">
-                <h2>Redes WiFi</h2>
-                <button class="close-button" id="close-wifi-modal">&times;</button>
+                <h2 id="wifi-modal-title">Redes WiFi</h2>
+                <button class="close-button" id="close-wifi-modal" type="button" aria-label="Cerrar panel de WiFi">&times;</button>
             </div>
 
             <!-- <div class="wifi-status" id="wifi-status">
@@ -66,18 +63,18 @@
                     </label>
                     <span class="device-status-text" id="status-text-switch">Encendido</span>
                 </div> -->
-                <button class="refresh-button" id="refresh-wifi">
-                    <i class="bi bi-arrow-clockwise"></i>
+                <button class="refresh-button" id="refresh-wifi" type="button">
+                    <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+                    <span id="scan-label">Buscar Redes</span>
                 </button>
             </div>
 
-            <div class="wifi-list" id="wifi-list">
-                <!-- Las redes WiFi se cargarán aquí dinámicamente -->
-                <div class="wifi-item">
-                    <div class="wifi-signal"><i class="bi bi-wifi"></i></div>
-                    <div class="wifi-name">Cargando redes disponibles...</div>
-                </div>
+            <div class="networks-empty" id="networks-empty" aria-live="polite">
+                <div class="empty-icon"><i class="bi bi-wifi" aria-hidden="true"></i></div>
+                <p>Cargando redes disponibles...</p>
             </div>
+
+            <div class="wifi-list" id="wifi-list" role="listbox" aria-live="polite"></div>
 
             <div class="password-input-container" id="password-container">
                 <input type="password" class="password-input" id="wifi-password" placeholder="Contraseña">
@@ -208,7 +205,7 @@
     <script src="./jsSignHandler/eventConnector.js"></script>
     <script src="./jsSignHandler/actions.js"></script>
     <script src="./jsSignHandler/loadingScreenLoader.js"></script>
-    <script src="../pages/jsFrontend/alarm-core.js" defer></script>
+    <script src="./pages/jsFrontend/alarm-core.js" defer></script>
 
 
 </body>
