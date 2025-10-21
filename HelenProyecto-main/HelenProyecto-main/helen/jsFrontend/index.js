@@ -12,8 +12,7 @@ $(function () {
   const feelsLike = $('#feels-like-value');  // <span id="feels-like-value">
   const humidityValue = $('#humidity-value');    // <span id="humidity-value">
   const windValue = $('#wind-value');        // <span id="wind-value">
-  const pressureValue = $('#pressure-value');     // ✅ nuevo
-  const uvValue = $('#uv-value');          // <span id="uv-value">
+  const pressureValue = $('#pressure-value');     // <span id="pressure-value">
 
   // =================== HORA/FECHA ===================
   const getTime = () => {
@@ -88,7 +87,6 @@ $(function () {
       if (feelsLike.length) feelsLike.text(`${Math.round(data.main?.feels_like ?? weatherInfo.temperature)}°`);
       if (humidityValue.length) humidityValue.text(`${data.main?.humidity ?? '--'}%`);
       if (windValue.length) windValue.text(`${Math.round((data.wind?.speed ?? 0))} km/h`);
-      if (uvValue.length) uvValue.text('—'); // UV lo dejamos fijo por ahora
       if (feelsLike.length)
         feelsLike.text(`${Math.round(data.main?.feels_like ?? weatherInfo.temperature)}°`);
 
@@ -101,8 +99,6 @@ $(function () {
         windValue.text(`${Math.round(windMs * 3.6)} km/h`);
       }
 
-      // ✅ Reemplazo: Presión atmosférica en hPa (en lugar de UV)
-      const pressureValue = $('#pressure-value');
       if (pressureValue.length)
         pressureValue.text(`${Math.round(data.main?.pressure ?? 0)} hPa`);
     } catch (err) {
