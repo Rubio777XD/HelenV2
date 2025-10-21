@@ -83,6 +83,12 @@ const gestureActions = {
     devices: () => goToDevices()
 };
 
+const triggerActivationRing = () => {
+    if (typeof window.triggerActivationAnimation === 'function') {
+        window.triggerActivationAnimation();
+    }
+};
+
 socket.on('message', (data = {}) => {
     console.log('Mensaje recibido del servidor:', data);
 
@@ -107,9 +113,7 @@ socket.on('message', (data = {}) => {
         isActive = true;
         console.log('Sistema activado. Ahora puedes realizar acciones.');
         showPopup('¡Sistema activado! Puedes realizar acciones ahora.', 'success');
-        if (typeof window.triggerActivationAnimation === 'function') {
-            window.triggerActivationAnimation();
-        }
+        triggerActivationRing();
         resetDeactivationTimer();
         return;
     }
@@ -130,6 +134,7 @@ socket.on('message', (data = {}) => {
     const action = gestureActions[collapsedGesture];
     if (typeof action === 'function') {
         console.log(`Ejecutando acción para la seña: ${normalizedGesture}`);
+        triggerActivationRing();
         action();
         return;
     }

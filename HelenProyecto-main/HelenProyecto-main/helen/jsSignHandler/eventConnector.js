@@ -111,8 +111,64 @@ let lastNotification = "";
 let activationTimeoutId;
 
 const DEACTIVATION_DELAY = 3000;
-const ACTIVATION_RING_DURATION = 2600;
+const DEFAULT_ACTIVATION_RING_DURATION = 2600;
 const ABSOLUTE_URL_REGEX = /^(?:[a-z]+:)?\/\//i;
+
+const parseCssTimeToMs = (value) => {
+  if (typeof value !== 'string') {
+    return NaN;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return NaN;
+  }
+
+  const millisecondsMatch = trimmed.match(/^(-?\d*\.?\d+)ms$/i);
+  if (millisecondsMatch) {
+    return Number(millisecondsMatch[1]);
+  }
+
+  const secondsMatch = trimmed.match(/^(-?\d*\.?\d+)s$/i);
+  if (secondsMatch) {
+    return Number(secondsMatch[1]) * 1000;
+  }
+
+  const numericValue = Number(trimmed);
+  return Number.isFinite(numericValue) ? numericValue : NaN;
+};
+
+const getActivationRingDuration = (ringElement) => {
+  if (typeof window === 'undefined' || !ringElement) {
+    return DEFAULT_ACTIVATION_RING_DURATION;
+  }
+
+  try {
+    const computedStyle = window.getComputedStyle(ringElement);
+    const candidates = [
+      computedStyle.getPropertyValue('--activation-ring-duration'),
+      computedStyle.getPropertyValue('animation-duration'),
+    ];
+
+    for (const candidate of candidates) {
+      const values = String(candidate || '')
+        .split(',')
+        .map((token) => token.trim())
+        .filter(Boolean);
+
+      for (const value of values.length ? values : [candidate]) {
+        const parsed = parseCssTimeToMs(value);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          return parsed;
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('No se pudo determinar la duración del aro de activación:', error);
+  }
+
+  return DEFAULT_ACTIVATION_RING_DURATION;
+};
 
 const resolveTargetUrl = (targetUrl = '') => {
   if (!targetUrl) return null;
@@ -233,9 +289,10 @@ const triggerActivationAnimation = () => {
   void ring.offsetWidth;
   ring.classList.add('is-active');
 
+  const animationDuration = getActivationRingDuration(ring);
   activationTimeoutId = window.setTimeout(() => {
     ring.classList.remove('is-active');
-  }, ACTIVATION_RING_DURATION);
+  }, animationDuration);
 };
 
 const showPopup = (message, type) => {
