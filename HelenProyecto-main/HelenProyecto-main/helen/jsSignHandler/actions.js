@@ -27,6 +27,7 @@
 
 const ACTIVATION_ALIASES = ['start', 'activar', 'heyhelen', 'holahelen', 'oyehelen', 'wake'];
 const GESTURE_KEYS = ['character', 'gesture', 'key', 'label', 'command', 'action'];
+const NUMERIC_GESTURE_PATTERN = /^\d+$/;
 
 const sanitizeGesture = (value) => {
     if (typeof value === 'string') {
@@ -56,6 +57,10 @@ const collapseGesture = (gesture) => {
         .toLowerCase();
 };
 
+const isNumericGesture = (gesture) => {
+    return NUMERIC_GESTURE_PATTERN.test(gesture);
+};
+
 const resolveGestureFromPayload = (payload = {}) => {
     for (const key of GESTURE_KEYS) {
         if (Object.prototype.hasOwnProperty.call(payload, key)) {
@@ -80,6 +85,7 @@ const gestureActions = {
     ajustes: () => goToSettings(),
     configuracion: () => goToSettings(),
     dispositivos: () => goToDevices(),
+    foco: () => goToDevices(),
     devices: () => goToDevices()
 };
 
@@ -126,6 +132,13 @@ socket.on('message', (data = {}) => {
 
     if (!normalizedGesture) {
         console.warn('Se recibió un mensaje sin comando de seña identificable.');
+        return;
+    }
+
+    if (isNumericGesture(collapsedGesture)) {
+        console.log(`Comando numérico detectado: ${normalizedGesture}`);
+        triggerActivationRing();
+        resetDeactivationTimer();
         return;
     }
 
