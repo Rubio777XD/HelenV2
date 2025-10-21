@@ -1,4 +1,11 @@
-import runpy
+"""Entrypoint used by PyInstaller to launch the HELEN backend."""
 
-# Ejecuta el módulo __main__ del paquete para que funcionen los imports relativos
-runpy.run_module("backendHelen.__main__", run_name="__main__")
+from backendHelen import server
+
+
+def main() -> int:
+    return server.main()
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

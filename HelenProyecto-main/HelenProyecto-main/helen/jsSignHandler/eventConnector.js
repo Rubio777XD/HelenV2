@@ -111,67 +111,17 @@ window.socket = socket;
 let isActive = false;
 let timeoutId;
 let lastNotification = "";
-let activationTimeoutId;
+let ringTransitionTimer;
+let ringFadeTimer;
+let ringErrorTimer;
+let currentRingState = 'idle';
 
 const DEACTIVATION_DELAY = 3000;
-const DEFAULT_ACTIVATION_RING_DURATION = 2600;
 const ABSOLUTE_URL_REGEX = /^(?:[a-z]+:)?\/\//i;
-
-const parseCssTimeToMs = (value) => {
-  if (typeof value !== 'string') {
-    return NaN;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return NaN;
-  }
-
-  const millisecondsMatch = trimmed.match(/^(-?\d*\.?\d+)ms$/i);
-  if (millisecondsMatch) {
-    return Number(millisecondsMatch[1]);
-  }
-
-  const secondsMatch = trimmed.match(/^(-?\d*\.?\d+)s$/i);
-  if (secondsMatch) {
-    return Number(secondsMatch[1]) * 1000;
-  }
-
-  const numericValue = Number(trimmed);
-  return Number.isFinite(numericValue) ? numericValue : NaN;
-};
-
-const getActivationRingDuration = (ringElement) => {
-  if (typeof window === 'undefined' || !ringElement) {
-    return DEFAULT_ACTIVATION_RING_DURATION;
-  }
-
-  try {
-    const computedStyle = window.getComputedStyle(ringElement);
-    const candidates = [
-      computedStyle.getPropertyValue('--activation-ring-duration'),
-      computedStyle.getPropertyValue('animation-duration'),
-    ];
-
-    for (const candidate of candidates) {
-      const values = String(candidate || '')
-        .split(',')
-        .map((token) => token.trim())
-        .filter(Boolean);
-
-      for (const value of values.length ? values : [candidate]) {
-        const parsed = parseCssTimeToMs(value);
-        if (Number.isFinite(parsed) && parsed > 0) {
-          return parsed;
-        }
-      }
-    }
-  } catch (error) {
-    console.warn('No se pudo determinar la duración del aro de activación:', error);
-  }
-
-  return DEFAULT_ACTIVATION_RING_DURATION;
-};
+const RING_DETECTION_MS = 1000;
+const RING_ACTIVE_LINGER_MS = 2200;
+const RING_FADE_MS = 650;
+const RING_ERROR_MS = 900;
 
 const resolveTargetUrl = (targetUrl = '') => {
   if (!targetUrl) return null;
@@ -229,6 +179,10 @@ const resolveTargetUrl = (targetUrl = '') => {
 };
 
 const prefersReducedMotion = () => {
+  if (typeof document !== 'undefined' && document.body && document.body.classList.contains('is-reduced-motion')) {
+    return true;
+  }
+
   if (typeof window.matchMedia !== 'function') return false;
   try {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -273,47 +227,151 @@ const ensureActivationRingElement = () => {
   return ring;
 };
 
-const triggerActivationAnimation = () => {
-  if (prefersReducedMotion()) {
-    return;
+const clearRingTimers = () => {
+  if (ringTransitionTimer) {
+    clearTimeout(ringTransitionTimer);
+    ringTransitionTimer = undefined;
   }
+  if (ringFadeTimer) {
+    clearTimeout(ringFadeTimer);
+    ringFadeTimer = undefined;
+  }
+  if (ringErrorTimer) {
+    clearTimeout(ringErrorTimer);
+    ringErrorTimer = undefined;
+  }
+};
 
+const scheduleFadeOut = (delayMs) => {
+  if (ringFadeTimer) {
+    clearTimeout(ringFadeTimer);
+  }
+  ringFadeTimer = window.setTimeout(() => {
+    if (currentRingState !== 'error') {
+      setRingState('idle');
+    }
+  }, Math.max(0, delayMs));
+};
+
+const setRingState = (state, options = {}) => {
   const ring = ensureActivationRingElement();
   if (!ring) {
     return;
   }
 
-  if (activationTimeoutId) {
-    clearTimeout(activationTimeoutId);
+  const reduceMotion = prefersReducedMotion();
+  const linger = typeof options.linger === 'number' ? options.linger : RING_ACTIVE_LINGER_MS;
+
+  if (state === 'idle') {
+    clearRingTimers();
+    ring.classList.remove('is-detected', 'is-active', 'is-error', 'is-visible');
+    currentRingState = 'idle';
+    return;
   }
 
-  ring.classList.remove('is-active');
-  // Forzar reflujo para reiniciar las animaciones CSS
-  void ring.offsetWidth;
-  ring.classList.add('is-active');
+  ring.classList.add('is-visible');
 
-  const animationDuration = getActivationRingDuration(ring);
-  activationTimeoutId = window.setTimeout(() => {
-    ring.classList.remove('is-active');
-  }, animationDuration);
+  if (state === 'error') {
+    clearRingTimers();
+    currentRingState = 'error';
+    ring.classList.remove('is-detected', 'is-active');
+    ring.classList.add('is-error');
+    ringErrorTimer = window.setTimeout(() => {
+      if (currentRingState === 'error') {
+        setRingState('idle');
+      }
+    }, RING_ERROR_MS);
+    return;
+  }
+
+  if (state === 'active') {
+    clearRingTimers();
+    currentRingState = 'active';
+    ring.classList.remove('is-detected', 'is-error');
+    ring.classList.add('is-active');
+    scheduleFadeOut(Math.max(linger, 0));
+    return;
+  }
+
+  // state === 'detected'
+  clearRingTimers();
+  currentRingState = 'detected';
+  ring.classList.remove('is-active', 'is-error');
+
+  if (reduceMotion) {
+    ring.classList.remove('is-detected');
+    ring.classList.add('is-active');
+    currentRingState = 'active';
+    scheduleFadeOut(Math.max(linger / 1.6, 400));
+    return;
+  }
+
+  // Reiniciar animaciones CSS
+  ring.classList.remove('is-detected');
+  void ring.offsetWidth; // force reflow
+  ring.classList.add('is-detected');
+
+  ringTransitionTimer = window.setTimeout(() => {
+    if (currentRingState !== 'detected') {
+      return;
+    }
+    ring.classList.remove('is-detected');
+    ring.classList.add('is-active');
+    currentRingState = 'active';
+    scheduleFadeOut(Math.max(linger, 0));
+  }, RING_DETECTION_MS);
 };
 
-const showPopup = (message, type) => {
-    if (message === lastNotification) return;
-    lastNotification = message;
-    if (typeof Swal === 'undefined') {
-        console.warn('Swal no está disponible. Mensaje:', message);
-        return;
-    }
+const triggerActivationAnimation = () => {
+  setRingState('detected');
+};
 
-    Swal.fire({
-        title: message,
-        icon: type,
-        showConfirmButton: false,
-        timer: 3000,
-        toast: true,
-        position: 'top-end',
-    });
+const triggerRingError = () => {
+  setRingState('error');
+};
+
+const ALERT_VARIANTS = {
+  success: { icon: 'bi-check2-circle', className: 'helen-alert--success' },
+  warning: { icon: 'bi-exclamation-triangle', className: 'helen-alert--warning' },
+  error: { icon: 'bi-x-circle', className: 'helen-alert--error' },
+  info: { icon: 'bi-info-circle', className: 'helen-alert--info' },
+};
+
+const showPopup = (message, type = 'info') => {
+  if (message === lastNotification) return;
+  lastNotification = message;
+
+  if (typeof Swal === 'undefined') {
+    console.warn('Swal no está disponible. Mensaje:', message);
+    if (type === 'error') {
+      triggerRingError();
+    }
+    return;
+  }
+
+  const normalizedType = String(type || 'info').toLowerCase();
+  const variant = ALERT_VARIANTS[normalizedType] || ALERT_VARIANTS.info;
+  const safeMessage = Swal.escapeHtml ? Swal.escapeHtml(String(message)) : String(message);
+  const iconMarkup = `<i class="bi ${variant.icon}" aria-hidden="true"></i>`;
+
+  Swal.fire({
+    toast: true,
+    position: 'top',
+    timer: 3200,
+    timerProgressBar: true,
+    showConfirmButton: false,
+    background: 'transparent',
+    html: `<div class="helen-alert__container"><span class="helen-alert__icon">${iconMarkup}</span><span class="helen-alert__text">${safeMessage}</span></div>`,
+    customClass: {
+      popup: `helen-alert ${variant.className}`,
+      htmlContainer: 'helen-alert__content',
+      timerProgressBar: 'helen-alert__progress',
+    },
+  });
+
+  if (normalizedType === 'error') {
+    triggerRingError();
+  }
 };
 
 const resetDeactivationTimer = () => {
@@ -324,6 +382,7 @@ const resetDeactivationTimer = () => {
         isActive = false;
         console.log('Sistema desactivado automáticamente por inactividad.');
         showPopup('Sistema desactivado por inactividad.', 'warning');
+        setRingState('idle');
     }, DEACTIVATION_DELAY);
 };
 const goToPageWithLoading = (targetUrl, pageName) => {
@@ -389,15 +448,15 @@ window.goToHome = enhancedGoToHome;
 window.goToAlarm = enhancedGoToAlarm;
 window.goToSettings = enhancedGoToSettings;
 window.triggerActivationAnimation = triggerActivationAnimation;
+window.triggerRingError = triggerRingError;
+window.setActivationRingState = setRingState;
 window.goToPageWithLoading = goToPageWithLoading;
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
-    if (!prefersReducedMotion()) {
-      ensureActivationRingElement();
-    }
+    ensureActivationRingElement();
   }, { once: true });
-} else if (!prefersReducedMotion()) {
+} else {
   ensureActivationRingElement();
 }
 

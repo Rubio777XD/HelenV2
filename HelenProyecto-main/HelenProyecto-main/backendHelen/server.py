@@ -29,7 +29,7 @@ import threading
 import time
 import uuid
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import partial
 from http import HTTPStatus
@@ -73,7 +73,46 @@ REPO_ROOT = _resolve_repo_root()
 FRONTEND_ROOT = REPO_ROOT / "helen"
 MODEL_DIR = REPO_ROOT / "Hellen_model_RN"
 MODEL_PATH = MODEL_DIR / "model.p"
-DATASET_PATH = MODEL_DIR / "data1.pickle"
+
+PRIMARY_DATASET_NAME = "data.pickle"
+LEGACY_DATASET_NAME = "data1.pickle"
+
+
+def _default_dataset_path() -> Path:
+    """Pick the best available dataset shipped with the build.
+
+    ``data.pickle`` is the preferred bundle. When it is not present (for example
+    in source checkouts where the large artifact is omitted) we fall back to the
+    legacy ``data1.pickle`` file so development environments can keep working.
+    The returned path may not exist – call sites are responsible for logging the
+    appropriate warning to the operator.
+    """
+
+    candidate = MODEL_DIR / PRIMARY_DATASET_NAME
+    if candidate.exists():
+        LOGGER.debug("Dataset principal detectado: %s", candidate)
+        return candidate
+
+    _notify_missing_dataset(candidate)
+
+    legacy = MODEL_DIR / LEGACY_DATASET_NAME
+    if legacy.exists():
+        LOGGER.info("Se utilizará el dataset legado %s", legacy)
+        return legacy
+
+    return candidate
+
+
+def _notify_missing_dataset(dataset_path: Path) -> None:
+    if dataset_path.name.lower() == PRIMARY_DATASET_NAME:
+        LOGGER.error(
+            "data.pickle no encontrado (archivo grande omitido del repo, ver documentación de build)"
+        )
+    else:
+        LOGGER.error("Dataset no encontrado en %s", dataset_path)
+
+
+DATASET_PATH = _default_dataset_path()
 
 ACTIVATION_ALIASES = {
     # Mantener sincronizado con ``ACTIVATION_ALIASES`` en
@@ -102,7 +141,7 @@ class RuntimeConfig:
     enable_camera: bool = True
     fallback_to_synthetic: bool = True
     model_path: Path = MODEL_PATH
-    dataset_path: Path = DATASET_PATH
+    dataset_path: Path = field(default_factory=_default_dataset_path)
 
 
 @dataclass
@@ -530,6 +569,7 @@ class HelenRuntime:
             LOGGER.warning("No se pudo cargar el modelo de producción: %s", error)
             dataset_path = self.config.dataset_path
             if not dataset_path.exists():
+                _notify_missing_dataset(dataset_path)
                 raise RuntimeError("No hay dataset disponible para el clasificador de respaldo") from error
             fallback = SimpleGestureClassifier(dataset_path)
             return fallback, {"source": "synthetic", "loaded": False}
@@ -552,6 +592,7 @@ class HelenRuntime:
 
         dataset_path = self.config.dataset_path
         if not dataset_path.exists():
+            _notify_missing_dataset(dataset_path)
             raise RuntimeError("No se puede iniciar el flujo sintético: falta el dataset")
 
         LOGGER.info("Usando flujo sintético de gestos desde %s", dataset_path)
