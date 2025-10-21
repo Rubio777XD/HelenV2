@@ -1,0 +1,14 @@
+# /etc/systemd/system/helen.service
+[Unit]
+Description=Helen Assistant
+After=network.target
+
+[Service]
+ExecStart=/home/pi/start-helen.sh
+Restart=always
+User=pi
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/pi/.Xauthority
+
+[Install]
+WantedBy=default.target
