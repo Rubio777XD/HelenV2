@@ -132,3 +132,37 @@ def test_http_post_broadcasts_payload(live_server):
         assert event['score'] == pytest.approx(0.91)
     finally:
         client.close()
+
+
+def test_foco_command_is_not_flagged_as_activation(live_server):
+    client = SSEClient(live_server)
+    try:
+        client.read_event(timeout=3)
+
+        payload = {
+            'gesture': 'Foco',
+            'character': 'Foco',
+            'score': 0.77,
+            'latency_ms': 9.1,
+            'sequence': 321,
+        }
+
+        parts = urlparse(live_server)
+        conn = HTTPConnection(parts.hostname, parts.port, timeout=5)
+        conn.request('POST', '/gestures/gesture-key', body=json.dumps(payload), headers={'Content-Type': 'application/json'})
+        response = conn.getresponse()
+        response.read()
+        conn.close()
+        assert response.status == 200
+
+        for _ in range(6):
+            event = client.read_event(timeout=3)
+            if not event:
+                continue
+            if event.get('raw', {}).get('character') == 'Foco':
+                assert not event.get('active', False)
+                break
+        else:
+            pytest.fail('No se recibió el evento de Foco enviado por HTTP')
+    finally:
+        client.close()

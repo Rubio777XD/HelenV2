@@ -35,13 +35,14 @@ MODEL_DIR = REPO_ROOT / "Hellen_model_RN"
 DATASET_PATH = MODEL_DIR / "data1.pickle"
 
 ACTIVATION_ALIASES = {
+    # Mantener sincronizado con `ACTIVATION_ALIASES` en
+    # `helen/jsSignHandler/actions.js`.
     "start",
     "activar",
     "heyhelen",
     "holahelen",
     "oyehelen",
     "wake",
-    "foco",
 }
 
 
