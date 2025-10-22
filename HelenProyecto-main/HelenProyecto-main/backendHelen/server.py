@@ -153,10 +153,10 @@ class ClassThreshold:
 
 
 DEFAULT_CLASS_THRESHOLDS: Dict[str, ClassThreshold] = {
-    "Start": ClassThreshold(enter=0.68, release=0.58),
-    "Clima": ClassThreshold(enter=0.72, release=0.62),
-    "Reloj": ClassThreshold(enter=0.7, release=0.6),
-    "Inicio": ClassThreshold(enter=0.69, release=0.59),
+    "Start": ClassThreshold(enter=0.62, release=0.52),
+    "Clima": ClassThreshold(enter=0.65, release=0.55),
+    "Reloj": ClassThreshold(enter=0.63, release=0.53),
+    "Inicio": ClassThreshold(enter=0.62, release=0.52),
 }
 
 
@@ -229,22 +229,22 @@ DEFAULT_CONSENSUS_CONFIG = ConsensusConfig()
 
 ACTIVATION_DELAY = 0.45
 SMOOTHING_WINDOW_SIZE = 4
-COOLDOWN_SECONDS = 0.65
-LISTENING_WINDOW_SECONDS = 5.5
+COOLDOWN_SECONDS = 0.7
+LISTENING_WINDOW_SECONDS = 6.0
 COMMAND_DEBOUNCE_SECONDS = 0.75
 
 
-QUALITY_BLUR_THRESHOLD = 35.0
+QUALITY_BLUR_THRESHOLD = 28.0
 
 
 def _default_sensitivity() -> Tuple[Dict[str, SensitivityProfile], HysteresisProfile, RateLimitProfile, int]:
-    quality = QualityProfile(blur_laplacian_min=QUALITY_BLUR_THRESHOLD, roi_min_coverage=0.7, hand_range_px=(90, 500))
+    quality = QualityProfile(blur_laplacian_min=QUALITY_BLUR_THRESHOLD, roi_min_coverage=0.62, hand_range_px=(70, 560))
     temporal = TemporalProfile(
         consensus_n=DEFAULT_CONSENSUS_CONFIG.required_votes,
         consensus_m=DEFAULT_CONSENSUS_CONFIG.window_size,
         cooldown_s=COOLDOWN_SECONDS,
         listen_window_s=LISTENING_WINDOW_SECONDS,
-        min_pos_stability_var=16.0,
+        min_pos_stability_var=12.0,
         activation_delay_s=ACTIVATION_DELAY,
     )
     classes: Dict[str, ClassProfile] = {}
@@ -254,7 +254,7 @@ def _default_sensitivity() -> Tuple[Dict[str, SensitivityProfile], HysteresisPro
         mode: SensitivityProfile(mode=mode, quality=quality, temporal=temporal, classes=dict(classes))
         for mode in SENSITIVITY_MODES
     }
-    hysteresis = HysteresisProfile(on_offset=0.0, off_delta=0.08)
+    hysteresis = HysteresisProfile(on_offset=0.0, off_delta=0.12)
     rate_limit = RateLimitProfile(frameskip_strict=4, frameskip_balanced=2, frameskip_relaxed=2, fps_threshold=25.0)
     return profiles, hysteresis, rate_limit, 0
 
@@ -277,7 +277,7 @@ def _load_sensitivity_profiles() -> Tuple[Dict[str, SensitivityProfile], Hystere
     rate_data = data.get("rate_limit", {})
     hysteresis = HysteresisProfile(
         on_offset=float(hysteresis_data.get("on_offset", 0.0)),
-        off_delta=float(hysteresis_data.get("off_delta", 0.08)),
+        off_delta=float(hysteresis_data.get("off_delta", 0.12)),
     )
     rate_limit = RateLimitProfile(
         frameskip_strict=int(rate_data.get("frameskip_strict", 4) or 4),
@@ -299,14 +299,14 @@ def _load_sensitivity_profiles() -> Tuple[Dict[str, SensitivityProfile], Hystere
         temporal_data = payload.get("global", {}).get("temporal", {})
         quality = QualityProfile(
             blur_laplacian_min=float(quality_data.get("blur_laplacian_min", QUALITY_BLUR_THRESHOLD)),
-            roi_min_coverage=float(quality_data.get("roi_min_coverage", 0.75)),
-            hand_range_px=tuple(float(v) for v in quality_data.get("hand_range_px", (100, 420)))[:2],
+            roi_min_coverage=float(quality_data.get("roi_min_coverage", 0.62)),
+            hand_range_px=tuple(float(v) for v in quality_data.get("hand_range_px", (70, 560)))[:2],
         )
         if len(quality.hand_range_px) != 2:
             quality = QualityProfile(
                 blur_laplacian_min=quality.blur_laplacian_min,
                 roi_min_coverage=quality.roi_min_coverage,
-                hand_range_px=(100.0, 420.0),
+                hand_range_px=(70.0, 560.0),
             )
 
         temporal = TemporalProfile(
@@ -314,7 +314,7 @@ def _load_sensitivity_profiles() -> Tuple[Dict[str, SensitivityProfile], Hystere
             consensus_m=int(temporal_data.get("consensus_M", DEFAULT_CONSENSUS_CONFIG.window_size) or 1),
             cooldown_s=float(temporal_data.get("cooldown_s", COOLDOWN_SECONDS)),
             listen_window_s=float(temporal_data.get("listen_window_s", LISTENING_WINDOW_SECONDS)),
-            min_pos_stability_var=float(temporal_data.get("min_pos_stability_var", 16.0)),
+            min_pos_stability_var=float(temporal_data.get("min_pos_stability_var", 12.0)),
             activation_delay_s=float(temporal_data.get("activation_delay_s", ACTIVATION_DELAY)),
         )
 
@@ -398,7 +398,7 @@ def _class_thresholds_from_profile(profile: SensitivityProfile, hysteresis: Hyst
         thresholds[canonical] = ClassThreshold(enter=enter, release=release)
     return thresholds
 
-GLOBAL_MIN_SCORE = 0.5
+GLOBAL_MIN_SCORE = 0.46
 DEFAULT_POLL_INTERVAL_S = 0.12
 
 AUTO_THRESHOLD_WINDOW_S = 60.0
@@ -420,10 +420,10 @@ class PiCameraProfile:
 
 
 QUALITY_MIN_LANDMARKS = 21
-QUALITY_MIN_HAND_SCORE = 0.55
-QUALITY_MIN_BBOX_AREA = 0.012
-QUALITY_MIN_BBOX_SIDE = 0.09
-QUALITY_EDGE_MARGIN = 0.015
+QUALITY_MIN_HAND_SCORE = 0.48
+QUALITY_MIN_BBOX_AREA = 0.008
+QUALITY_MIN_BBOX_SIDE = 0.075
+QUALITY_EDGE_MARGIN = 0.01
 
 
 class ConsensusVote(NamedTuple):
@@ -1267,7 +1267,7 @@ class LandmarkGeometryVerifier:
 
         if canonical == "Start":
             if is_extended("index") and is_extended("middle") and is_folded("ring") and is_folded("pinky"):
-                if index_middle_distance >= 0.032:
+                if index_middle_distance >= 0.027:
                     return True, None
                 return False, "geometry_start_spacing"
             return False, "geometry_start_pattern"
@@ -1295,14 +1295,14 @@ class LandmarkGeometryVerifier:
 
                 curvature_floor = None
                 if class_profile.curvature_min is not None:
-                    curvature_floor = class_profile.curvature_min * 0.9
+                    curvature_floor = class_profile.curvature_min * 0.82
                 if curvature_floor is not None and avg_curvature < curvature_floor:
                     return reject("geometry_clima_curvature")
 
                 if class_profile.gap_ratio_range:
                     low, high = class_profile.gap_ratio_range
-                    low *= 0.9
-                    high *= 1.1
+                    low *= 0.85
+                    high *= 1.15
                     if not (low <= gap_ratio <= high):
                         return reject("geometry_clima_gap")
 
@@ -1320,7 +1320,7 @@ class LandmarkGeometryVerifier:
                 if angles and class_profile.angle_tol_deg:
                     avg_angle = sum(angles) / len(angles)
                     max_delta = max(abs(angle - avg_angle) for angle in angles)
-                    allowed_delta = class_profile.angle_tol_deg * 1.2
+                    allowed_delta = class_profile.angle_tol_deg * 1.35
                     if max_delta > allowed_delta:
                         return reject("geometry_clima_angle")
 
@@ -1328,7 +1328,7 @@ class LandmarkGeometryVerifier:
                     max_length = max(lengths) or 1.0
                     normalised = [length / max_length for length in lengths]
                     deviation = statistics.pstdev(normalised) if len(normalised) > 1 else 0.0
-                    allowed_deviation = class_profile.norm_dev_max * 1.15
+                    allowed_deviation = class_profile.norm_dev_max * 1.28
                     if deviation > allowed_deviation:
                         return reject("geometry_clima_norm")
 
@@ -1336,7 +1336,7 @@ class LandmarkGeometryVerifier:
                     if missing_distal > effective_allowance:
                         return reject("geometry_clima_missing_distal")
                     if strict_curvature is not None:
-                        strict_threshold = strict_curvature * 0.92
+                        strict_threshold = strict_curvature * 0.85
                         if avg_curvature < strict_threshold:
                             return reject("geometry_clima_missing_curvature")
 
@@ -1352,21 +1352,21 @@ class LandmarkGeometryVerifier:
                 return True, None
 
             extended_count = sum(1 for finger in ("index", "middle", "ring", "pinky") if is_extended(finger, 0.9))
-            if extended_count >= 3 and thumb_index_distance >= 0.045 and palm_spread >= 0.16:
+            if extended_count >= 3 and thumb_index_distance >= 0.04 and palm_spread >= 0.14:
                 return True, None
             return False, "geometry_clima_pattern"
 
         if canonical == "Reloj":
             if is_extended("index") and is_extended("middle") and is_folded("ring") and is_folded("pinky"):
-                vertical_alignment = abs(index_tip[1] - middle_tip[1]) <= 0.06
-                if index_middle_distance <= 0.075 and vertical_alignment:
+                vertical_alignment = abs(index_tip[1] - middle_tip[1]) <= 0.075
+                if index_middle_distance <= 0.085 and vertical_alignment:
                     return True, None
                 return False, "geometry_reloj_spacing"
             return False, "geometry_reloj_pattern"
 
         if canonical == "Inicio":
             if is_extended("pinky") and is_folded("index") and is_folded("middle") and is_folded("ring"):
-                if thumb_index_distance <= 0.095:
+                if thumb_index_distance <= 0.105:
                     return True, None
                 return False, "geometry_inicio_thumb"
             return False, "geometry_inicio_pattern"
@@ -2106,7 +2106,7 @@ ACTIVATION_ALIASES = {
     "wake",
 }
 
-HEALTH_ENDPOINTS = {"/health", "/healthz"}
+HEALTH_ENDPOINTS = {"/health", "/healthz", "/engine/status"}
 
 
 def _iso_timestamp(timestamp: float) -> str:
@@ -2679,8 +2679,8 @@ class CameraGestureStream:
         self._metrics = metrics
         quality = quality_profile or QualityProfile(
             blur_laplacian_min=QUALITY_BLUR_THRESHOLD,
-            roi_min_coverage=0.75,
-            hand_range_px=(100.0, 420.0),
+            roi_min_coverage=0.62,
+            hand_range_px=(70.0, 580.0),
         )
         hand_range = tuple(sorted((float(quality.hand_range_px[0]), float(quality.hand_range_px[1]))))
         self._quality_profile = QualityProfile(
@@ -2713,6 +2713,16 @@ class CameraGestureStream:
         self._frames_with_hand = 0
         self._frames_valid = 0
         self._frames_returned = 0
+        self._weak_frame_budget = 2
+        self._weak_allow_reasons = {
+            "low_confidence",
+            "hand_near_edge",
+            "small_bbox",
+            "roi_too_small",
+            "roi_coverage",
+            "hand_range",
+            "blur",
+        }
 
     # ------------------------------------------------------------------
     def _configure_capture(self, cap: Any) -> None:
@@ -2969,6 +2979,7 @@ class CameraGestureStream:
             "gstreamer_pipeline": self._gstreamer_pipeline,
             "measured_fps": round(self.measured_fps(), 2),
             "last_quality_reason": self._last_quality_reason,
+            "weak_frame_budget": self._weak_frame_budget,
         }
 
     # ------------------------------------------------------------------
@@ -3034,7 +3045,9 @@ class CameraGestureStream:
     def _register_quality_check(self, valid: bool, reason: Optional[str]) -> None:
         if self._metrics:
             self._metrics.register_quality_check(valid, reason)
-        if not valid and reason:
+        if valid:
+            self._weak_frame_budget = 2
+        elif reason:
             self._quality_rejections[reason] += 1
 
     # ------------------------------------------------------------------
@@ -3042,6 +3055,28 @@ class CameraGestureStream:
         if reason != self._last_quality_reason:
             LOGGER.debug("Descartado por calidad (%s) en modo %s", reason, self._sensitivity_mode)
             self._last_quality_reason = reason
+
+    # ------------------------------------------------------------------
+    def _allow_weak_frame(self, reason: str) -> bool:
+        if reason not in self._weak_allow_reasons:
+            return False
+        if self._weak_frame_budget <= 0:
+            return False
+        self._weak_frame_budget -= 1
+        LOGGER.debug(
+            "Frame degradado permitido (%s); presupuesto restante=%d",
+            reason,
+            self._weak_frame_budget,
+        )
+        return True
+
+    # ------------------------------------------------------------------
+    def _fail_or_allow(self, reason: str, *, allow_weak: bool = False) -> bool:
+        self._log_quality_rejection(reason)
+        self._register_quality_check(False, reason)
+        if allow_weak and self._allow_weak_frame(reason):
+            return False
+        return True
 
     # ------------------------------------------------------------------
     def _validate_landmarks(
@@ -3061,8 +3096,8 @@ class CameraGestureStream:
             hand_score = 1.0
 
         if hand_score < QUALITY_MIN_HAND_SCORE:
-            self._register_quality_check(False, "low_confidence")
-            return False
+            if self._fail_or_allow("low_confidence", allow_weak=True):
+                return False
 
         points = getattr(landmarks, "landmark", [])
         if len(points) < QUALITY_MIN_LANDMARKS:
@@ -3085,10 +3120,10 @@ class CameraGestureStream:
         max_y = max(y_coords)
 
         if (
-            min_x < -0.05
-            or min_y < -0.05
-            or max_x > 1.05
-            or max_y > 1.05
+            min_x < -0.08
+            or min_y < -0.08
+            or max_x > 1.08
+            or max_y > 1.08
         ):
             self._register_quality_check(False, "roi_out_of_bounds")
             return False
@@ -3099,52 +3134,48 @@ class CameraGestureStream:
             or max_x >= (1.0 - QUALITY_EDGE_MARGIN)
             or max_y >= (1.0 - QUALITY_EDGE_MARGIN)
         ):
-            self._register_quality_check(False, "hand_near_edge")
-            return False
+            if self._fail_or_allow("hand_near_edge", allow_weak=True):
+                return False
 
         width = max_x - min_x
         height = max_y - min_y
         area = width * height
         if width < QUALITY_MIN_BBOX_SIDE or height < QUALITY_MIN_BBOX_SIDE or area < QUALITY_MIN_BBOX_AREA:
-            self._register_quality_check(False, "small_bbox")
-            return False
+            if self._fail_or_allow("small_bbox", allow_weak=True):
+                return False
 
         pixel_width = self._normalised_to_pixel(max_x, image_width) - self._normalised_to_pixel(min_x, image_width)
         pixel_height = self._normalised_to_pixel(max_y, image_height) - self._normalised_to_pixel(min_y, image_height)
-        if pixel_width <= 6 or pixel_height <= 6:
-            self._log_quality_rejection("roi_too_small")
-            self._register_quality_check(False, "roi_too_small")
-            return False
+        if pixel_width <= 4 or pixel_height <= 4:
+            if self._fail_or_allow("roi_too_small", allow_weak=True):
+                return False
 
         quality = self._quality_profile
         pixel_coverage = float((pixel_width / image_width) * (pixel_height / image_height))
         if pixel_coverage < quality.roi_min_coverage:
-            self._log_quality_rejection("roi_coverage")
-            self._register_quality_check(False, "roi_coverage")
-            return False
+            if self._fail_or_allow("roi_coverage", allow_weak=True):
+                return False
 
         hand_size = math.sqrt(float(pixel_width) ** 2 + float(pixel_height) ** 2)
         min_range, max_range = quality.hand_range_px
         if hand_size < min_range or hand_size > max_range:
-            self._log_quality_rejection("hand_range")
-            self._register_quality_check(False, "hand_range")
-            return False
+            if self._fail_or_allow("hand_range", allow_weak=True):
+                return False
 
         blur_threshold = float(quality.blur_laplacian_min or 0.0)
         if (
             blur_threshold > 0.0
             and self._sensitivity_mode == "BALANCED"
-            and pixel_coverage >= 0.75
+            and pixel_coverage >= 0.68
         ):
-            blur_threshold *= 0.9
+            blur_threshold *= 0.85
         if blur_threshold > 0.0:
             try:
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 variance = float(cv2.Laplacian(gray, cv2.CV_64F).var())
                 if variance < blur_threshold:
-                    self._log_quality_rejection("blur")
-                    self._register_quality_check(False, "blur")
-                    return False
+                    if self._fail_or_allow("blur", allow_weak=True):
+                        return False
             except Exception:
                 # If blur detection fails we do not discard the frame.
                 pass
@@ -3553,6 +3584,25 @@ class HelenRuntime:
         if not isinstance(self.classifier, SimpleGestureClassifier):
             self.fallback_classifier = self._load_secondary_classifier(dataset_path)
         self.dataset_info["fallback_secondary"] = bool(self.fallback_classifier)
+
+        threshold_log = ", ".join(
+            f"{label}={value.enter:.2f}/{value.release:.2f}" for label, value in sorted(self.class_thresholds.items())
+        )
+        LOGGER.info(
+            "Modelo activo source=%s loaded=%s path=%s dataset=%s exists=%s fallback=%s",
+            self.model_source,
+            self.model_loaded,
+            self.config.model_path,
+            dataset_path,
+            dataset_path.exists(),
+            using_fallback,
+        )
+        LOGGER.info(
+            "Umbrales aplicados modo=%s perfil_v%s => %s",
+            self.sensitivity_mode,
+            SENSITIVITY_PROFILE_VERSION,
+            threshold_log,
+        )
 
         stream, stream_meta = self._create_stream()
         self.stream = stream
