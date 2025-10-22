@@ -1,11 +1,8 @@
 # Informe de sesión de gestos
 
-> Este archivo se actualiza automáticamente cada vez que el backend de HELEN se detiene.
-> Los valores siguientes reflejan el estado inicial sin una sesión de captura.
-
 ## Configuración activa
 - Ventana de consenso: 12 frames (requiere 8)
-- Cooldown tras 'Start': 750 ms
+- Cooldown tras 'Start': 800 ms
 - Ventana de escucha C/R/I: 4.0 s
 - Debounce de comandos: 750 ms
 - Umbral global mínimo: 0.60
@@ -19,21 +16,20 @@
 | Inicio | 0.76 | 0.66 |
 
 ## Métricas de sesión
-- Frames procesados tras filtros: 0
+- Frames procesados tras filtros: 51
 - Revisiones de calidad: 0
 - Descartes por calidad: 0 (0.0%)
 
 ### Rendimiento por clase
 | Clase | Precision | Recall | F1 | TP | FP | FN |
 |-------|-----------|--------|----|----|----|----|
-| Start | 0.00 | 0.00 | 0.00 | 0 | 0 | 0 |
-| Clima | 0.00 | 0.00 | 0.00 | 0 | 0 | 0 |
-| Reloj | 0.00 | 0.00 | 0.00 | 0 | 0 | 0 |
-| Inicio | 0.00 | 0.00 | 0.00 | 0 | 0 | 0 |
+| Start | 1.00 | 0.04 | 0.08 | 2 | 0 | 49 |
+| Inicio | nan | nan | nan | 0 | 0 | 0 |
+| Clima | nan | nan | nan | 0 | 0 | 0 |
+| Reloj | nan | nan | nan | 0 | 0 | 0 |
 
 ### Matriz de confusión
-Sin datos de validación etiquetados.
-
-### Sugerencias de ajuste
-Sin sugerencias disponibles (esperando datos de sesión).
+| Actual | None | Start |
+| --- | --- | --- |
+| Start | 49 | 2 |
 

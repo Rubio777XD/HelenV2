@@ -1,0 +1,14 @@
+bidict==0.23.1
+eventlet==0.36.1
+Flask==3.0.3
+Flask-SocketIO==5.3.6
+mediapipe==0.10.21
+numpy==1.26.4
+opencv-python==4.9.0.80
+python-engineio==4.9.1
+python-socketio==5.11.2
+scikit-learn==1.4.2
+scipy==1.13.0
+sounddevice==0.4.6
+Werkzeug==3.0.3
+xgboost==2.1.4

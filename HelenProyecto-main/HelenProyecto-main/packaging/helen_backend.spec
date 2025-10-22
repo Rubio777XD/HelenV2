@@ -24,6 +24,36 @@ PROJECT_ROOT = SPEC_DIR if SPEC_DIR.name != "packaging" else SPEC_DIR.parent
 FRONTEND_DIR = PROJECT_ROOT / "helen"
 MODEL_DIR = PROJECT_ROOT / "Hellen_model_RN"   # carpeta del modelo (nombre exacto)
 BACKEND_PACKAGE = "backendHelen"
+BACKEND_DIR = PROJECT_ROOT / BACKEND_PACKAGE
+FRONTEND_ALT_DIR = PROJECT_ROOT / "frontend"
+PRIMARY_DATASET_NAME = "data.pickle"
+
+# Verificación temprana de dependencias críticas para la build
+REQUIRED_MODULES = (
+    "pickle",
+    "xgboost",
+    "mediapipe",
+    "socketio",
+    "flask",
+    "flask_socketio",
+    "numpy",
+    "cv2",
+)
+
+missing_modules = []
+for module_name in REQUIRED_MODULES:
+    try:  # pragma: no cover - ejecución en proceso de build
+        __import__(module_name)
+    except ModuleNotFoundError:
+        missing_modules.append(module_name)
+
+if missing_modules:
+    missing = ", ".join(sorted(missing_modules))
+    raise RuntimeError(
+        "Dependencias faltantes para construir HELEN: {0}. Ejecuta 'pip install -r requirements.txt' antes de compilar.".format(
+            missing
+        )
+    )
 
 # Script principal (ruta absoluta) -> lanzador que ejecuta el paquete
 MAIN_SCRIPT = (SPEC_DIR / "run_backend.py").resolve()
@@ -56,6 +86,16 @@ for file in glob(str(MODEL_DIR / "*.p*")):
 # Metadatos adicionales del modelo (por ejemplo ``model.json``)
 for file in glob(str(MODEL_DIR / "*.json")):
     _datas.append((file, "Hellen_model_RN"))
+
+primary_dataset = MODEL_DIR / PRIMARY_DATASET_NAME
+primary_entry = (str(primary_dataset), "Hellen_model_RN")
+if primary_dataset.exists() and primary_entry not in _datas:
+    _datas.append(primary_entry)
+elif not primary_dataset.exists():  # pragma: no cover - aviso en build
+    print(
+        f"[WARN] {PRIMARY_DATASET_NAME} no encontrado en {MODEL_DIR}. La build continuará con los recursos disponibles.",
+        flush=True,
+    )
 
 # Assets de MediaPipe (modelos .tflite, configs, etc.)
 _datas += collect_data_files("mediapipe")
@@ -96,6 +136,19 @@ else:
             dest_dir = str(pathlib.Path("xgboost") / relative_parent)
         _binaries.append((str(resolved), dest_dir))
         break
+
+# Directorios completos que deben copiarse intactos
+asset_trees = [Tree(str(FRONTEND_DIR), prefix="helen")]
+
+backend_static_dir = BACKEND_DIR / "static"
+backend_templates_dir = BACKEND_DIR / "templates"
+
+if backend_templates_dir.exists():
+    asset_trees.append(Tree(str(backend_templates_dir), prefix=f"{BACKEND_PACKAGE}/templates"))
+if backend_static_dir.exists():
+    asset_trees.append(Tree(str(backend_static_dir), prefix=f"{BACKEND_PACKAGE}/static"))
+if FRONTEND_ALT_DIR.exists():
+    asset_trees.append(Tree(str(FRONTEND_ALT_DIR), prefix="frontend"))
 
 # --- Análisis ---
 analysis = Analysis(
@@ -140,8 +193,7 @@ coll = COLLECT(
     analysis.binaries,
     analysis.zipfiles,
     analysis.datas,
-    # Frontend completo accesible en /helen
-    Tree(str(FRONTEND_DIR), prefix="helen"),
+    *asset_trees,
     strip=False,
     upx=False,   # <- idem
     upx_exclude=[],

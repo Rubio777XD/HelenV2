@@ -761,6 +761,11 @@ body.force-ambient::after{
 /* ==============================================
    Aro de activación – realce estático
    ============================================== */
+@keyframes activation-ring-pulse {
+  from { opacity: 1; }
+  to { opacity: 1; }
+}
+
 .activation-ring{
   position: fixed;
   inset: 0;
@@ -793,6 +798,12 @@ body.force-ambient::after{
   opacity: 1;
   border-color: rgba(95,225,255,.68);
   box-shadow: 0 0 56px rgba(95,225,255,.32);
+}
+
+.activation-ring.is-persistent .activation-ring__halo{
+  opacity: 1;
+  border-color: rgba(95,225,255,.76);
+  box-shadow: 0 0 64px rgba(95,225,255,.38);
 }
 
 .activation-ring.is-error .activation-ring__halo{

@@ -1,0 +1,154 @@
+{
+  "thresholds": {
+    "Start": {
+      "enter": 0.75,
+      "release": 0.65
+    },
+    "Clima": {
+      "enter": 0.8,
+      "release": 0.7
+    },
+    "Reloj": {
+      "enter": 0.78,
+      "release": 0.68
+    },
+    "Inicio": {
+      "enter": 0.76,
+      "release": 0.66
+    }
+  },
+  "global_min_score": 0.6,
+  "consensus": {
+    "window_size": 12,
+    "required_votes": 8
+  },
+  "durations_s": {
+    "cooldown": 0.8,
+    "listening_window": 4.0,
+    "command_debounce": 0.75
+  },
+  "dataset": {
+    "path": "/workspace/HelenV2/HelenProyecto-main/HelenProyecto-main/Hellen_model_RN/data1.pickle",
+    "primary_available": false,
+    "using_fallback": true,
+    "exists": true,
+    "normalizer": {
+      "dataset": "/workspace/HelenV2/HelenProyecto-main/HelenProyecto-main/Hellen_model_RN/data1.pickle",
+      "loaded": false,
+      "uses_transformer": false,
+      "uses_stats": false
+    }
+  },
+  "latency": {
+    "avg_ms": 5.437122749972696,
+    "p95_ms": 12.5,
+    "max_ms": 12.5,
+    "count": 4
+  },
+  "samples": 51,
+  "quality_checks": 0,
+  "quality_rejections": {},
+  "quality_rejection_rate": 0.0,
+  "threshold_rejections": {
+    "accepted": 2,
+    "cooldown_active": 12,
+    "awaiting_command": 37
+  },
+  "classes": {
+    "Start": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 49,
+      "precision": 1.0,
+      "recall": 0.0392156862745098,
+      "f1": 0.07547169811320754,
+      "accepted_scores": {
+        "min": 0.857393534002703,
+        "max": 0.9200577947320406,
+        "mean": 0.8887256643673718,
+        "median": 0.8887256643673718
+      },
+      "rejected_scores": {
+        "min": 0.7247359783888639,
+        "max": 0.9427975866024986,
+        "mean": 0.8524048525757862,
+        "median": 0.8509751615174307
+      },
+      "rejections": {
+        "accepted": 2,
+        "cooldown_active": 12,
+        "awaiting_command": 37
+      }
+    },
+    "Inicio": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "precision": null,
+      "recall": null,
+      "f1": null,
+      "accepted_scores": {
+        "min": null,
+        "max": null,
+        "mean": null,
+        "median": null
+      },
+      "rejected_scores": {
+        "min": null,
+        "max": null,
+        "mean": null,
+        "median": null
+      },
+      "rejections": {}
+    },
+    "Clima": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "precision": null,
+      "recall": null,
+      "f1": null,
+      "accepted_scores": {
+        "min": null,
+        "max": null,
+        "mean": null,
+        "median": null
+      },
+      "rejected_scores": {
+        "min": null,
+        "max": null,
+        "mean": null,
+        "median": null
+      },
+      "rejections": {}
+    },
+    "Reloj": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "precision": null,
+      "recall": null,
+      "f1": null,
+      "accepted_scores": {
+        "min": null,
+        "max": null,
+        "mean": null,
+        "median": null
+      },
+      "rejected_scores": {
+        "min": null,
+        "max": null,
+        "mean": null,
+        "median": null
+      },
+      "rejections": {}
+    }
+  },
+  "confusion_matrix": {
+    "Start": {
+      "Start": 2,
+      "None": 49
+    }
+  },
+  "suggested_thresholds": []
+}

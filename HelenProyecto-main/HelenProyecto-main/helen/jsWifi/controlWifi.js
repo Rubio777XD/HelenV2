@@ -84,12 +84,7 @@
     if (wifiList) {
       wifiList.querySelectorAll('.wifi-item.selected').forEach((node) => node.classList.remove('selected'));
     }
-    if (passwordContainer) {
-      passwordContainer.style.display = 'none';
-    }
-    if (passwordInput) {
-      passwordInput.value = '';
-    }
+    updatePasswordPanel('idle');
     if (connectWifiButton) {
       connectWifiButton.disabled = true;
     }
@@ -99,6 +94,7 @@
     if (connectingText) {
       connectingText.textContent = 'Conectando...';
     }
+    setFeedback('', '');
   };
 
   const renderMetaLines = (lines) => {
@@ -174,6 +170,37 @@
     }
   };
 
+  const updatePasswordPanel = (mode, savedPassword = '') => {
+    if (!passwordContainer) {
+      return;
+    }
+
+    const normalizedMode = typeof mode === 'string' ? mode : 'idle';
+    passwordContainer.setAttribute('data-mode', normalizedMode);
+
+    if (passwordInput) {
+      const requiresPassword = normalizedMode === 'secure';
+      passwordInput.disabled = !requiresPassword;
+      if (requiresPassword) {
+        passwordInput.placeholder = 'Introduce la contraseña';
+        if (savedPassword) {
+          passwordInput.value = savedPassword;
+        }
+      } else if (normalizedMode === 'open') {
+        passwordInput.value = '';
+        passwordInput.placeholder = 'Esta red no requiere contraseña';
+      } else {
+        passwordInput.value = '';
+        passwordInput.placeholder = 'Selecciona una red para continuar';
+      }
+    }
+
+    if (togglePassword) {
+      const disabled = normalizedMode !== 'secure';
+      togglePassword.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+    }
+  };
+
   const setButtonLoading = (loading) => {
     if (!connectWifiButton) return;
     connectWifiButton.classList.toggle('is-loading', Boolean(loading));
@@ -183,6 +210,11 @@
       connectWifiButton.disabled = false;
     }
   };
+
+  updatePasswordPanel('idle');
+  if (connectFeedback) {
+    connectFeedback.setAttribute('data-visible', 'false');
+  }
 
   function clearAutoReconnectTimer () {
     if (autoReconnectTimer) {
@@ -345,13 +377,18 @@
       }
       setFeedback('', '');
       const isCurrent = Boolean(lastStatus && lastStatus.connected_ssid && lastStatus.connected_ssid.toLowerCase() === network.ssid.toLowerCase());
-      if (passwordContainer) {
-        passwordContainer.style.display = network.secure ? 'grid' : 'none';
-      }
+      const savedPassword = (lastSuccessfulCredentials && lastSuccessfulCredentials.ssid === network.ssid)
+        ? lastSuccessfulCredentials.password
+        : '';
+      updatePasswordPanel(network.secure ? 'secure' : 'open', savedPassword);
       if (network.secure && passwordInput) {
         passwordInput.focus({ preventScroll: true });
-      } else if (passwordInput) {
-        passwordInput.value = '';
+        if (savedPassword) {
+          const length = savedPassword.length;
+          passwordInput.setSelectionRange(length, length);
+        }
+      } else if (!network.secure) {
+        setFeedback('Red abierta: no requiere contraseña.', '');
       }
       connectWifiButton.disabled = false;
       if (connectText) {
@@ -588,6 +625,9 @@
 
   if (togglePassword && passwordInput) {
     togglePassword.addEventListener('click', () => {
+      if (togglePassword.getAttribute('aria-disabled') === 'true') {
+        return;
+      }
       const nextType = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
       passwordInput.setAttribute('type', nextType);
       if (passwordToggleIcon) {
