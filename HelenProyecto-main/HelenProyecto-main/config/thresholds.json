@@ -20,7 +20,20 @@
       },
       "classes": {
         "H": { "score_min": 0.55, "angle_tol_deg": 18, "norm_dev_max": 0.22 },
-        "C": { "score_min": 0.48, "angle_tol_deg": 26, "norm_dev_max": 0.28, "curvature_min": 0.32, "gap_ratio_range": [0.28, 0.55] },
+        "C": {
+          "score_min": 0.48,
+          "angle_tol_deg": 26,
+          "norm_dev_max": 0.28,
+          "curvature_min": 0.288,
+          "gap_ratio_range": [0.28, 0.55],
+          "missing_distal_allowance": 1,
+          "missing_distal_strict_curvature": 0.32,
+          "curvature_consistency_boost": 0.03,
+          "curvature_consistency_window": 3,
+          "curvature_consistency_min_frames": 2,
+          "curvature_consistency_tolerance": 0.05,
+          "curvature_consistency_min_curvature": 0.32
+        },
         "R": { "score_min": 0.52, "angle_tol_deg": 20, "norm_dev_max": 0.24 },
         "I": { "score_min": 0.52, "angle_tol_deg": 20, "norm_dev_max": 0.24 }
       }

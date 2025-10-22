@@ -35,8 +35,15 @@ def test_balanced_profile_matches_configuration() -> None:
     assert clima_profile.score_min == pytest.approx(0.48)
     assert clima_profile.angle_tol_deg == pytest.approx(26.0)
     assert clima_profile.norm_dev_max == pytest.approx(0.28)
-    assert clima_profile.curvature_min == pytest.approx(0.32)
+    assert clima_profile.curvature_min == pytest.approx(0.288)
     assert clima_profile.gap_ratio_range == pytest.approx((0.28, 0.55))
+    assert clima_profile.missing_distal_allowance == 1
+    assert clima_profile.missing_distal_strict_curvature == pytest.approx(0.32)
+    assert clima_profile.curvature_consistency_boost == pytest.approx(0.03)
+    assert clima_profile.curvature_consistency_window == 3
+    assert clima_profile.curvature_consistency_min_frames == 2
+    assert clima_profile.curvature_consistency_tolerance == pytest.approx(0.05)
+    assert clima_profile.curvature_consistency_min_curvature == pytest.approx(0.32)
 
 
 def test_class_thresholds_apply_hysteresis() -> None:

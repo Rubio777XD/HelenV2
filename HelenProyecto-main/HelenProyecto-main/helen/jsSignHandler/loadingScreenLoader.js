@@ -4,18 +4,20 @@
 // Función para determinar la ruta correcta según el contexto
 function getRelativePath() {
     const path = window.location.pathname;
-    
+
     if (path.includes('/pages/')) {
         return {
             js: '../../jsSignHandler/loadingScreen.js',
             css: '../../css/loadingScreen.css',
-            video: '../../assets/videos/carga-avion.webm'
+            video: '../../assets/videos/carga-avion.webm',
+            alarmManager: '../../jsFrontend/alarmManager.js'
         };
     } else {
         return {
             js: './jsSignHandler/loadingScreen.js',
             css: './css/loadingScreen.css',
-            video: './assets/videos/carga-avion.webm'
+            video: './assets/videos/carga-avion.webm',
+            alarmManager: './jsFrontend/alarmManager.js'
         };
     }
 }
@@ -44,6 +46,14 @@ function loadResources() {
             }
         };
         document.body.appendChild(script);
+    }
+
+    if (!document.querySelector('script[data-helen-alarm-manager]')) {
+        const alarmScript = document.createElement('script');
+        alarmScript.src = paths.alarmManager;
+        alarmScript.defer = true;
+        alarmScript.dataset.helenAlarmManager = 'true';
+        document.head.appendChild(alarmScript);
     }
 }
 
