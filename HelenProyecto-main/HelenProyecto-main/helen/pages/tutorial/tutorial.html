@@ -31,28 +31,15 @@
             <p>Selecciona una categoría para practicar la secuencia oficial. Cada paso se confirma visualmente para simular la detección real.</p>
           </div>
 
-          <div class="tutorial-menu__cards">
-            <button class="tutorial-card" type="button" data-module-trigger="weather">
-              <span class="tutorial-card__icon" aria-hidden="true"><i class="bi bi-cloud-sun"></i></span>
-              <span class="tutorial-card__title">Clima</span>
-              <span class="tutorial-card__subtitle">Practica cómo consultar el clima con HELEN.</span>
+          <div class="tutorial-menu__cards" data-module-list></div>
+          <template data-module-card-template>
+            <button class="tutorial-card" type="button">
+              <span class="tutorial-card__icon" aria-hidden="true" data-card-icon><i class="bi" aria-hidden="true"></i></span>
+              <span class="tutorial-card__title" data-card-title></span>
+              <span class="tutorial-card__subtitle" data-card-subtitle></span>
               <span class="tutorial-card__cta">Iniciar guía</span>
             </button>
-
-            <button class="tutorial-card" type="button" data-module-trigger="clock">
-              <span class="tutorial-card__icon" aria-hidden="true"><i class="bi bi-clock-history"></i></span>
-              <span class="tutorial-card__title">Hora</span>
-              <span class="tutorial-card__subtitle">Aprende la secuencia completa para pedir la hora.</span>
-              <span class="tutorial-card__cta">Iniciar guía</span>
-            </button>
-
-            <button class="tutorial-card" type="button" data-module-trigger="devices">
-              <span class="tutorial-card__icon" aria-hidden="true"><i class="bi bi-lightbulb"></i></span>
-              <span class="tutorial-card__title">Dispositivos</span>
-              <span class="tutorial-card__subtitle">Simula el control de dispositivos con gestos.</span>
-              <span class="tutorial-card__cta">Iniciar guía</span>
-            </button>
-          </div>
+          </template>
         </section>
 
         <section class="tutorial-view tutorial-flow" data-view="flow" tabindex="-1" aria-hidden="true">
