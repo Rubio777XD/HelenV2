@@ -152,6 +152,38 @@
   let audioBuffer = null;
   let audioBufferPromise = null;
 
+  const syncGlobalAudioState = () => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.__HelenSchedulerAudioState = window.__HelenSchedulerAudioState || {};
+    window.__HelenSchedulerAudioState.context = audioContext;
+    window.__HelenSchedulerAudioState.unlocked = audioUnlocked;
+    window.__HelenSchedulerAudioState.queueTime = audioQueueTime;
+  };
+
+  const adoptGlobalAudioState = () => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const stored = window.__HelenSchedulerAudioState;
+    if (stored) {
+      if (stored.context) {
+        audioContext = stored.context;
+      }
+      if (typeof stored.unlocked === 'boolean') {
+        audioUnlocked = stored.unlocked;
+      }
+      if (typeof stored.queueTime === 'number' && Number.isFinite(stored.queueTime)) {
+        audioQueueTime = stored.queueTime;
+      }
+    } else {
+      syncGlobalAudioState();
+    }
+  };
+
+  adoptGlobalAudioState();
+
   const readyPromise = new Promise((resolve) => {
     readyResolvers.push(resolve);
   });
@@ -746,6 +778,7 @@
       } catch (error) {
         audioContext = null;
       }
+      syncGlobalAudioState();
     }
     if (!fallbackAudio && typeof Audio === 'function') {
       try {
@@ -754,6 +787,7 @@
         fallbackAudio = null;
       }
     }
+    syncGlobalAudioState();
     return audioContext;
   };
 
@@ -954,6 +988,7 @@
       if (modalSoundNeedsUnlock) {
         tryEnsureSoundPlayback();
       }
+      syncGlobalAudioState();
       window.removeEventListener('pointerdown', unlock, true);
       window.removeEventListener('keydown', unlock, true);
       window.removeEventListener('touchstart', unlock, true);
@@ -986,6 +1021,7 @@
       oscillator.stop(startAt + 1.2);
 
       audioQueueTime = startAt + 0.4;
+      syncGlobalAudioState();
       return;
     }
 

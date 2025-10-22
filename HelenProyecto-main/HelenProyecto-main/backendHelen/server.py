@@ -183,6 +183,13 @@ class ClassProfile:
     norm_dev_max: float
     curvature_min: Optional[float] = None
     gap_ratio_range: Optional[Tuple[float, float]] = None
+    missing_distal_allowance: int = 0
+    missing_distal_strict_curvature: Optional[float] = None
+    curvature_consistency_boost: float = 0.0
+    curvature_consistency_window: int = 0
+    curvature_consistency_min_frames: int = 0
+    curvature_consistency_tolerance: float = 0.0
+    curvature_consistency_min_curvature: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -324,12 +331,37 @@ def _load_sensitivity_profiles() -> Tuple[Dict[str, SensitivityProfile], Hystere
             if isinstance(gap_range, (list, tuple)) and len(gap_range) >= 2:
                 gap_tuple = (float(gap_range[0]), float(gap_range[1]))
 
+            missing_allowance = int(class_payload.get("missing_distal_allowance", 0) or 0)
+            missing_strict_curvature = class_payload.get("missing_distal_strict_curvature")
+            missing_strict_value = (
+                float(missing_strict_curvature)
+                if missing_strict_curvature is not None
+                else None
+            )
+            consistency_boost = float(class_payload.get("curvature_consistency_boost", 0.0) or 0.0)
+            consistency_window = int(class_payload.get("curvature_consistency_window", 0) or 0)
+            consistency_min_frames = int(class_payload.get("curvature_consistency_min_frames", 0) or 0)
+            consistency_tolerance = float(class_payload.get("curvature_consistency_tolerance", 0.0) or 0.0)
+            consistency_min_curvature_raw = class_payload.get("curvature_consistency_min_curvature")
+            consistency_min_curvature = (
+                float(consistency_min_curvature_raw)
+                if consistency_min_curvature_raw is not None
+                else None
+            )
+
             class_profiles[gesture] = ClassProfile(
                 score_min=score_min,
                 angle_tol_deg=angle_tol,
                 norm_dev_max=norm_dev,
                 curvature_min=curvature_min,
                 gap_ratio_range=gap_tuple,
+                missing_distal_allowance=missing_allowance,
+                missing_distal_strict_curvature=missing_strict_value,
+                curvature_consistency_boost=consistency_boost,
+                curvature_consistency_window=consistency_window,
+                curvature_consistency_min_frames=consistency_min_frames,
+                curvature_consistency_tolerance=consistency_tolerance,
+                curvature_consistency_min_curvature=consistency_min_curvature,
             )
 
         if not class_profiles:
@@ -1032,6 +1064,8 @@ class LandmarkGeometryVerifier:
     def __init__(self) -> None:
         self._last_warning: Optional[str] = None
         self._class_profiles: Dict[str, ClassProfile] = {}
+        self._last_metrics: Dict[str, Dict[str, Any]] = {}
+        self._curvature_history: Dict[str, Deque[Dict[str, Any]]] = defaultdict(lambda: deque(maxlen=6))
 
     @staticmethod
     def _vector(a: LandmarkPoint, b: LandmarkPoint) -> LandmarkPoint:
@@ -1088,6 +1122,8 @@ class LandmarkGeometryVerifier:
 
     def configure(self, profile: SensitivityProfile) -> None:
         self._class_profiles = dict(profile.classes)
+        self._last_metrics.clear()
+        self._curvature_history.clear()
 
     def _finger_states(self, landmarks: Sequence[LandmarkPoint]) -> Dict[str, Dict[str, float]]:
         data: Dict[str, Dict[str, float]] = {}
@@ -1103,6 +1139,63 @@ class LandmarkGeometryVerifier:
         if message != self._last_warning:
             LOGGER.debug("Filtro geométrico: %s", message)
             self._last_warning = message
+
+    def metrics_for(self, label: str) -> Optional[Dict[str, Any]]:
+        canonical = GestureMetrics._canonical(label)
+        metrics = self._last_metrics.get(canonical)
+        if not metrics:
+            return None
+        data = dict(metrics)
+        history = self._curvature_history.get(canonical)
+        if history:
+            data["history"] = [dict(entry) for entry in history]
+        else:
+            data["history"] = []
+        return data
+
+    def class_profile(self, label: str) -> Optional[ClassProfile]:
+        canonical = GestureMetrics._canonical(label)
+        return self._class_profiles.get(canonical)
+
+    def _record_clima_metrics(
+        self,
+        *,
+        avg_curvature: float,
+        curvature_min: Optional[float],
+        strict_curvature: Optional[float],
+        missing_distal: int,
+        allowance: int,
+        accepted: bool,
+        reason: Optional[str],
+    ) -> None:
+        loss_rate = missing_distal / 4.0
+        metrics = {
+            "avg_curvature": avg_curvature,
+            "curvature_min": curvature_min,
+            "curvature_delta": avg_curvature - (curvature_min or 0.0),
+            "strict_curvature": strict_curvature,
+            "missing_distal": missing_distal,
+            "missing_allowance": allowance,
+            "loss_rate": loss_rate,
+            "accepted": accepted,
+            "reason": reason,
+        }
+        self._last_metrics["Clima"] = metrics
+        history_entry = {
+            "curvature": avg_curvature,
+            "missing_distal": missing_distal,
+            "accepted": accepted,
+            "timestamp": time.time(),
+        }
+        self._curvature_history["Clima"].append(history_entry)
+        if accepted:
+            LOGGER.debug(
+                "geometry_clima accepted curvature=%.3f delta=%.3f missing=%d loss_rate=%.2f",
+                avg_curvature,
+                metrics["curvature_delta"],
+                missing_distal,
+                loss_rate,
+            )
 
     def verify(self, label: str, landmarks: Optional[Sequence[LandmarkPoint]]) -> Tuple[bool, Optional[str]]:
         if not label or not landmarks:
@@ -1150,14 +1243,28 @@ class LandmarkGeometryVerifier:
                 avg_curvature = self._average_curvature(points)
                 gap_ratio = self._gap_ratio(points)
                 missing_distal = sum(1 for idx in (8, 12, 16, 20) if self._is_missing(points[idx]))
+                allowance = max(0, int(getattr(class_profile, "missing_distal_allowance", 0)))
+                strict_curvature = getattr(class_profile, "missing_distal_strict_curvature", None)
+
+                def reject(reason: str) -> Tuple[bool, str]:
+                    self._record_clima_metrics(
+                        avg_curvature=avg_curvature,
+                        curvature_min=class_profile.curvature_min,
+                        strict_curvature=strict_curvature,
+                        missing_distal=missing_distal,
+                        allowance=allowance,
+                        accepted=False,
+                        reason=reason,
+                    )
+                    return False, reason
 
                 if class_profile.curvature_min is not None and avg_curvature < class_profile.curvature_min:
-                    return False, "geometry_clima_curvature"
+                    return reject("geometry_clima_curvature")
 
                 if class_profile.gap_ratio_range:
                     low, high = class_profile.gap_ratio_range
                     if not (low <= gap_ratio <= high):
-                        return False, "geometry_clima_gap"
+                        return reject("geometry_clima_gap")
 
                 angles: List[float] = []
                 lengths: List[float] = []
@@ -1174,17 +1281,31 @@ class LandmarkGeometryVerifier:
                     avg_angle = sum(angles) / len(angles)
                     max_delta = max(abs(angle - avg_angle) for angle in angles)
                     if max_delta > class_profile.angle_tol_deg:
-                        return False, "geometry_clima_angle"
+                        return reject("geometry_clima_angle")
 
                 if lengths and class_profile.norm_dev_max:
                     max_length = max(lengths) or 1.0
                     normalised = [length / max_length for length in lengths]
                     deviation = statistics.pstdev(normalised) if len(normalised) > 1 else 0.0
                     if deviation > class_profile.norm_dev_max:
-                        return False, "geometry_clima_norm"
+                        return reject("geometry_clima_norm")
 
-                if missing_distal <= 2 or avg_curvature >= (class_profile.curvature_min or 0.0):
-                    return True, None
+                if missing_distal > 0:
+                    if missing_distal > allowance:
+                        return reject("geometry_clima_missing_distal")
+                    if strict_curvature is not None and avg_curvature < strict_curvature:
+                        return reject("geometry_clima_missing_curvature")
+
+                self._record_clima_metrics(
+                    avg_curvature=avg_curvature,
+                    curvature_min=class_profile.curvature_min,
+                    strict_curvature=strict_curvature,
+                    missing_distal=missing_distal,
+                    allowance=allowance,
+                    accepted=True,
+                    reason=None,
+                )
+                return True, None
 
             extended_count = sum(1 for finger in ("index", "middle", "ring", "pinky") if is_extended(finger, 0.9))
             if extended_count >= 3 and thumb_index_distance >= 0.05 and palm_spread >= 0.18:
@@ -1349,6 +1470,75 @@ class GestureDecisionEngine:
         return var_x + var_y
 
     # ------------------------------------------------------------------
+    def _apply_dynamic_boost(
+        self,
+        label: str,
+        score: float,
+        metrics: Optional[Dict[str, Any]],
+    ) -> Tuple[float, float]:
+        if not self._geometry_verifier:
+            return score, 0.0
+
+        profile = self._geometry_verifier.class_profile(label)
+        if not profile or profile.curvature_consistency_boost <= 0.0:
+            return score, 0.0
+
+        if metrics is None:
+            metrics = self._geometry_verifier.metrics_for(label)
+        if not metrics:
+            return score, 0.0
+
+        history = metrics.get("history") or []
+        if not history:
+            return score, 0.0
+
+        window = max(0, int(profile.curvature_consistency_window or 0))
+        if window <= 0 or window > len(history):
+            window = len(history)
+        if window <= 0:
+            return score, 0.0
+
+        tail = history[-window:]
+        min_frames = max(1, int(profile.curvature_consistency_min_frames or 0))
+
+        required_curvature = profile.curvature_consistency_min_curvature
+        if required_curvature is None:
+            strict_curvature = metrics.get("strict_curvature")
+            if isinstance(strict_curvature, (int, float)):
+                required_curvature = float(strict_curvature)
+            elif profile.curvature_min is not None:
+                required_curvature = float(profile.curvature_min)
+            else:
+                required_curvature = 0.0
+
+        tolerance = max(0.0, float(profile.curvature_consistency_tolerance or 0.0))
+
+        qualifying: List[Dict[str, Any]] = [
+            entry
+            for entry in tail
+            if entry.get("accepted")
+            and float(entry.get("curvature", 0.0)) >= required_curvature
+            and int(entry.get("missing_distal", 0)) <= max(0, profile.missing_distal_allowance)
+        ]
+
+        if len(qualifying) < min_frames:
+            return score, 0.0
+
+        curvatures = [float(entry.get("curvature", 0.0)) for entry in qualifying[-min_frames:]]
+        if not curvatures:
+            return score, 0.0
+
+        if max(curvatures) - min(curvatures) > tolerance:
+            return score, 0.0
+
+        boost = float(profile.curvature_consistency_boost or 0.0)
+        if boost <= 0.0:
+            return score, 0.0
+
+        boosted = min(1.0, score + boost)
+        return boosted, boosted - score
+
+    # ------------------------------------------------------------------
     def process(
         self,
         prediction: Prediction,
@@ -1372,6 +1562,7 @@ class GestureDecisionEngine:
                 "state": state,
             }
             geometry_checked = False
+            curvature_metrics: Optional[Dict[str, Any]] = None
 
             self._record_position(roi)
             payload["mode"] = self._mode
@@ -1407,8 +1598,26 @@ class GestureDecisionEngine:
                         0,
                         0.0,
                     )
+                curvature_metrics = self._geometry_verifier.metrics_for(canonical_label)
+            elif self._geometry_verifier is not None:
+                curvature_metrics = self._geometry_verifier.metrics_for(canonical_label)
             if self._geometry_verifier is not None:
                 payload["geometry_checked"] = geometry_checked
+            if curvature_metrics:
+                payload["geometry_curvature"] = curvature_metrics.get("avg_curvature")
+                payload["geometry_curvature_delta"] = curvature_metrics.get("curvature_delta")
+                payload["geometry_loss_rate"] = curvature_metrics.get("loss_rate")
+                payload["geometry_missing_distal"] = curvature_metrics.get("missing_distal")
+
+            if self._geometry_verifier is not None:
+                boosted_score, boost_delta = self._apply_dynamic_boost(
+                    canonical_label,
+                    score,
+                    curvature_metrics,
+                )
+                if boost_delta > 0.0:
+                    payload["score_boost"] = boost_delta
+                    score = boosted_score
 
             thresholds = self._current_threshold(canonical_label)
             self._consensus.add(canonical_label, score, timestamp)
@@ -2684,6 +2893,12 @@ class CameraGestureStream:
             return False
 
         blur_threshold = float(quality.blur_laplacian_min or 0.0)
+        if (
+            blur_threshold > 0.0
+            and self._sensitivity_mode == "BALANCED"
+            and pixel_coverage >= 0.75
+        ):
+            blur_threshold *= 0.9
         if blur_threshold > 0.0:
             try:
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
