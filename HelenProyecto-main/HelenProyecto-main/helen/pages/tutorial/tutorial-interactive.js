@@ -7,6 +7,66 @@
   const navigationGestures = new Set(['clima', 'weather', 'reloj', 'hora', 'inicio', 'home', 'alarma', 'alarmas', 'ajustes', 'configuracion', 'dispositivos', 'devices']);
   const trainerStates = new Map();
   const body = document.body;
+  const tutorialRoot = document.querySelector('[data-tutorial-root]');
+
+  const raf = (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function')
+    ? window.requestAnimationFrame.bind(window)
+    : (callback) => window.setTimeout(callback, 16);
+
+  const caf = (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function')
+    ? window.cancelAnimationFrame.bind(window)
+    : window.clearTimeout.bind(window);
+
+  let pendingLayoutFrame = null;
+
+  const getActiveTutorialView = () => {
+    if (!tutorialRoot) {
+      return null;
+    }
+    return tutorialRoot.querySelector('.tut-view.is-active') || tutorialRoot.firstElementChild;
+  };
+
+  const applyTutorialLayout = () => {
+    if (!tutorialRoot) {
+      return;
+    }
+
+    const activeView = getActiveTutorialView();
+    const target = activeView || tutorialRoot;
+    const rect = target.getBoundingClientRect();
+    const availableHeight = window.innerHeight || document.documentElement.clientHeight || rect.height;
+    const availableWidth = window.innerWidth || document.documentElement.clientWidth || rect.width;
+    const shouldCenter = rect.height > 0 && rect.height + 40 < availableHeight;
+
+    if (shouldCenter) {
+      const verticalPadding = Math.max(28, Math.floor((availableHeight - rect.height) / 2));
+      const horizontalPadding = Math.max(22, Math.floor(availableWidth * 0.04));
+      tutorialRoot.style.justifyContent = 'center';
+      tutorialRoot.style.paddingTop = `${verticalPadding}px`;
+      tutorialRoot.style.paddingBottom = `${verticalPadding}px`;
+      tutorialRoot.style.paddingLeft = `${horizontalPadding}px`;
+      tutorialRoot.style.paddingRight = `${horizontalPadding}px`;
+    } else {
+      tutorialRoot.style.justifyContent = '';
+      tutorialRoot.style.paddingTop = '';
+      tutorialRoot.style.paddingBottom = '';
+      tutorialRoot.style.paddingLeft = '';
+      tutorialRoot.style.paddingRight = '';
+    }
+  };
+
+  const scheduleTutorialLayoutUpdate = () => {
+    if (!tutorialRoot) {
+      return;
+    }
+    if (pendingLayoutFrame !== null) {
+      return;
+    }
+    pendingLayoutFrame = raf(() => {
+      pendingLayoutFrame = null;
+      applyTutorialLayout();
+    });
+  };
 
   let userMotionPreference = null;
 
@@ -139,12 +199,15 @@
         setModuleStage(state, 'idle');
       }, Math.max(600, duration));
     }
+
+    scheduleTutorialLayoutUpdate();
   };
 
   const updateStatus = (state, message, positive = false) => {
     if (!state.statusEl) return;
     state.statusEl.textContent = message;
     state.statusEl.classList.toggle('is-positive', positive);
+    scheduleTutorialLayoutUpdate();
   };
 
   const highlightCurrentStep = (state) => {
@@ -185,6 +248,8 @@
     } else {
       updateStatus(state, state.defaultMessage || 'Realiza las señas en orden.');
     }
+
+    scheduleTutorialLayoutUpdate();
   };
 
   const finishPractice = (state) => {
@@ -195,6 +260,7 @@
     highlightCurrentStep(state);
     setModuleStage(state, 'complete');
     updateStatus(state, state.successMessage, true);
+    scheduleTutorialLayoutUpdate();
   };
 
   const completeCurrentStep = (state) => {
@@ -222,6 +288,8 @@
     } else {
       finishPractice(state);
     }
+
+    scheduleTutorialLayoutUpdate();
   };
 
   const attachTrainer = (trainer) => {
@@ -279,6 +347,8 @@
         startPractice(state);
       });
     }
+
+    scheduleTutorialLayoutUpdate();
   };
 
   const handleGesture = (data = {}) => {
@@ -353,15 +423,20 @@
 
   if (trainers.length) {
     trainers.forEach(attachTrainer);
+    scheduleTutorialLayoutUpdate();
   }
 
   setupMotionToggle();
+  scheduleTutorialLayoutUpdate();
 
   if (typeof window.socket === 'object' && typeof window.socket.on === 'function') {
     window.socket.on('message', handleGesture);
   } else {
     console.warn('[Helen] Tutorial interactivo: no hay conexión SSE para validar las señas.');
   }
+
+  window.addEventListener('resize', scheduleTutorialLayoutUpdate);
+  window.addEventListener('hashchange', scheduleTutorialLayoutUpdate);
 
   const interceptNavigation = (gestureKey, normalizedGesture) => {
     const candidate = collapseGesture(gestureKey || normalizedGesture || '');
@@ -373,6 +448,15 @@
   };
 
   window.addEventListener('unload', () => {
+    if (pendingLayoutFrame !== null) {
+      caf(pendingLayoutFrame);
+      pendingLayoutFrame = null;
+    }
+    window.removeEventListener('resize', scheduleTutorialLayoutUpdate);
+    window.removeEventListener('hashchange', scheduleTutorialLayoutUpdate);
+    if (window.socket && typeof window.socket.off === 'function') {
+      window.socket.off('message', handleGesture);
+    }
     if (window.helenTutorial && window.helenTutorial.interceptNavigation === interceptNavigation) {
       delete window.helenTutorial;
     }

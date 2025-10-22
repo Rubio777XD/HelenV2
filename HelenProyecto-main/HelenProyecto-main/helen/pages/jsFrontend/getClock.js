@@ -1,4 +1,3 @@
-// Zonas horarias de municipios de Baja California
 const ZONAS_HORARIAS = {
   mexicali: "America/Tijuana",
   ensenada: "America/Tijuana",
@@ -8,192 +7,256 @@ const ZONAS_HORARIAS = {
   chiapas: "America/Mexico_City",
 };
 
-// Configuración global
 const CONFIG = {
   STORAGE_KEY: "selectedCity",
   DEFAULT_CITY: "tijuana",
-  TIMEZONEDB_API_KEY: "SJABR4Q4XL7D", 
+  TIMEZONEDB_API_KEY: "SJABR4Q4XL7D",
 };
 
-let ultimaHoraObtenida = null;
-let ultimaFechaObtenida = null;
-let formato24Horas = true; // Por defecto, formato 24h
+(function () {
+  'use strict';
 
-
-/**
- * Obtiene la hora local desde la API de TimeZoneDB con reintentos en caso de error.
- * @param {string} timezone - Zona horaria.
- * @param {number} retries - Número de reintentos.
- * @param {number} delay - Tiempo de espera entre reintentos en milisegundos.
- */
-async function obtenerHoraLocalTimeZoneDB(timezone, retries = 5, delay = 2000) {
-  try {
-    const response = await fetch(
-      `https://api.timezonedb.com/v2.1/get-time-zone?key=${CONFIG.TIMEZONEDB_API_KEY}&format=json&by=zone&zone=${timezone}`
-    );
-
-    if (!response.ok) {
-      throw new Error(`Error en la solicitud: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return {
-      horaLocal: data.formatted, // Hora en formato ISO (ejemplo: "2024-05-09 22:12:00")
-    };
-  } catch (error) {
-    if (retries > 0) {
-      console.warn(`Error al obtener la hora. Reintentando en ${delay / 1000} segundos...`);
-      await new Promise((resolve) => setTimeout(resolve, delay)); // Espera antes de reintentar
-      return obtenerHoraLocalTimeZoneDB(timezone, retries - 1, delay); // Reintenta
-    } else {
-      throw new Error(`Error después de varios intentos: ${error.message}`);
-    }
-  }
-}
-
-/**
- * Formatea la fecha en formato "día de Mes, Año" (ejemplo: "9 de Mayo, 2024")
- * @param {string} fecha - Fecha en formato ISO (ejemplo: "2024-05-09 22:12:00")
- */
-function formatearFecha(fecha) {
-  const meses = [
-    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+  const MONTHS = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ];
-  const [fechaStr, horaStr] = fecha.split(" ");
-  const [anio, mes, dia] = fechaStr.split("-");
-  return `${dia} de ${meses[parseInt(mes) - 1]}, ${anio}`;
-}
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+  const RETRY_DELAY_MS = 60 * 1000;
 
-/**
- * Extrae la hora en formato "HH:MM:SS" desde una fecha ISO
- */
-function extraerHora(fecha) {
-  const [_, horaStr] = fecha.split(" ");
-  const [hora, minuto, segundo] = horaStr.split(":");
+  const state = {
+    timezoneKey: CONFIG.DEFAULT_CITY,
+    is24h: true,
+    localBaseMs: 0,
+    syncClientMs: 0,
+    tickTimer: null,
+    refreshTimer: null,
+    lastRenderedMs: 0,
+  };
 
-  if (formato24Horas) {
-    return `${hora}:${minuto}:${segundo}`;
-  } else {
-    let h = parseInt(hora);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    h = h % 12 || 12; // convierte 0 a 12
-    return `${h.toString().padStart(2, '0')}:${minuto}:${segundo} ${ampm}`;
-  }
-}
+  const elements = {
+    clock: null,
+    date: null,
+    toggleButton: null,
+    selector: null,
+  };
 
+  const pad2 = (value) => String(value).padStart(2, '0');
 
-/**
- * Actualiza las etiquetas específicas con la hora y la fecha
- * @param {string} hora - Hora en formato "HH:MM:SS"
- * @param {string} fecha - Fecha en formato "día de Mes, Año"
- */
-function actualizarEtiquetas(hora, fecha) {
-  const clockItem = document.querySelector(".clock-item");
-  const dateItem = document.querySelector(".date-item");
+  const setElementText = (element, value) => {
+    if (!element) {
+      return;
+    }
+    if (element.textContent !== value) {
+      element.textContent = value;
+    }
+  };
 
-  if (clockItem && dateItem) {
-    let horaMostrada = hora;
+  const computeParts = (ms) => {
+    const date = new Date(ms);
+    return {
+      hours: date.getUTCHours(),
+      minutes: date.getUTCMinutes(),
+      seconds: date.getUTCSeconds(),
+      day: date.getUTCDate(),
+      monthIndex: date.getUTCMonth(),
+      year: date.getUTCFullYear(),
+    };
+  };
 
-    if (!formato24Horas) {
-      const [h, m, s] = hora.split(":").map(Number);
-      const ampm = h >= 12 ? "PM" : "AM";
-      const hora12 = h % 12 === 0 ? 12 : h % 12;
-      horaMostrada = `${hora12.toString().padStart(2, "0")}:${m
-        .toString()
-        .padStart(2, "0")}:${s.toString().padStart(2, "0")} ${ampm}`;
+  const formatTime = (parts) => {
+    if (state.is24h) {
+      return `${pad2(parts.hours)}:${pad2(parts.minutes)}:${pad2(parts.seconds)}`;
+    }
+    const hour12 = parts.hours % 12 || 12;
+    const suffix = parts.hours >= 12 ? 'PM' : 'AM';
+    return `${pad2(hour12)}:${pad2(parts.minutes)}:${pad2(parts.seconds)} ${suffix}`;
+  };
+
+  const formatDate = (parts) => `${parts.day} de ${MONTHS[parts.monthIndex]}, ${parts.year}`;
+
+  const renderFromMs = (ms) => {
+    if (!ms) {
+      return;
+    }
+    const parts = computeParts(ms);
+    setElementText(elements.clock, formatTime(parts));
+    setElementText(elements.date, formatDate(parts));
+    state.lastRenderedMs = ms;
+  };
+
+  const stopTick = () => {
+    if (state.tickTimer) {
+      window.clearTimeout(state.tickTimer);
+      state.tickTimer = null;
+    }
+  };
+
+  const runTick = () => {
+    if (!state.localBaseMs) {
+      return;
+    }
+    const now = Date.now();
+    const elapsed = now - state.syncClientMs;
+    const currentMs = state.localBaseMs + elapsed;
+    renderFromMs(currentMs);
+    const remainder = currentMs % 1000;
+    const delay = remainder ? 1000 - remainder : 1000;
+    state.tickTimer = window.setTimeout(runTick, Math.max(200, delay));
+  };
+
+  const startTick = () => {
+    stopTick();
+    runTick();
+  };
+
+  const scheduleRefresh = (delayMs) => {
+    if (state.refreshTimer) {
+      window.clearTimeout(state.refreshTimer);
+      state.refreshTimer = null;
+    }
+    const delay = Math.max(RETRY_DELAY_MS, typeof delayMs === 'number' ? delayMs : ONE_HOUR_MS);
+    state.refreshTimer = window.setTimeout(() => {
+      state.refreshTimer = null;
+      actualizarHoraLocal();
+    }, delay);
+  };
+
+  const fetchWithRetry = async (timezone) => {
+    const url = `https://api.timezonedb.com/v2.1/get-time-zone?key=${CONFIG.TIMEZONEDB_API_KEY}&format=json&by=zone&zone=${encodeURIComponent(timezone)}`;
+    let attempt = 0;
+    let backoff = 2000;
+
+    while (attempt <= 5) {
+      try {
+        const response = await fetch(url, { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error(`Error en la solicitud: ${response.status}`);
+        }
+        const data = await response.json();
+        return {
+          formatted: data.formatted,
+          timestamp: Number(data.timestamp),
+          gmtOffset: Number(data.gmtOffset),
+          zoneName: data.zoneName || timezone,
+        };
+      } catch (error) {
+        attempt += 1;
+        if (attempt > 5) {
+          throw error;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, backoff));
+        backoff = Math.min(backoff * 1.5, 8000);
+      }
+    }
+    throw new Error('No se pudo obtener la hora.');
+  };
+
+  async function actualizarHoraLocal() {
+    const timezoneKey = state.timezoneKey || CONFIG.DEFAULT_CITY;
+    const timezone = ZONAS_HORARIAS[timezoneKey];
+    if (!timezone) {
+      console.error('[Helen] Zona horaria no válida:', timezoneKey);
+      return;
     }
 
-    clockItem.textContent = horaMostrada;
-    dateItem.textContent = fecha;
-  }
-}
+    let success = false;
 
+    try {
+      const result = await fetchWithRetry(timezone);
+      const timestamp = Number(result.timestamp);
+      const offset = Number(result.gmtOffset);
 
-/**
- * Simula el avance del tiempo
- */
-function simularAvanceTiempo() {
-  if (!ultimaHoraObtenida || !ultimaFechaObtenida) return;
-
-  const [hora, minuto, segundo] = ultimaHoraObtenida.split(":");
-  let segundosTotales = parseInt(hora) * 3600 + parseInt(minuto) * 60 + parseInt(segundo);
-
-  setInterval(() => {
-    segundosTotales++;
-    const nuevaHora = new Date(segundosTotales * 1000).toISOString().substr(11, 8);
-    actualizarEtiquetas(nuevaHora, ultimaFechaObtenida);
-  }, 1000);
-}
-
-/**
- * Obtiene la ubicación desde localStorage y actualiza la hora local
- */
-async function actualizarHoraLocal() {
-  const municipioKey = localStorage.getItem(CONFIG.STORAGE_KEY) || CONFIG.DEFAULT_CITY;
-
-
-  if (!municipioKey || !ZONAS_HORARIAS[municipioKey]) {
-    console.error("Municipio no encontrado en localStorage o zona horaria.");
-    return;
-  }
-
-  const timezone = ZONAS_HORARIAS[municipioKey];
-
-  try {
-    // Obtiene la hora local desde la API de TimeZoneDB con reintentos
-    const resultado = await obtenerHoraLocalTimeZoneDB(timezone);
-
-    // Extrae la hora y la fecha de la respuesta
-    ultimaHoraObtenida = extraerHora(resultado.horaLocal);
-    ultimaFechaObtenida = formatearFecha(resultado.horaLocal);
-
-    // Actualiza la fecha y hora para que se aprecie visualmente
-    actualizarEtiquetas(ultimaHoraObtenida, ultimaFechaObtenida);
-
-    // Inicia la simulación del avance del tiempo
-    simularAvanceTiempo();
-  } catch (error) {
-    console.error(error.message);
-  }
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-  const selector = document.getElementById("citySelector");
-
-  // Si hay un valor guardado, lo selecciona
-  const saved = localStorage.getItem(CONFIG.STORAGE_KEY) || CONFIG.DEFAULT_CITY;
-  if (selector && saved) selector.value = saved;
-
-  // Escuchar cambios en el selector
-  if (selector) {
-    selector.addEventListener("change", () => {
-      const selected = selector.value;
-      if (ZONAS_HORARIAS[selected]) {
-        localStorage.setItem(CONFIG.STORAGE_KEY, selected);
-        location.reload(); // Recargar para aplicar la nueva zona horaria
+      if (!Number.isFinite(timestamp) || !Number.isFinite(offset)) {
+        throw new Error('Datos de hora incompletos.');
       }
-    });
+
+      const localBaseMs = (timestamp + offset) * 1000;
+      state.localBaseMs = localBaseMs;
+      state.syncClientMs = Date.now();
+      renderFromMs(localBaseMs);
+      startTick();
+      success = true;
+    } catch (error) {
+      console.error('[Helen] No se pudo sincronizar la hora:', error);
+      stopTick();
+      setElementText(elements.clock, '--:--:--');
+      setElementText(elements.date, 'Sin conexión');
+    } finally {
+      scheduleRefresh(success ? ONE_HOUR_MS : RETRY_DELAY_MS);
+    }
   }
-});
 
-function alternarFormatoHora() {
-  formato24Horas = !formato24Horas;
+  const loadSavedTimezone = () => {
+    try {
+      const saved = window.localStorage.getItem(CONFIG.STORAGE_KEY);
+      if (saved && ZONAS_HORARIAS[saved]) {
+        state.timezoneKey = saved;
+      } else {
+        state.timezoneKey = CONFIG.DEFAULT_CITY;
+      }
+    } catch (error) {
+      console.warn('[Helen] No se pudo leer localStorage:', error);
+      state.timezoneKey = CONFIG.DEFAULT_CITY;
+    }
+  };
 
-  const btn = document.querySelector(".toggle-format-btn");
-  btn.textContent = formato24Horas ? "Cambiar a 12 horas" : "Cambiar a 24 horas";
+  const handleSelectorChange = (event) => {
+    const selected = event.target.value;
+    if (!selected || !ZONAS_HORARIAS[selected]) {
+      return;
+    }
+    if (state.timezoneKey === selected) {
+      actualizarHoraLocal();
+      return;
+    }
+    state.timezoneKey = selected;
+    try {
+      window.localStorage.setItem(CONFIG.STORAGE_KEY, selected);
+    } catch (error) {
+      console.warn('[Helen] No se pudo guardar la zona horaria seleccionada:', error);
+    }
+    actualizarHoraLocal();
+  };
 
-  // Corregido: ya tienes la hora lista, no la vuelvas a extraer
-  if (ultimaHoraObtenida && ultimaFechaObtenida) {
-    actualizarEtiquetas(ultimaHoraObtenida, ultimaFechaObtenida);
-  }
-}
+  const init = () => {
+    elements.clock = document.querySelector('.clock-item');
+    elements.date = document.querySelector('.date-item');
+    elements.toggleButton = document.querySelector('.toggle-format-btn');
+    elements.selector = document.getElementById('citySelector');
 
+    loadSavedTimezone();
 
+    if (elements.selector) {
+      elements.selector.value = state.timezoneKey;
+      elements.selector.addEventListener('change', handleSelectorChange);
+    }
 
+    if (elements.toggleButton) {
+      elements.toggleButton.textContent = state.is24h ? 'Cambiar a 12 horas' : 'Cambiar a 24 horas';
+    }
 
-// Actualiza la hora al cargar la página
-actualizarHoraLocal();
+    actualizarHoraLocal();
+  };
 
-// Actualiza la hora cada hora (3600000 ms = 1 hora)
-setInterval(actualizarHoraLocal, 3600000);
+  const cleanup = () => {
+    stopTick();
+    if (state.refreshTimer) {
+      window.clearTimeout(state.refreshTimer);
+      state.refreshTimer = null;
+    }
+  };
+
+  document.addEventListener('DOMContentLoaded', init);
+  window.addEventListener('beforeunload', cleanup);
+  window.addEventListener('pagehide', cleanup);
+
+  window.alternarFormatoHora = function alternarFormatoHora() {
+    state.is24h = !state.is24h;
+    if (elements.toggleButton) {
+      elements.toggleButton.textContent = state.is24h ? 'Cambiar a 12 horas' : 'Cambiar a 24 horas';
+    }
+    if (state.lastRenderedMs) {
+      renderFromMs(state.lastRenderedMs);
+    }
+  };
+})();
