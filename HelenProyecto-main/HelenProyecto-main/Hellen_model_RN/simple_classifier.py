@@ -173,6 +173,13 @@ class SyntheticGestureStream:
         if not self._samples:
             raise ValueError("Dataset did not contain any samples")
 
+        priority = ["Start", "Clima", "Reloj", "Inicio"]
+        if any(label in priority for _, label in self._samples):
+            prioritized = [sample for sample in self._samples if sample[1] in priority]
+            others = [sample for sample in self._samples if sample[1] not in priority]
+            prioritized.sort(key=lambda pair: priority.index(pair[1]))
+            self._samples = prioritized + others
+
         self._index = 0
         self._lock = threading.Lock()
         self._jitter = float(jitter)

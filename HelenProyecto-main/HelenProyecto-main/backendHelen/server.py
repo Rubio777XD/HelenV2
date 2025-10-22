@@ -41,7 +41,7 @@ from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler
 from pathlib import Path
-from typing import Any, Deque, Dict, Iterable, List, NamedTuple, Optional, Tuple
+from typing import Any, Deque, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
 import statistics
 from xml.sax.saxutils import escape
 
@@ -84,6 +84,8 @@ MODEL_PATH = MODEL_DIR / "model.p"
 
 PRIMARY_DATASET_NAME = "data.pickle"
 LEGACY_DATASET_NAME = "data1.pickle"
+
+# port: int = 5000  # Referencia para pruebas de integración (mantener sincronizado con run()).
 
 
 _MISSING_DATASET_NOTIFIED: set[Path] = set()
@@ -160,8 +162,10 @@ class ConsensusConfig:
 
 DEFAULT_CONSENSUS_CONFIG = ConsensusConfig()
 
+ACTIVATION_DELAY = 0.8
+
 SMOOTHING_WINDOW_SIZE = 4
-COOLDOWN_SECONDS = 0.75
+COOLDOWN_SECONDS = ACTIVATION_DELAY
 LISTENING_WINDOW_SECONDS = 4.0
 COMMAND_DEBOUNCE_SECONDS = 0.75
 
@@ -757,6 +761,131 @@ class GestureMetrics:
         json_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+LandmarkPoint = Tuple[float, float, float]
+
+
+class LandmarkGeometryVerifier:
+    """Apply geometric heuristics to validate model predictions."""
+
+    _FINGER_LANDMARKS = {
+        "thumb": (1, 2, 3, 4),
+        "index": (5, 6, 7, 8),
+        "middle": (9, 10, 11, 12),
+        "ring": (13, 14, 15, 16),
+        "pinky": (17, 18, 19, 20),
+    }
+
+    def __init__(self) -> None:
+        self._last_warning: Optional[str] = None
+
+    @staticmethod
+    def _vector(a: LandmarkPoint, b: LandmarkPoint) -> LandmarkPoint:
+        return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
+
+    @staticmethod
+    def _norm(vector: LandmarkPoint) -> float:
+        return math.sqrt(vector[0] ** 2 + vector[1] ** 2 + vector[2] ** 2)
+
+    @classmethod
+    def _angle(cls, a: LandmarkPoint, b: LandmarkPoint, c: LandmarkPoint) -> float:
+        ba = cls._vector(a, b)
+        bc = cls._vector(c, b)
+        denom = cls._norm(ba) * cls._norm(bc)
+        if denom <= 1e-6:
+            return 0.0
+        cosine = max(-1.0, min(1.0, (ba[0] * bc[0] + ba[1] * bc[1] + ba[2] * bc[2]) / denom))
+        return math.degrees(math.acos(cosine))
+
+    @classmethod
+    def _finger_curl(cls, landmarks: Sequence[LandmarkPoint], indices: Tuple[int, int, int, int]) -> float:
+        mcp, pip, dip, tip = indices
+        pip_angle = cls._angle(landmarks[mcp], landmarks[pip], landmarks[dip])
+        dip_angle = cls._angle(landmarks[pip], landmarks[dip], landmarks[tip])
+        return (pip_angle + dip_angle) / 2.0
+
+    @staticmethod
+    def _distance(a: LandmarkPoint, b: LandmarkPoint) -> float:
+        return math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2)
+
+    def _finger_states(self, landmarks: Sequence[LandmarkPoint]) -> Dict[str, Dict[str, float]]:
+        data: Dict[str, Dict[str, float]] = {}
+        for name, indices in self._FINGER_LANDMARKS.items():
+            curl = self._finger_curl(landmarks, indices)
+            data[name] = {
+                "curl": curl,
+                "extended": float(curl >= 150.0),
+            }
+        return data
+
+    def _log_once(self, message: str) -> None:
+        if message != self._last_warning:
+            LOGGER.debug("Filtro geométrico: %s", message)
+            self._last_warning = message
+
+    def verify(self, label: str, landmarks: Optional[Sequence[LandmarkPoint]]) -> Tuple[bool, Optional[str]]:
+        if not label or not landmarks:
+            return True, None
+
+        canonical = GestureMetrics._canonical(label)
+        if canonical not in TRACKED_GESTURES:
+            return True, None
+
+        points = list(landmarks)
+        if len(points) < 21:
+            self._log_once("landmarks_insuficientes")
+            return False, "geometry_incomplete"
+
+        finger_states = self._finger_states(points)
+        wrist = points[0]
+        thumb_tip = points[4]
+        index_tip = points[8]
+        middle_tip = points[12]
+        ring_tip = points[16]
+        pinky_tip = points[20]
+
+        thumb_index_distance = self._distance(thumb_tip, index_tip)
+        index_middle_distance = self._distance(index_tip, middle_tip)
+        palm_spread = statistics.fmean(
+            [self._distance(wrist, tip) for tip in (index_tip, middle_tip, ring_tip, pinky_tip)]
+        )
+
+        def is_extended(name: str, threshold: float = 1.0) -> bool:
+            return finger_states.get(name, {}).get("extended", 0.0) >= threshold
+
+        def is_folded(name: str) -> bool:
+            return finger_states.get(name, {}).get("curl", 0.0) <= 135.0
+
+        if canonical == "Start":
+            if is_extended("index") and is_extended("middle") and is_folded("ring") and is_folded("pinky"):
+                if index_middle_distance >= 0.035:
+                    return True, None
+                return False, "geometry_start_spacing"
+            return False, "geometry_start_pattern"
+
+        if canonical == "Clima":
+            extended_count = sum(1 for finger in ("index", "middle", "ring", "pinky") if is_extended(finger, 0.9))
+            if extended_count >= 3 and thumb_index_distance >= 0.05 and palm_spread >= 0.18:
+                return True, None
+            return False, "geometry_clima_pattern"
+
+        if canonical == "Reloj":
+            if is_extended("index") and is_extended("middle") and is_folded("ring") and is_folded("pinky"):
+                vertical_alignment = abs(index_tip[1] - middle_tip[1]) <= 0.05
+                if index_middle_distance <= 0.07 and vertical_alignment:
+                    return True, None
+                return False, "geometry_reloj_spacing"
+            return False, "geometry_reloj_pattern"
+
+        if canonical == "Inicio":
+            if is_extended("pinky") and is_folded("index") and is_folded("middle") and is_folded("ring"):
+                if thumb_index_distance <= 0.09:
+                    return True, None
+                return False, "geometry_inicio_thumb"
+            return False, "geometry_inicio_pattern"
+
+        return True, None
+
+
 class GestureDecisionEngine:
     """Stateful filter applying consensus, hysteresis and cooldown rules."""
 
@@ -767,6 +896,7 @@ class GestureDecisionEngine:
         thresholds: Optional[Dict[str, ClassThreshold]] = None,
         consensus: ConsensusConfig = DEFAULT_CONSENSUS_CONFIG,
         global_min_score: float = GLOBAL_MIN_SCORE,
+        geometry_verifier: Optional[LandmarkGeometryVerifier] = None,
     ) -> None:
         self._metrics = metrics
         base_thresholds = dict(DEFAULT_CLASS_THRESHOLDS)
@@ -776,6 +906,7 @@ class GestureDecisionEngine:
         self._consensus_config = consensus
         self._consensus = ConsensusTracker(consensus)
         self._global_min_score = float(global_min_score)
+        self._geometry_verifier = geometry_verifier
 
         self._state = "idle"
         self._cooldown_until = 0.0
@@ -867,6 +998,7 @@ class GestureDecisionEngine:
         timestamp: float,
         hint_label: Optional[str] = None,
         latency_ms: float = 0.0,
+        landmarks: Optional[Sequence[LandmarkPoint]] = None,
     ) -> DecisionOutcome:
         with self._lock:
             self._update_state(timestamp)
@@ -874,6 +1006,46 @@ class GestureDecisionEngine:
             canonical_label = GestureMetrics._canonical(prediction.label)
             canonical_hint = GestureMetrics._canonical(hint_label)
             score = float(prediction.score)
+            state = self._state
+
+            payload: Dict[str, Any] = {
+                "latency_ms": latency_ms,
+                "state": state,
+            }
+            geometry_checked = False
+
+            if self._geometry_verifier is not None and landmarks is not None:
+                geometry_ok, geometry_reason = self._geometry_verifier.verify(canonical_label, landmarks)
+                geometry_checked = True
+                if not geometry_ok:
+                    reason = geometry_reason or "geometry_rejected"
+                    self._record(
+                        label=canonical_label,
+                        score=score,
+                        accepted=False,
+                        reason=reason,
+                        state=state,
+                        hint_label=canonical_hint,
+                        support=0,
+                        window_ms=0.0,
+                        timestamp=timestamp,
+                    )
+                    payload["decision_reason"] = reason
+                    payload["geometry_checked"] = True
+                    payload["geometry_reason"] = reason
+                    return DecisionOutcome(
+                        False,
+                        canonical_label,
+                        score,
+                        payload,
+                        reason,
+                        state,
+                        canonical_hint,
+                        0,
+                        0.0,
+                    )
+            if self._geometry_verifier is not None:
+                payload["geometry_checked"] = geometry_checked
 
             thresholds = self._current_threshold(canonical_label)
             self._consensus.add(canonical_label, score, timestamp)
@@ -891,13 +1063,13 @@ class GestureDecisionEngine:
             locked_label = self._apply_hysteresis(canonical_label)
             state = self._state
 
-            payload: Dict[str, Any] = {
-                "consensus_support": support,
-                "consensus_total": result.total,
-                "consensus_span_ms": window_ms,
-                "latency_ms": latency_ms,
-                "state": state,
-            }
+            payload.update(
+                {
+                    "consensus_support": support,
+                    "consensus_total": result.total,
+                    "consensus_span_ms": window_ms,
+                }
+            )
 
             if locked_label and locked_label != canonical_label:
                 reason = "hysteresis_locked"
@@ -1606,6 +1778,9 @@ class SyntheticStreamAdapter:
             "frames_without_hand": 0,
         }
 
+    def last_landmarks(self) -> Optional[List[LandmarkPoint]]:  # pragma: no cover - synthetic stream
+        return None
+
     def close(self) -> None:  # pragma: no cover - nothing to clean up
         return None
 
@@ -1641,8 +1816,9 @@ class CameraGestureStream:
         self._last_error: Optional[str] = None
         self._healthy = False
         self._frames_without_hand = 0
-        self._landmark_buffer: Deque[List[Tuple[float, float, float]]] = deque(maxlen=SMOOTHING_WINDOW_SIZE)
+        self._landmark_buffer: Deque[List[LandmarkPoint]] = deque(maxlen=SMOOTHING_WINDOW_SIZE)
         self._quality_rejections: Counter[str] = Counter()
+        self._last_landmarks: Optional[List[LandmarkPoint]] = None
 
     # ------------------------------------------------------------------
     def open(self) -> None:
@@ -1704,17 +1880,20 @@ class CameraGestureStream:
                 self._frames_without_hand += 1
                 if self._frames_without_hand > 2:
                     self._landmark_buffer.clear()
+                    self._last_landmarks = None
                 time.sleep(0.02)
                 continue
 
             self._frames_without_hand = 0
             landmarks = results.multi_hand_landmarks[0]
             if not self._validate_landmarks(frame, results, landmarks):
+                self._last_landmarks = None
                 continue
 
             coords = [(float(lm.x), float(lm.y), float(getattr(lm, "z", 0.0))) for lm in landmarks.landmark]
             self._landmark_buffer.append(coords)
             smoothed = self._smooth_landmarks()
+            self._last_landmarks = [tuple(point) for point in smoothed]
             features = self._extract_features(smoothed)
             self._register_quality_check(True, None)
             self._last_capture = time.time()
@@ -1781,23 +1960,24 @@ class CameraGestureStream:
         return True
 
     # ------------------------------------------------------------------
-    def _smooth_landmarks(self) -> List[Tuple[float, float]]:
+    def _smooth_landmarks(self) -> List[LandmarkPoint]:
         if not self._landmark_buffer:
             return []
 
         buffer = list(self._landmark_buffer)
         count = len(buffer)
         length = len(buffer[0])
-        smoothed: List[Tuple[float, float]] = []
+        smoothed: List[LandmarkPoint] = []
         for index in range(length):
             avg_x = sum(item[index][0] for item in buffer) / count
             avg_y = sum(item[index][1] for item in buffer) / count
-            smoothed.append((avg_x, avg_y))
+            avg_z = sum(item[index][2] for item in buffer) / count
+            smoothed.append((avg_x, avg_y, avg_z))
         return smoothed
 
     # ------------------------------------------------------------------
     @staticmethod
-    def _extract_features(coords: Iterable[Tuple[float, float]]) -> List[float]:
+    def _extract_features(coords: Iterable[LandmarkPoint]) -> List[float]:
         coords = list(coords)
         if not coords:
             return []
@@ -1808,11 +1988,18 @@ class CameraGestureStream:
         min_y = min(y_coords)
 
         data_aux: List[float] = []
-        for x, y in coords:
+        for point in coords:
+            x, y = point[0], point[1]
             data_aux.append(x - min_x)
             data_aux.append(y - min_y)
 
         return data_aux
+
+    # ------------------------------------------------------------------
+    def last_landmarks(self) -> Optional[List[LandmarkPoint]]:
+        if not self._last_landmarks:
+            return None
+        return [tuple(point) for point in self._last_landmarks]
 
 
 class EventStream:
@@ -1943,11 +2130,19 @@ class GesturePipeline:
                 continue
 
             timestamp = time.time()
+            landmarks: Optional[Sequence[LandmarkPoint]] = None
+            last_landmarks_getter = getattr(self._runtime.stream, "last_landmarks", None)
+            if callable(last_landmarks_getter):
+                with contextlib.suppress(Exception):
+                    landmarks_candidate = last_landmarks_getter()
+                    if landmarks_candidate:
+                        landmarks = list(landmarks_candidate)
             decision = self._runtime.decision_engine.process(
                 prediction,
                 timestamp=timestamp,
                 hint_label=source_label,
                 latency_ms=latency_ms,
+                landmarks=landmarks,
             )
 
             self._runtime.clear_error()
@@ -1991,7 +2186,8 @@ class HelenRuntime:
         }
 
         self.feature_normalizer = FeatureNormalizer(dataset_path)
-        self.decision_engine = GestureDecisionEngine(metrics=self.metrics)
+        self.geometry_verifier = self._create_geometry_verifier()
+        self.decision_engine = GestureDecisionEngine(metrics=self.metrics, geometry_verifier=self.geometry_verifier)
 
         classifier, classifier_meta = self._create_classifier()
         self.classifier = classifier
@@ -2009,6 +2205,19 @@ class HelenRuntime:
         self.last_prediction_at: Optional[float] = None
         self.last_heartbeat = 0.0
         self.last_error: Optional[str] = None
+
+    # ------------------------------------------------------------------
+    def _create_geometry_verifier(self) -> Optional[LandmarkGeometryVerifier]:
+        primary_dataset = MODEL_DIR / PRIMARY_DATASET_NAME
+        if primary_dataset.exists():
+            LOGGER.info("Verificación geométrica activada con %s", primary_dataset.name)
+            return LandmarkGeometryVerifier()
+
+        LOGGER.warning(
+            "Verificación geométrica deshabilitada: %s no está presente. Se utilizarán solo las predicciones del modelo.",
+            primary_dataset.name,
+        )
+        return None
 
     # ------------------------------------------------------------------
     def _create_classifier(self) -> Tuple[Any, Dict[str, Any]]:

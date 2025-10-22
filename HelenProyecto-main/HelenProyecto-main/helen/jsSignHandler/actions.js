@@ -89,9 +89,9 @@ const gestureActions = {
     devices: () => goToDevices()
 };
 
-const triggerActivationRing = () => {
+const triggerActivationRing = (options = {}) => {
     if (typeof window.triggerActivationAnimation === 'function') {
-        window.triggerActivationAnimation();
+        window.triggerActivationAnimation(options);
     }
 };
 
@@ -119,11 +119,8 @@ const shouldInterceptNavigation = (collapsedGesture, normalizedGesture) => {
 };
 
 socket.on('message', (data = {}) => {
-    console.log('Mensaje recibido del servidor:', data);
-
     if (data && data.active === false) {
         isActive = false;
-        console.log('Sistema desactivado desde el backend.');
         resetRingToIdle();
         return;
     }
@@ -140,14 +137,12 @@ socket.on('message', (data = {}) => {
 
     if (isActivation) {
         isActive = true;
-        console.log('Sistema activado. Ahora puedes realizar acciones.');
-        triggerActivationRing();
+        triggerActivationRing({ persist: true });
         resetDeactivationTimer();
         return;
     }
 
     if (!isActive) {
-        console.log('Sistema inactivo. Usa la seña "Start" para activarlo.');
         resetRingToIdle();
         return;
     }

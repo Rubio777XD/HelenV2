@@ -219,6 +219,25 @@
   margin: 2px auto 0;
   display: grid; grid-template-columns: 1fr auto;
   gap: 16px; align-items: end;
+  transition: opacity .24s ease;
+}
+
+.connect-panel[data-mode="idle"]{
+  opacity: .75;
+}
+
+.connect-panel[data-mode="open"] .password-field,
+.connect-panel[data-mode="idle"] .password-field{
+  opacity: .55;
+}
+
+.password-input:disabled{
+  color: rgba(230,240,255,.6);
+}
+
+.toggle-password[aria-disabled="true"]{
+  opacity: .45;
+  pointer-events: none;
 }
 
 .password-input-container label{ color:var(--fg-soft); font-size:14px }
@@ -239,9 +258,16 @@
   margin: 0 0 4px 0;
   font-size: 13px;
   color: var(--fg-soft);
+  transition: opacity .2s ease;
 }
 .connect-feedback--error{ color: #ff98a4; }
 .connect-feedback--success{ color: #72f0c8; }
+.connect-feedback[data-visible="false"]{
+  opacity: 0;
+}
+.connect-feedback[data-visible="true"]{
+  opacity: 1;
+}
 .connect-button{
   min-width:160px; height:44px; border-radius:12px; border:1px solid var(--card-border);
   background:radial-gradient(60% 60% at 30% 30%, var(--blue-a), var(--blue-b));

@@ -111,14 +111,12 @@ window.socket = socket;
 let isActive = false;
 let timeoutId;
 let lastNotification = "";
-let ringTransitionTimer;
 let ringFadeTimer;
 let ringErrorTimer;
 let currentRingState = 'idle';
 
 const DEACTIVATION_DELAY = 3000;
 const ABSOLUTE_URL_REGEX = /^(?:[a-z]+:)?\/\//i;
-const RING_DETECTION_MS = 900;
 const RING_ACTIVE_LINGER_MS = 5000;
 const RING_ERROR_MS = 900;
 
@@ -216,10 +214,6 @@ const ensureActivationRingElement = () => {
 };
 
 const clearRingTimers = () => {
-  if (ringTransitionTimer) {
-    clearTimeout(ringTransitionTimer);
-    ringTransitionTimer = undefined;
-  }
   if (ringFadeTimer) {
     clearTimeout(ringFadeTimer);
     ringFadeTimer = undefined;
@@ -248,10 +242,11 @@ const setRingState = (state, options = {}) => {
   }
 
   const linger = typeof options.linger === 'number' ? options.linger : RING_ACTIVE_LINGER_MS;
+  const persist = Boolean(options.persist);
 
   if (state === 'idle') {
     clearRingTimers();
-    ring.classList.remove('is-detected', 'is-active', 'is-error', 'is-visible');
+    ring.classList.remove('is-active', 'is-error', 'is-visible', 'is-persistent');
     currentRingState = 'idle';
     updateBodyActivationState(false);
     return;
@@ -259,11 +254,11 @@ const setRingState = (state, options = {}) => {
 
   updateBodyActivationState(true);
   ring.classList.add('is-visible');
+  clearRingTimers();
 
   if (state === 'error') {
-    clearRingTimers();
     currentRingState = 'error';
-    ring.classList.remove('is-detected', 'is-active');
+    ring.classList.remove('is-active', 'is-persistent');
     ring.classList.add('is-error');
     ringErrorTimer = window.setTimeout(() => {
       if (currentRingState === 'error') {
@@ -273,34 +268,18 @@ const setRingState = (state, options = {}) => {
     return;
   }
 
-  if (state === 'active') {
-    clearRingTimers();
-    currentRingState = 'active';
-    ring.classList.remove('is-detected', 'is-error');
-    ring.classList.add('is-active');
+  currentRingState = 'active';
+  ring.classList.remove('is-error');
+  ring.classList.add('is-active');
+  ring.classList.toggle('is-persistent', persist);
+
+  if (!persist && linger > 0) {
     scheduleFadeOut(Math.max(linger, 0));
-    return;
   }
-
-  // state === 'detected'
-  clearRingTimers();
-  currentRingState = 'detected';
-  ring.classList.remove('is-active', 'is-error');
-  ring.classList.add('is-detected');
-
-  ringTransitionTimer = window.setTimeout(() => {
-    if (currentRingState !== 'detected') {
-      return;
-    }
-    ring.classList.remove('is-detected');
-    ring.classList.add('is-active');
-    currentRingState = 'active';
-    scheduleFadeOut(Math.max(linger, 0));
-  }, RING_DETECTION_MS);
 };
 
-const triggerActivationAnimation = () => {
-  setRingState('detected');
+const triggerActivationAnimation = (options = {}) => {
+  setRingState('active', options);
 };
 
 const triggerRingError = () => {
@@ -403,6 +382,12 @@ window.triggerActivationAnimation = triggerActivationAnimation;
 window.triggerRingError = triggerRingError;
 window.setActivationRingState = setRingState;
 window.goToPageWithLoading = goToPageWithLoading;
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    clearRingTimers();
+  });
+}
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {

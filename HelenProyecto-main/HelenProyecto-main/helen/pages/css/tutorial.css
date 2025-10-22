@@ -21,6 +21,7 @@
   padding: clamp(36px, 7vh, 72px) clamp(20px, 6vw, 48px) clamp(32px, 6vh, 64px);
   position: relative;
   z-index: 0;
+  overflow: hidden;
 }
 
 @supports(padding:max(0px)){
@@ -34,11 +35,17 @@
 
 .screen-wrapper{
   width: min(var(--tutorial-max), 100%);
+  max-height: clamp(560px, 80vh, 920px);
   display: flex;
   flex-direction: column;
   gap: clamp(24px, 4vw, 36px);
   position: relative;
   z-index: 1;
+  padding: clamp(28px, 5vw, 44px);
+  border-radius: var(--r-lg, 32px);
+  background: linear-gradient(180deg, rgba(18,28,46,.94), rgba(12,21,36,.88));
+  box-shadow: var(--shadow-card, 0 26px 60px rgba(0,0,0,.38));
+  overflow: hidden;
 }
 
 .screen-header{
@@ -91,12 +98,21 @@
   max-width: 640px;
 }
 
-.view-stack{ width: 100%; position: relative; }
+.view-stack{
+  width: 100%;
+  position: relative;
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
 
 .tutorial-view{
   display: none;
   flex-direction: column;
   gap: clamp(20px, 4vw, 28px);
+  width: 100%;
+  flex: 1;
+  overflow: hidden;
 }
 
 .tutorial-view.is-active{
