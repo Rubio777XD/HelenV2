@@ -18,7 +18,7 @@ instalador de HELEN en Windows utilizando PyInstaller e Inno Setup.
 
 ## Requisitos previos locales
 
-1. Windows 10/11 con Python 3.10 o superior disponible en `PATH`.
+1. Windows 10/11 con Python 3.11 disponible en `PATH` (misma versión que CI).
 2. Herramientas de compilación de Visual Studio (recomendado para XGBoost).
 3. Inno Setup 6 instalado en `C:\Program Files (x86)\Inno Setup 6` si se desea
    generar el instalador.

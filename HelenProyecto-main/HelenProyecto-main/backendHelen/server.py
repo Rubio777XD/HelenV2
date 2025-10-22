@@ -68,6 +68,13 @@ LOGGER.setLevel(logging.INFO)
 if not LOGGER.handlers:
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s %(message)s")
 
+with contextlib.suppress(Exception):
+    import absl.logging as absl_logging  # type: ignore
+
+    absl_logging.set_verbosity(absl_logging.WARNING)
+    handler = absl_logging.get_absl_handler()
+    handler.setLevel(logging.WARNING)
+
 
 def _resolve_repo_root() -> Path:
     """Return the runtime root, compatible with PyInstaller bundles."""
@@ -174,6 +181,7 @@ QUALITY_MIN_HAND_SCORE = 0.55
 QUALITY_MIN_BBOX_AREA = 0.012
 QUALITY_MIN_BBOX_SIDE = 0.09
 QUALITY_BLUR_THRESHOLD = 35.0
+QUALITY_EDGE_MARGIN = 0.015
 
 
 class ConsensusVote(NamedTuple):
@@ -1819,6 +1827,8 @@ class CameraGestureStream:
         self._landmark_buffer: Deque[List[LandmarkPoint]] = deque(maxlen=SMOOTHING_WINDOW_SIZE)
         self._quality_rejections: Counter[str] = Counter()
         self._last_landmarks: Optional[List[LandmarkPoint]] = None
+        self._last_frame_shape: Optional[Tuple[int, int]] = None
+        self._last_roi: Optional[Dict[str, Any]] = None
 
     # ------------------------------------------------------------------
     def open(self) -> None:
@@ -1867,33 +1877,67 @@ class CameraGestureStream:
                 raise TimeoutError(self._last_error)
 
             ok, frame = self._cap.read()
-            if not ok:
+            if not ok or frame is None:
                 self._last_error = "No se pudo leer un frame de la cámara"
                 self._healthy = False
                 time.sleep(0.05)
                 continue
 
+            height, width = frame.shape[:2]
+            if height <= 0 or width <= 0:
+                self._last_error = "Dimensiones de imagen no válidas"
+                self._healthy = False
+                self._register_quality_check(False, "invalid_dimensions")
+                time.sleep(0.05)
+                continue
+
+            self._last_frame_shape = (int(height), int(width))
+
             image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = self._hands.process(image)
+            if hasattr(image, "flags"):
+                image.flags.writeable = False
+            try:
+                results = self._hands.process(image)
+            finally:
+                if hasattr(image, "flags"):
+                    image.flags.writeable = True
 
             if not results.multi_hand_landmarks:
                 self._frames_without_hand += 1
                 if self._frames_without_hand > 2:
                     self._landmark_buffer.clear()
                     self._last_landmarks = None
+                    self._last_roi = None
                 time.sleep(0.02)
                 continue
 
             self._frames_without_hand = 0
             landmarks = results.multi_hand_landmarks[0]
-            if not self._validate_landmarks(frame, results, landmarks):
+            if not self._validate_landmarks(frame, results, landmarks, width, height):
                 self._last_landmarks = None
+                self._last_roi = None
                 continue
 
-            coords = [(float(lm.x), float(lm.y), float(getattr(lm, "z", 0.0))) for lm in landmarks.landmark]
+            coords = [
+                (
+                    self._clamp_normalized(float(lm.x)),
+                    self._clamp_normalized(float(lm.y)),
+                    float(getattr(lm, "z", 0.0)),
+                )
+                for lm in landmarks.landmark
+            ]
+            roi_snapshot = self._snapshot_roi(coords, width, height)
+            if roi_snapshot is None:
+                self._register_quality_check(False, "roi_projection")
+                self._landmark_buffer.clear()
+                self._last_landmarks = None
+                self._last_roi = None
+                continue
+
             self._landmark_buffer.append(coords)
             smoothed = self._smooth_landmarks()
             self._last_landmarks = [tuple(point) for point in smoothed]
+            self._last_roi = roi_snapshot
             features = self._extract_features(smoothed)
             self._register_quality_check(True, None)
             self._last_capture = time.time()
@@ -1910,6 +1954,67 @@ class CameraGestureStream:
             "last_error": self._last_error,
             "frames_without_hand": self._frames_without_hand,
             "quality_rejections": dict(self._quality_rejections),
+            "frame_shape": self._last_frame_shape,
+            "roi_snapshot": self._last_roi,
+        }
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _clamp_normalized(value: float) -> float:
+        if not math.isfinite(value):
+            return 0.0
+        return min(1.0, max(0.0, float(value)))
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _normalised_to_pixel(value: float, size: int) -> int:
+        size = max(1, int(size))
+        return max(0, min(size - 1, int(round(value * (size - 1)))))
+
+    # ------------------------------------------------------------------
+    def _snapshot_roi(self, coords: Sequence[LandmarkPoint], width: int, height: int) -> Optional[Dict[str, Any]]:
+        if not coords or width <= 0 or height <= 0:
+            return None
+
+        x_values = [point[0] for point in coords]
+        y_values = [point[1] for point in coords]
+        min_x = min(x_values)
+        max_x = max(x_values)
+        min_y = min(y_values)
+        max_y = max(y_values)
+
+        if max_x <= min_x or max_y <= min_y:
+            return None
+
+        pixel_coords = [
+            (
+                self._normalised_to_pixel(point[0], width),
+                self._normalised_to_pixel(point[1], height),
+            )
+            for point in coords
+        ]
+
+        x_pixels = [coord[0] for coord in pixel_coords]
+        y_pixels = [coord[1] for coord in pixel_coords]
+
+        pixel_width = max(x_pixels) - min(x_pixels)
+        pixel_height = max(y_pixels) - min(y_pixels)
+        if pixel_width <= 0 or pixel_height <= 0:
+            return None
+
+        coverage = float((max_x - min_x) * (max_y - min_y))
+        pixel_coverage = float((pixel_width / width) * (pixel_height / height))
+
+        return {
+            "x1": int(min(x_pixels)),
+            "y1": int(min(y_pixels)),
+            "x2": int(max(x_pixels)),
+            "y2": int(max(y_pixels)),
+            "width": int(width),
+            "height": int(height),
+            "normalized_area": coverage,
+            "pixel_area": float(pixel_width * pixel_height),
+            "pixel_coverage": pixel_coverage,
         }
 
     # ------------------------------------------------------------------
@@ -1920,7 +2025,14 @@ class CameraGestureStream:
             self._quality_rejections[reason] += 1
 
     # ------------------------------------------------------------------
-    def _validate_landmarks(self, frame: Any, results: Any, landmarks: Any) -> bool:
+    def _validate_landmarks(
+        self,
+        frame: Any,
+        results: Any,
+        landmarks: Any,
+        image_width: int,
+        image_height: int,
+    ) -> bool:
         hand_score = 1.0
         try:
             classifications = results.multi_handedness[0].classification
@@ -1933,17 +2045,55 @@ class CameraGestureStream:
             self._register_quality_check(False, "low_confidence")
             return False
 
-        if len(getattr(landmarks, "landmark", [])) < QUALITY_MIN_LANDMARKS:
+        points = getattr(landmarks, "landmark", [])
+        if len(points) < QUALITY_MIN_LANDMARKS:
             self._register_quality_check(False, "incomplete_landmarks")
             return False
 
-        x_coords = [float(lm.x) for lm in landmarks.landmark]
-        y_coords = [float(lm.y) for lm in landmarks.landmark]
-        width = max(x_coords) - min(x_coords)
-        height = max(y_coords) - min(y_coords)
+        if image_width <= 0 or image_height <= 0:
+            self._register_quality_check(False, "invalid_dimensions")
+            return False
+
+        x_coords = [float(lm.x) for lm in points]
+        y_coords = [float(lm.y) for lm in points]
+        if not x_coords or not y_coords:
+            self._register_quality_check(False, "empty_landmarks")
+            return False
+
+        min_x = min(x_coords)
+        max_x = max(x_coords)
+        min_y = min(y_coords)
+        max_y = max(y_coords)
+
+        if (
+            min_x < -0.05
+            or min_y < -0.05
+            or max_x > 1.05
+            or max_y > 1.05
+        ):
+            self._register_quality_check(False, "roi_out_of_bounds")
+            return False
+
+        if (
+            min_x <= QUALITY_EDGE_MARGIN
+            or min_y <= QUALITY_EDGE_MARGIN
+            or max_x >= (1.0 - QUALITY_EDGE_MARGIN)
+            or max_y >= (1.0 - QUALITY_EDGE_MARGIN)
+        ):
+            self._register_quality_check(False, "hand_near_edge")
+            return False
+
+        width = max_x - min_x
+        height = max_y - min_y
         area = width * height
         if width < QUALITY_MIN_BBOX_SIDE or height < QUALITY_MIN_BBOX_SIDE or area < QUALITY_MIN_BBOX_AREA:
             self._register_quality_check(False, "small_bbox")
+            return False
+
+        pixel_width = self._normalised_to_pixel(max_x, image_width) - self._normalised_to_pixel(min_x, image_width)
+        pixel_height = self._normalised_to_pixel(max_y, image_height) - self._normalised_to_pixel(min_y, image_height)
+        if pixel_width <= 6 or pixel_height <= 6:
+            self._register_quality_check(False, "roi_too_small")
             return False
 
         if QUALITY_BLUR_THRESHOLD:

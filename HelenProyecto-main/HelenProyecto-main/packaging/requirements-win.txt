@@ -18,13 +18,13 @@ MarkupSafe==2.1.5
 click==8.1.7
 h11==0.14.0
 
-# Numerical + vision stack
+# Numerical + vision stack (pinned to avoid drift between CI y local)
 numpy==1.26.4
-scipy==1.16.2
+scipy==1.13.0
 scikit-learn==1.4.2
 xgboost==2.1.4
 opencv-python==4.9.0.80
 mediapipe==0.10.21
-sounddevice==0.4.7
+sounddevice==0.4.6
 
 # Keep build tooling (PyInstaller, etc.) managed separately

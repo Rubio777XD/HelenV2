@@ -1,6 +1,8 @@
 Param(
-    [string]$PythonVersion = "3.10",
+    [string]$PythonVersion = "3.11",
     [string]$VenvPath = "build-venv",
+    [string]$DistDir,
+    [string]$BuildDir,
     [switch]$SkipInstaller,
     [switch]$AllowMissingCamera
 )
@@ -43,8 +45,11 @@ Write-Host "==> Instalando herramientas de empaquetado"
 
 Write-Host "==> Ejecutando PyInstaller"
 $specFile = Join-Path $scriptDir "helen_backend.spec"
-$distPath = Join-Path $projectRoot "dist"
-$workPath = Join-Path $projectRoot "build"
+$distDir = if ($DistDir) { $DistDir } elseif ($env:PYINSTALLER_DIST) { $env:PYINSTALLER_DIST } else { "dist" }
+$workDir = if ($BuildDir) { $BuildDir } elseif ($env:PYINSTALLER_BUILD) { $env:PYINSTALLER_BUILD } else { "build" }
+$distPath = Join-Path $projectRoot $distDir
+$workPath = Join-Path $projectRoot $workDir
+Write-Host "==> Directorios" "dist:" $distPath ", build:" $workPath
 & $venvPython -m PyInstaller --clean --noconfirm --distpath $distPath --workpath $workPath $specFile
 
 if (-not $SkipInstaller) {
