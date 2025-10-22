@@ -1,30 +1,30 @@
 {
   "thresholds": {
     "Start": {
-      "enter": 0.75,
-      "release": 0.65
+      "enter": 0.705,
+      "release": 0.611
     },
     "Clima": {
-      "enter": 0.8,
-      "release": 0.7
+      "enter": 0.688,
+      "release": 0.602
     },
     "Reloj": {
-      "enter": 0.78,
-      "release": 0.68
+      "enter": 0.7332,
+      "release": 0.6392
     },
     "Inicio": {
-      "enter": 0.76,
-      "release": 0.66
+      "enter": 0.7144,
+      "release": 0.6204
     }
   },
   "global_min_score": 0.6,
   "consensus": {
-    "window_size": 5,
-    "required_votes": 3
+    "window_size": 4,
+    "required_votes": 2
   },
   "durations_s": {
     "cooldown": 0.8,
-    "listening_window": 4.0,
+    "listening_window": 5.5,
     "command_debounce": 0.75
   },
   "dataset": {
@@ -40,20 +40,16 @@
     }
   },
   "latency": {
-    "avg_ms": 9.022139749495546,
-    "p95_ms": 12.5,
-    "max_ms": 12.5,
-    "count": 4
+    "avg_ms": 0.0,
+    "p95_ms": 0.0,
+    "max_ms": 0.0,
+    "count": 0
   },
-  "samples": 18,
+  "samples": 0,
   "quality_checks": 0,
   "quality_rejections": {},
   "quality_rejection_rate": 0.0,
-  "threshold_rejections": {
-    "accepted": 2,
-    "cooldown_active": 4,
-    "awaiting_command": 12
-  },
+  "threshold_rejections": {},
   "classes": {
     "Clima": {
       "tp": 0,
@@ -76,27 +72,6 @@
       },
       "rejections": {}
     },
-    "Reloj": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 0,
-      "precision": null,
-      "recall": null,
-      "f1": null,
-      "accepted_scores": {
-        "min": null,
-        "max": null,
-        "mean": null,
-        "median": null
-      },
-      "rejected_scores": {
-        "min": null,
-        "max": null,
-        "mean": null,
-        "median": null
-      },
-      "rejections": {}
-    },
     "Inicio": {
       "tp": 0,
       "fp": 0,
@@ -119,36 +94,48 @@
       "rejections": {}
     },
     "Start": {
-      "tp": 2,
+      "tp": 0,
       "fp": 0,
-      "fn": 16,
-      "precision": 1.0,
-      "recall": 0.1111111111111111,
-      "f1": 0.19999999999999998,
+      "fn": 0,
+      "precision": null,
+      "recall": null,
+      "f1": null,
       "accepted_scores": {
-        "min": 0.9999703168869019,
-        "max": 0.9999834299087524,
-        "mean": 0.9999768733978271,
-        "median": 0.9999768733978271
+        "min": null,
+        "max": null,
+        "mean": null,
+        "median": null
       },
       "rejected_scores": {
-        "min": 0.9999682903289795,
-        "max": 0.9999841451644897,
-        "mean": 0.9999775514006615,
-        "median": 0.9999790787696838
+        "min": null,
+        "max": null,
+        "mean": null,
+        "median": null
       },
-      "rejections": {
-        "accepted": 2,
-        "cooldown_active": 4,
-        "awaiting_command": 12
-      }
+      "rejections": {}
+    },
+    "Reloj": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "precision": null,
+      "recall": null,
+      "f1": null,
+      "accepted_scores": {
+        "min": null,
+        "max": null,
+        "mean": null,
+        "median": null
+      },
+      "rejected_scores": {
+        "min": null,
+        "max": null,
+        "mean": null,
+        "median": null
+      },
+      "rejections": {}
     }
   },
-  "confusion_matrix": {
-    "Start": {
-      "Start": 2,
-      "None": 16
-    }
-  },
+  "confusion_matrix": {},
   "suggested_thresholds": []
 }

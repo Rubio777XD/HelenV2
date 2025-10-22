@@ -21,8 +21,8 @@
   const AUTO_REMOVE_DELAY = TIMER_TOAST_DURATION + 2200;
   const SOUND_CONFIG = {
     url: 'https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg',
-    fallbackInterval: 2600,
-    autoStopAfterMs: 2 * ONE_MINUTE,
+    fallbackInterval: 1600,
+    autoStopAfterMs: 0,
   };
   const PENDING_STORAGE_KEY = 'helen:timekeeper:pendingQueue:v1';
   const GLOBAL_EVENT_NAME = 'helen:timekeeper:fired';
@@ -601,7 +601,11 @@
 
   const scheduleSoundAutoStop = () => {
     clearSoundAutoStop();
-    if (typeof window === 'undefined') {
+    if (
+      typeof window === 'undefined'
+      || !SOUND_CONFIG.autoStopAfterMs
+      || SOUND_CONFIG.autoStopAfterMs <= 0
+    ) {
       return;
     }
     soundAutoStopTimer = window.setTimeout(() => {
@@ -750,6 +754,7 @@
     if (!fallbackAudio && typeof Audio === 'function') {
       try {
         fallbackAudio = new Audio('data:audio/wav;base64,UklGRhQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=');
+        fallbackAudio.volume = 1;
       } catch (error) {
         fallbackAudio = null;
       }
@@ -768,6 +773,7 @@
       const element = new Audio(SOUND_CONFIG.url);
       element.loop = true;
       element.preload = 'auto';
+      element.volume = 1;
       htmlAudioElement = element;
       return element;
     } catch (error) {
@@ -890,7 +896,7 @@
             source.loop = true;
             const gain = context.createGain ? context.createGain() : null;
             if (gain) {
-              gain.gain.setValueAtTime(0.45, context.currentTime);
+              gain.gain.setValueAtTime(0.68, context.currentTime);
               source.connect(gain);
               gain.connect(context.destination);
               loopGainNode = gain;
@@ -979,19 +985,20 @@
       const oscillator = context.createOscillator();
       oscillator.type = 'sine';
       oscillator.frequency.setValueAtTime(880, startAt);
-      gain.gain.linearRampToValueAtTime(0.36, startAt + 0.02);
+      gain.gain.linearRampToValueAtTime(0.55, startAt + 0.02);
       gain.gain.linearRampToValueAtTime(0, startAt + 1.1);
       oscillator.connect(gain);
       oscillator.start(startAt);
       oscillator.stop(startAt + 1.2);
 
-      audioQueueTime = startAt + 0.4;
+      audioQueueTime = startAt + 0.3;
       return;
     }
 
     if (fallbackAudio) {
       try {
         const cloneAudio = fallbackAudio.cloneNode();
+        cloneAudio.volume = 1;
         cloneAudio.play().catch(() => {});
       } catch (error) {
         console.warn('[HelenScheduler] No se pudo reproducir sonido de respaldo:', error);

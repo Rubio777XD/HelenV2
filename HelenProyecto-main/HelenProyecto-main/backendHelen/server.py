@@ -151,15 +151,39 @@ class ClassThreshold:
     release: float
 
 
-DEFAULT_CLASS_THRESHOLDS: Dict[str, ClassThreshold] = {
+BASE_CLASS_THRESHOLDS: Dict[str, ClassThreshold] = {
     "Start": ClassThreshold(enter=0.75, release=0.65),
     "Clima": ClassThreshold(enter=0.8, release=0.7),
     "Reloj": ClassThreshold(enter=0.78, release=0.68),
     "Inicio": ClassThreshold(enter=0.76, release=0.66),
 }
 
+GLOBAL_THRESHOLD_REDUCTION = 0.06
+CLIMA_EXTRA_THRESHOLD_REDUCTION = 0.08
+
+
+def _scaled_threshold(base: ClassThreshold, reduction: float) -> ClassThreshold:
+    scale = max(0.0, 1.0 - reduction)
+    return ClassThreshold(
+        enter=round(base.enter * scale, 4),
+        release=round(base.release * scale, 4),
+    )
+
+
+THRESHOLD_REDUCTION_BY_LABEL: Dict[str, float] = {
+    label: GLOBAL_THRESHOLD_REDUCTION
+    + (CLIMA_EXTRA_THRESHOLD_REDUCTION if label == "Clima" else 0.0)
+    for label in BASE_CLASS_THRESHOLDS
+}
+
+DEFAULT_CLASS_THRESHOLDS: Dict[str, ClassThreshold] = {
+    label: _scaled_threshold(base, THRESHOLD_REDUCTION_BY_LABEL[label])
+    for label, base in BASE_CLASS_THRESHOLDS.items()
+}
+
 GLOBAL_MIN_SCORE = 0.6
 DEFAULT_POLL_INTERVAL_S = 0.12
+BASE_FRAME_STRIDE = 2
 
 
 @dataclass(frozen=True)
@@ -177,15 +201,18 @@ class ConsensusConfig:
     window_size: int = 5
     required_votes: int = 3
 
-
-DEFAULT_CONSENSUS_CONFIG = ConsensusConfig()
+BASE_CONSENSUS_CONFIG = ConsensusConfig()
+DEFAULT_CONSENSUS_CONFIG = ConsensusConfig(window_size=4, required_votes=2)
 
 ACTIVATION_DELAY = 0.8
 
 SMOOTHING_WINDOW_SIZE = 4
 COOLDOWN_SECONDS = ACTIVATION_DELAY
-LISTENING_WINDOW_SECONDS = 4.0
+BASE_LISTENING_WINDOW_SECONDS = 4.0
+LISTENING_WINDOW_SECONDS = 5.5
 COMMAND_DEBOUNCE_SECONDS = 0.75
+POST_ACTIVATION_GRACE_SECONDS = 0.45
+BASE_POST_ACTIVATION_GRACE_SECONDS = 0.0
 
 QUALITY_MIN_LANDMARKS = 21
 QUALITY_MIN_HAND_SCORE = 0.55
@@ -193,6 +220,8 @@ QUALITY_MIN_BBOX_AREA = 0.012
 QUALITY_MIN_BBOX_SIDE = 0.09
 QUALITY_BLUR_THRESHOLD = 35.0
 QUALITY_EDGE_MARGIN = 0.015
+BASE_ROI_MARGIN = 0.0
+ROI_MARGIN = 0.035
 
 
 class ConsensusVote(NamedTuple):
@@ -793,6 +822,13 @@ class LandmarkGeometryVerifier:
         "ring": (13, 14, 15, 16),
         "pinky": (17, 18, 19, 20),
     }
+    _TIP_FALLBACKS: Dict[int, Tuple[int, ...]] = {
+        4: (3, 2, 1),
+        8: (7, 6, 5),
+        12: (11, 10, 9),
+        16: (15, 14, 13),
+        20: (19, 18, 17),
+    }
 
     def __init__(self) -> None:
         self._last_warning: Optional[str] = None
@@ -804,6 +840,35 @@ class LandmarkGeometryVerifier:
     @staticmethod
     def _norm(vector: LandmarkPoint) -> float:
         return math.sqrt(vector[0] ** 2 + vector[1] ** 2 + vector[2] ** 2)
+
+    @staticmethod
+    def _is_valid_landmark(point: Optional[LandmarkPoint]) -> bool:
+        if point is None:
+            return False
+        x, y = point[0], point[1]
+        return (
+            math.isfinite(x)
+            and math.isfinite(y)
+            and 0.0 <= float(x) <= 1.0
+            and 0.0 <= float(y) <= 1.0
+        )
+
+    @classmethod
+    def _resolve_landmark(
+        cls, landmarks: Sequence[LandmarkPoint], index: int
+    ) -> LandmarkPoint:
+        if not landmarks:
+            return (0.0, 0.0, 0.0)
+        fallback = landmarks[0]
+        for candidate in (index, *cls._TIP_FALLBACKS.get(index, ())):
+            if 0 <= candidate < len(landmarks):
+                point = landmarks[candidate]
+                if cls._is_valid_landmark(point):
+                    return point
+                fallback = point
+        if 0 <= index < len(landmarks):
+            return landmarks[index]
+        return fallback
 
     @classmethod
     def _angle(cls, a: LandmarkPoint, b: LandmarkPoint, c: LandmarkPoint) -> float:
@@ -849,18 +914,31 @@ class LandmarkGeometryVerifier:
         if canonical not in TRACKED_GESTURES:
             return True, None
 
-        points = list(landmarks)
+        raw_points = list(landmarks)
+        occluded_tips = sum(
+            1
+            for idx in (4, 8, 12, 16, 20)
+            if idx >= len(raw_points) or not self._is_valid_landmark(raw_points[idx])
+        )
+        points = list(raw_points)
         if len(points) < 21:
-            self._log_once("landmarks_insuficientes")
-            return False, "geometry_incomplete"
+            if canonical == "Clima" and len(points) >= 19:
+                filler = points[0] if points else (0.0, 0.0, 0.0)
+                while len(points) < 21:
+                    points.append(filler)
+            else:
+                self._log_once("landmarks_insuficientes")
+                return False, "geometry_incomplete"
+        else:
+            points = points[:21]
 
         finger_states = self._finger_states(points)
-        wrist = points[0]
-        thumb_tip = points[4]
-        index_tip = points[8]
-        middle_tip = points[12]
-        ring_tip = points[16]
-        pinky_tip = points[20]
+        wrist = self._resolve_landmark(points, 0)
+        thumb_tip = self._resolve_landmark(points, 4)
+        index_tip = self._resolve_landmark(points, 8)
+        middle_tip = self._resolve_landmark(points, 12)
+        ring_tip = self._resolve_landmark(points, 16)
+        pinky_tip = self._resolve_landmark(points, 20)
 
         thumb_index_distance = self._distance(thumb_tip, index_tip)
         index_middle_distance = self._distance(index_tip, middle_tip)
@@ -882,16 +960,43 @@ class LandmarkGeometryVerifier:
             return False, "geometry_start_pattern"
 
         if canonical == "Clima":
-            extended_count = sum(1 for finger in ("index", "middle", "ring", "pinky") if is_extended(finger, 0.9))
-            if extended_count >= 3 and thumb_index_distance >= 0.05 and palm_spread >= 0.18:
+            curl_values = [
+                finger_states.get(finger, {}).get("curl", 0.0)
+                for finger in ("index", "middle", "ring", "pinky")
+            ]
+            valid_curls = [value for value in curl_values if value > 0.0]
+            avg_curl = statistics.fmean(valid_curls) if valid_curls else 0.0
+            soft_curve_ok = sum(1 for value in valid_curls if value >= 105.0) >= max(2, len(valid_curls) - 1)
+            strong_curve_ok = sum(1 for value in valid_curls if value >= 120.0) >= max(1, len(valid_curls) - 1)
+            straight_rejection = sum(1 for value in valid_curls if value >= 175.0) <= 1
+            thumb_ok = thumb_index_distance >= 0.045
+            spread_ok = palm_spread >= 0.165
+            lateral_ok = index_middle_distance >= 0.02
+            occlusion_ok = occluded_tips <= 2
+
+            if (
+                occlusion_ok
+                and valid_curls
+                and thumb_ok
+                and spread_ok
+                and lateral_ok
+                and strong_curve_ok
+                and soft_curve_ok
+                and straight_rejection
+                and 120.0 <= avg_curl <= 175.0
+            ):
                 return True, None
             return False, "geometry_clima_pattern"
 
         if canonical == "Reloj":
             if is_extended("index") and is_extended("middle") and is_folded("ring") and is_folded("pinky"):
                 vertical_alignment = abs(index_tip[1] - middle_tip[1]) <= 0.05
-                if index_middle_distance <= 0.07 and vertical_alignment:
+                thumb_gate = thumb_index_distance <= 0.08
+                palm_gate = palm_spread <= 0.175
+                if index_middle_distance <= 0.07 and vertical_alignment and thumb_gate and palm_gate:
                     return True, None
+                if not thumb_gate or not palm_gate:
+                    return False, "geometry_reloj_thumb"
                 return False, "geometry_reloj_spacing"
             return False, "geometry_reloj_pattern"
 
@@ -931,6 +1036,7 @@ class GestureDecisionEngine:
         self._cooldown_until = 0.0
         self._listen_until = 0.0
         self._command_debounce_until = 0.0
+        self._post_activation_grace_until = 0.0
         self._listening_duration = LISTENING_WINDOW_SECONDS
         self._dominant_label: Optional[str] = None
         self._last_state_change = time.time()
@@ -953,11 +1059,13 @@ class GestureDecisionEngine:
         if self._state == "command_debounce" and timestamp >= self._command_debounce_until:
             self._state = "idle"
             self._last_state_change = timestamp
+            self._post_activation_grace_until = 0.0
             self._reset_consensus()
 
         if self._state == "listening" and timestamp >= self._listen_until:
             self._state = "idle"
             self._last_state_change = timestamp
+            self._post_activation_grace_until = 0.0
             self._reset_consensus()
 
     # ------------------------------------------------------------------
@@ -1171,6 +1279,28 @@ class GestureDecisionEngine:
                 payload["decision_reason"] = reason
                 return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
 
+            if (
+                canonical_label == "Clima"
+                and state == "listening"
+                and timestamp < self._post_activation_grace_until
+            ):
+                reason = "post_activation_grace"
+                remaining_ms = max(0.0, (self._post_activation_grace_until - timestamp) * 1000.0)
+                self._record(
+                    label=canonical_label,
+                    score=score,
+                    accepted=False,
+                    reason=reason,
+                    state=state,
+                    hint_label=canonical_hint,
+                    support=support,
+                    window_ms=window_ms,
+                    timestamp=timestamp,
+                )
+                payload["decision_reason"] = reason
+                payload["post_activation_grace_ms"] = remaining_ms
+                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+
             if state == "idle" and canonical_label != "Start":
                 reason = "awaiting_activation"
                 self._record(
@@ -1280,13 +1410,17 @@ class GestureDecisionEngine:
                 self._state = "cooldown"
                 self._cooldown_until = timestamp + COOLDOWN_SECONDS
                 self._last_activation_at = timestamp
+                self._post_activation_grace_until = timestamp + POST_ACTIVATION_GRACE_SECONDS
                 payload["next_state"] = "cooldown"
+                payload["post_activation_grace_ms"] = POST_ACTIVATION_GRACE_SECONDS * 1000.0
                 self._reset_consensus()
             else:
                 self._state = "command_debounce"
                 self._command_debounce_until = timestamp + COMMAND_DEBOUNCE_SECONDS
                 self._listen_until = timestamp
+                self._post_activation_grace_until = 0.0
                 payload["next_state"] = "command_debounce"
+                payload["post_activation_grace_ms"] = 0.0
                 self._reset_consensus()
 
             self._last_state_change = timestamp
@@ -1301,6 +1435,21 @@ class GestureDecisionEngine:
     @property
     def consensus_config(self) -> ConsensusConfig:
         return self._consensus_config
+
+    # ------------------------------------------------------------------
+    @property
+    def listening_window(self) -> float:
+        return self._listening_duration
+
+    # ------------------------------------------------------------------
+    @property
+    def post_activation_grace(self) -> float:
+        return POST_ACTIVATION_GRACE_SECONDS
+
+    # ------------------------------------------------------------------
+    @property
+    def post_activation_grace_until(self) -> float:
+        return self._post_activation_grace_until
 
 ACTIVATION_ALIASES = {
     # Mantener sincronizado con ``ACTIVATION_ALIASES`` en
@@ -1710,7 +1859,7 @@ class RuntimeConfig:
     fallback_to_synthetic: bool = True
     model_path: Path = MODEL_PATH
     dataset_path: Path = field(default_factory=_default_dataset_path)
-    process_every_n: int = 3
+    process_every_n: int = BASE_FRAME_STRIDE
 
 
 @dataclass
@@ -2147,30 +2296,31 @@ class CameraGestureStream:
         if max_x <= min_x or max_y <= min_y:
             return None
 
-        pixel_coords = [
-            (
-                self._normalised_to_pixel(point[0], width),
-                self._normalised_to_pixel(point[1], height),
-            )
-            for point in coords
-        ]
+        lateral_margin = ROI_MARGIN
+        top_margin = ROI_MARGIN * 1.15
+        expanded_min_x = max(0.0, min_x - lateral_margin)
+        expanded_max_x = min(1.0, max_x + lateral_margin)
+        expanded_min_y = max(0.0, min_y - top_margin)
+        expanded_max_y = min(1.0, max_y + ROI_MARGIN)
 
-        x_pixels = [coord[0] for coord in pixel_coords]
-        y_pixels = [coord[1] for coord in pixel_coords]
+        pixel_min_x = self._normalised_to_pixel(expanded_min_x, width)
+        pixel_max_x = self._normalised_to_pixel(expanded_max_x, width)
+        pixel_min_y = self._normalised_to_pixel(expanded_min_y, height)
+        pixel_max_y = self._normalised_to_pixel(expanded_max_y, height)
 
-        pixel_width = max(x_pixels) - min(x_pixels)
-        pixel_height = max(y_pixels) - min(y_pixels)
+        pixel_width = pixel_max_x - pixel_min_x
+        pixel_height = pixel_max_y - pixel_min_y
         if pixel_width <= 0 or pixel_height <= 0:
             return None
 
-        coverage = float((max_x - min_x) * (max_y - min_y))
+        coverage = float((expanded_max_x - expanded_min_x) * (expanded_max_y - expanded_min_y))
         pixel_coverage = float((pixel_width / width) * (pixel_height / height))
 
         return {
-            "x1": int(min(x_pixels)),
-            "y1": int(min(y_pixels)),
-            "x2": int(max(x_pixels)),
-            "y2": int(max(y_pixels)),
+            "x1": int(pixel_min_x),
+            "y1": int(pixel_min_y),
+            "x2": int(pixel_max_x),
+            "y2": int(pixel_max_y),
             "width": int(width),
             "height": int(height),
             "normalized_area": coverage,
@@ -2511,9 +2661,10 @@ class HelenRuntime:
                 tuned_interval,
                 PI_CAMERA_PROFILE.model,
             )
-        stride = max(1, int(getattr(self.config, 'process_every_n', 3) or 3))
-        if PI_CAMERA_PROFILE and stride == 3:
-            stride = max(1, int(getattr(PI_CAMERA_PROFILE, 'process_every_n', stride) or stride))
+        stride_default = BASE_FRAME_STRIDE
+        stride = max(1, int(getattr(self.config, "process_every_n", stride_default) or stride_default))
+        if PI_CAMERA_PROFILE and stride == stride_default:
+            stride = max(1, int(getattr(PI_CAMERA_PROFILE, "process_every_n", stride) or stride))
         self.config.process_every_n = stride
         self.session_id = uuid.uuid4().hex
         self.started_at = time.time()
@@ -2554,6 +2705,8 @@ class HelenRuntime:
         self.last_prediction_at: Optional[float] = None
         self.last_heartbeat = 0.0
         self.last_error: Optional[str] = None
+        self._last_tuning_snapshot: Optional[Dict[str, Any]] = None
+        self._log_parameter_tuning()
 
     # ------------------------------------------------------------------
     def _create_geometry_verifier(self) -> Optional[LandmarkGeometryVerifier]:
@@ -2609,6 +2762,78 @@ class HelenRuntime:
         return SyntheticStreamAdapter(dataset_path), {"source": "synthetic"}
 
     # ------------------------------------------------------------------
+    def _log_parameter_tuning(self) -> None:
+        try:
+            snapshot = self.engine_status()
+        except Exception as error:  # pragma: no cover - logging helper
+            LOGGER.debug("No se pudo registrar la calibración inicial: %s", error)
+            return
+
+        thresholds_log: List[str] = []
+        for label, info in snapshot.get("thresholds", {}).items():
+            baseline = info.get("baseline") if isinstance(info, dict) else None
+            effective = info.get("effective") if isinstance(info, dict) else None
+            if not baseline or not effective:
+                continue
+            enter_base = float(baseline.get("enter", 0.0))
+            enter_new = float(effective.get("enter", 0.0))
+            release_base = float(baseline.get("release", 0.0))
+            release_new = float(effective.get("release", 0.0))
+            if not math.isclose(enter_base, enter_new, rel_tol=1e-6) or not math.isclose(
+                release_base, release_new, rel_tol=1e-6
+            ):
+                thresholds_log.append(
+                    f"{label}: on {enter_base:.3f}→{enter_new:.3f}, off {release_base:.3f}→{release_new:.3f}"
+                )
+
+        if thresholds_log:
+            LOGGER.info("Umbrales ajustados %s", "; ".join(thresholds_log))
+        else:
+            LOGGER.info("Umbrales sin cambios respecto al baseline")
+
+        consensus = snapshot.get("consensus", {})
+        base_consensus = consensus.get("baseline", {}) if isinstance(consensus, dict) else {}
+        eff_consensus = consensus.get("effective", {}) if isinstance(consensus, dict) else {}
+        if base_consensus and eff_consensus:
+            LOGGER.info(
+                "Consenso: ventana %s→%s, votos %s→%s",
+                base_consensus.get("window_size"),
+                eff_consensus.get("window_size"),
+                base_consensus.get("required_votes"),
+                eff_consensus.get("required_votes"),
+            )
+
+        timing = snapshot.get("timing", {}) if isinstance(snapshot, dict) else {}
+        listening = timing.get("listening_window_seconds", {}) if isinstance(timing, dict) else {}
+        grace = timing.get("post_activation_grace_seconds", {}) if isinstance(timing, dict) else {}
+        if listening:
+            LOGGER.info(
+                "Ventana de escucha %.2fs→%.2fs",
+                float(listening.get("baseline", 0.0)),
+                float(listening.get("effective", 0.0)),
+            )
+        if grace:
+            LOGGER.info("Gracia post-activación H fijada en %.3fs", float(grace.get("effective", 0.0)))
+
+        roi_margin = snapshot.get("roi_margin", {}) if isinstance(snapshot, dict) else {}
+        frame_stride = snapshot.get("frame_stride", {}) if isinstance(snapshot, dict) else {}
+        if roi_margin or frame_stride:
+            LOGGER.info(
+                "ROI margin %.3f→%.3f, stride %s→%s",
+                float(roi_margin.get("baseline", 0.0)),
+                float(roi_margin.get("effective", 0.0)),
+                frame_stride.get("baseline"),
+                frame_stride.get("effective"),
+            )
+
+        poll_interval = snapshot.get("poll_interval_s", {}) if isinstance(snapshot, dict) else {}
+        if poll_interval:
+            LOGGER.info(
+                "Intervalo de inferencia %.3fs→%.3fs",
+                float(poll_interval.get("baseline", 0.0)),
+                float(poll_interval.get("effective", 0.0)),
+            )
+
     def start(self) -> None:
         self.pipeline.start()
 
@@ -2748,6 +2973,73 @@ class HelenRuntime:
             LOGGER.warning("No se pudo escribir el reporte de métricas: %s", error)
 
     # ------------------------------------------------------------------
+    def engine_status(self) -> Dict[str, Any]:
+        thresholds = self.decision_engine.thresholds()
+        summary: Dict[str, Any] = {}
+        labels = set(BASE_CLASS_THRESHOLDS) | set(thresholds)
+        for label in sorted(labels):
+            base = BASE_CLASS_THRESHOLDS.get(label)
+            tuned = thresholds.get(label)
+            summary[label] = {
+                "baseline": {
+                    "enter": round(base.enter, 4),
+                    "release": round(base.release, 4),
+                }
+                if base
+                else None,
+                "effective": {
+                    "enter": round(tuned.enter, 4),
+                    "release": round(tuned.release, 4),
+                }
+                if tuned
+                else None,
+                "reduction": THRESHOLD_REDUCTION_BY_LABEL.get(label),
+            }
+
+        consensus_cfg = self.decision_engine.consensus_config
+        consensus = {
+            "baseline": {
+                "window_size": BASE_CONSENSUS_CONFIG.window_size,
+                "required_votes": BASE_CONSENSUS_CONFIG.required_votes,
+            },
+            "effective": {
+                "window_size": consensus_cfg.window_size,
+                "required_votes": consensus_cfg.required_votes,
+            },
+        }
+
+        timing = {
+            "cooldown_seconds": {"baseline": ACTIVATION_DELAY, "effective": COOLDOWN_SECONDS},
+            "listening_window_seconds": {
+                "baseline": BASE_LISTENING_WINDOW_SECONDS,
+                "effective": round(self.decision_engine.listening_window, 4),
+            },
+            "post_activation_grace_seconds": {
+                "baseline": BASE_POST_ACTIVATION_GRACE_SECONDS,
+                "effective": round(self.decision_engine.post_activation_grace, 4),
+            },
+        }
+
+        snapshot = {
+            "thresholds": summary,
+            "consensus": consensus,
+            "timing": timing,
+            "roi_margin": {"baseline": BASE_ROI_MARGIN, "effective": ROI_MARGIN},
+            "frame_stride": {
+                "baseline": BASE_FRAME_STRIDE,
+                "effective": int(self.config.process_every_n),
+            },
+            "poll_interval_s": {
+                "baseline": DEFAULT_POLL_INTERVAL_S,
+                "effective": float(self.config.poll_interval_s),
+            },
+            "global_min_score": GLOBAL_MIN_SCORE,
+            "post_activation_grace_until": self.decision_engine.post_activation_grace_until,
+        }
+        self._last_tuning_snapshot = snapshot
+        return snapshot
+
+    # ------------------------------------------------------------------
     def health(self) -> HealthSnapshot:
         with self.lock:
             last_prediction = self.last_prediction
@@ -2829,6 +3121,11 @@ class HelenRequestHandler(SimpleHTTPRequestHandler):
         if path in HEALTH_ENDPOINTS:
             snapshot = self.runtime.health()
             self._write_json(snapshot.__dict__)
+            return
+
+        if path == "/engine/status":
+            status_snapshot = self.runtime.engine_status()
+            self._write_json(status_snapshot)
             return
 
         if path == "/net/online":
@@ -2938,7 +3235,60 @@ class HelenRequestHandler(SimpleHTTPRequestHandler):
             "message": "connected",
             "source": "sse",
         }
-        self.runtime.event_stream.broadcast(warmup)
+
+        last_event: Optional[Dict[str, Any]] = None
+        with self.runtime.lock:
+            if self.runtime.last_prediction:
+                last_event = dict(self.runtime.last_prediction)
+                warmup["last_event"] = last_event
+
+        try:
+            frame = json.dumps(warmup, ensure_ascii=False).encode("utf-8")
+            self.wfile.write(b"data: " + frame + b"\n\n")
+            self.wfile.flush()
+        except Exception:  # pragma: no cover - network I/O
+            self.runtime.event_stream.unregister(client_id)
+            return
+
+        snapshot_last_at = last_event and last_event.get("timestamp")
+
+        def delayed_replay() -> None:
+            time.sleep(1.0)
+            with self.runtime.lock:
+                current = dict(self.runtime.last_prediction) if self.runtime.last_prediction else None
+            if current is None and snapshot_last_at:
+                # No hay evento previo; nada que retransmitir.
+                return
+            if current is not None and snapshot_last_at:
+                try:
+                    existing_ts = current.get("timestamp")
+                except AttributeError:  # pragma: no cover - defensive
+                    existing_ts = None
+                if existing_ts != snapshot_last_at:
+                    return
+            if current is None:
+                current = {
+                    "session_id": self.runtime.session_id,
+                    "sequence": -2,
+                    "timestamp": _iso_timestamp(time.time()),
+                    "gesture": "Start",
+                    "character": "Start",
+                    "score": 0.0,
+                    "latency_ms": 0.0,
+                    "source": "synthetic",
+                    "replayed": True,
+                }
+            else:
+                current = dict(current)
+                current.setdefault("replayed", True)
+            try:
+                payload = json.dumps(current, ensure_ascii=False).encode("utf-8")
+                self.wfile.write(b"data: " + payload + b"\n\n")
+                self.wfile.flush()
+            except Exception:  # pragma: no cover - network I/O
+                return
+
+        threading.Thread(target=delayed_replay, daemon=True).start()
 
         try:
             while True:

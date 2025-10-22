@@ -1,32 +1,43 @@
 :root{
-  --tutorial-max-width: var(--content-max, 1240px);
-  --tutorial-card-width: clamp(280px, 24vw, 340px);
-  --tutorial-card-gap: clamp(22px, 4vw, 32px);
-  --tutorial-flow-max: clamp(520px, 56vw, 720px);
-  --tutorial-stage-max: clamp(420px, 62vh, 560px);
+  --tutorial-max-width: clamp(720px, 78vw, 980px);
+  --tutorial-card-width: clamp(260px, 22vw, 320px);
+  --tutorial-card-gap: clamp(18px, 3.4vw, 28px);
+  --tutorial-flow-max: clamp(540px, 64vw, 700px);
+  --tutorial-stage-max: clamp(380px, 58vh, 520px);
   --tutorial-ring-size: clamp(96px, 14vmin, 132px);
 }
 
-.container{
-  width: 100%;
+body{
   min-height: 100svh;
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 36px 20px 28px;
+  margin: 0;
+  overflow: hidden;
+}
+
+.container{
+  width: min(94vw, var(--tutorial-max-width));
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: clamp(28px, 5vh, 36px);
 }
 
 .right-panel{
-  width: min(96%, var(--tutorial-max-width));
+  width: 100%;
+  max-width: clamp(640px, 70vw, 900px);
   margin: 0 auto;
 }
 
 .tutorial-content{
   width: 100%;
+  max-width: clamp(600px, 68vw, 820px);
   display: flex;
   flex-direction: column;
-  gap: clamp(36px, 5vh, 48px);
-  align-items: center;
+  gap: clamp(28px, 4vh, 36px);
+  align-items: stretch;
+  margin: 0 auto;
 }
 
 .tutorial-view{
@@ -35,8 +46,9 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: clamp(24px, 4vh, 32px);
-  min-height: clamp(520px, 70vh, 640px);
+  gap: clamp(22px, 3.6vh, 30px);
+  min-height: min(540px, 70vh);
+  max-height: min(620px, 78vh);
   animation: tutorialFade .32s ease;
 }
 
@@ -207,9 +219,13 @@
 
 .flow-stage{
   width: 100%;
+  max-width: var(--tutorial-flow-max);
+  margin: 0 auto;
   display: flex;
+  flex-direction: column;
   justify-content: center;
   padding-block: clamp(12px, 2vh, 18px);
+  flex: 1;
 }
 
 .step-visual{

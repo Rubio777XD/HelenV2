@@ -1,0 +1,8 @@
+t=0.00s (         ) label=Start  score=0.720 latency=068.4ms state=cooldown         emit=True  reason=accepted                 support=1
+t=0.18s (  5.6 fps) label=Start  score=0.760 latency=070.1ms state=cooldown         emit=False reason=cooldown_active          support=1
+t=0.36s (  5.6 fps) label=Start  score=0.780 latency=069.8ms state=cooldown         emit=False reason=cooldown_active          support=2
+t=0.80s (  2.3 fps) label=Start  score=0.700 latency=070.5ms state=listening        emit=False reason=awaiting_command         support=0
+t=1.20s (  2.5 fps) label=Clima  score=0.700 latency=072.3ms state=command_debounce emit=True  reason=accepted                 support=1
+t=1.32s (  8.3 fps) label=Clima  score=0.740 latency=071.9ms state=command_debounce emit=False reason=command_debounce_active  support=1
+t=1.44s (  8.3 fps) label=Clima  score=0.750 latency=072.6ms state=command_debounce emit=False reason=command_debounce_active  support=2
+t=1.60s (  6.2 fps) label=Clima  score=0.710 latency=073.2ms state=command_debounce emit=False reason=command_debounce_active  support=3

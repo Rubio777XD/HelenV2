@@ -1,0 +1,86 @@
+{
+  "thresholds": {
+    "Clima": {
+      "baseline": {
+        "enter": 0.8,
+        "release": 0.7
+      },
+      "effective": {
+        "enter": 0.688,
+        "release": 0.602
+      },
+      "reduction": 0.14
+    },
+    "Inicio": {
+      "baseline": {
+        "enter": 0.76,
+        "release": 0.66
+      },
+      "effective": {
+        "enter": 0.7144,
+        "release": 0.6204
+      },
+      "reduction": 0.06
+    },
+    "Reloj": {
+      "baseline": {
+        "enter": 0.78,
+        "release": 0.68
+      },
+      "effective": {
+        "enter": 0.7332,
+        "release": 0.6392
+      },
+      "reduction": 0.06
+    },
+    "Start": {
+      "baseline": {
+        "enter": 0.75,
+        "release": 0.65
+      },
+      "effective": {
+        "enter": 0.705,
+        "release": 0.611
+      },
+      "reduction": 0.06
+    }
+  },
+  "consensus": {
+    "baseline": {
+      "window_size": 5,
+      "required_votes": 3
+    },
+    "effective": {
+      "window_size": 4,
+      "required_votes": 2
+    }
+  },
+  "timing": {
+    "cooldown_seconds": {
+      "baseline": 0.8,
+      "effective": 0.8
+    },
+    "listening_window_seconds": {
+      "baseline": 4.0,
+      "effective": 5.5
+    },
+    "post_activation_grace_seconds": {
+      "baseline": 0.0,
+      "effective": 0.45
+    }
+  },
+  "roi_margin": {
+    "baseline": 0.0,
+    "effective": 0.035
+  },
+  "frame_stride": {
+    "baseline": 2,
+    "effective": 2
+  },
+  "poll_interval_s": {
+    "baseline": 0.12,
+    "effective": 0.12
+  },
+  "global_min_score": 0.6,
+  "post_activation_grace_until": 0.0
+}

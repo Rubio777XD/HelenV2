@@ -164,21 +164,31 @@ class SyntheticGestureStream:
         raw_data: List[FeatureVector] = data_dict["data"]
         raw_labels: List[str] = data_dict["labels"]
 
-        self._samples: List[Tuple[List[float], str]] = []
+        priority = ["Start", "Clima", "Reloj", "Inicio"]
+        grouped: Dict[str, List[Tuple[List[float], str]]] = {label: [] for label in priority}
+        others: List[Tuple[List[float], str]] = []
+
         for features, label in zip(raw_data, raw_labels):
             canonical = _to_canonical_label(label)
-            # ``tuple`` ensures the underlying list is not modified by callers.
-            self._samples.append((list(float(v) for v in features), canonical))
+            sample = (list(float(v) for v in features), canonical)
+            if canonical in grouped:
+                grouped[canonical].append(sample)
+            else:
+                others.append(sample)
+
+        interleaved: List[Tuple[List[float], str]] = []
+        if any(grouped[label] for label in priority):
+            max_len = max(len(grouped[label]) for label in priority)
+            for index in range(max_len):
+                for label in priority:
+                    samples = grouped[label]
+                    if index < len(samples):
+                        interleaved.append(samples[index])
+
+        self._samples = interleaved + others
 
         if not self._samples:
             raise ValueError("Dataset did not contain any samples")
-
-        priority = ["Start", "Clima", "Reloj", "Inicio"]
-        if any(label in priority for _, label in self._samples):
-            prioritized = [sample for sample in self._samples if sample[1] in priority]
-            others = [sample for sample in self._samples if sample[1] not in priority]
-            prioritized.sort(key=lambda pair: priority.index(pair[1]))
-            self._samples = prioritized + others
 
         self._index = 0
         self._lock = threading.Lock()
