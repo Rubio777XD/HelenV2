@@ -1,0 +1,17 @@
+[Unit]
+Description=HELEN backend (Flask + Socket.IO)
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/HelenProyecto-main/HelenProyecto-main
+ExecStart=/usr/bin/python3 -m backendHelen.server --host 0.0.0.0 --port=5000
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=3
+User=pi
+Group=pi
+
+[Install]
+WantedBy=multi-user.target
