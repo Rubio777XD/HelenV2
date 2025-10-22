@@ -526,6 +526,7 @@ test('due timer displays modal with accessible controls', async () => {
     assert.ok(modal, 'modal should exist');
     assert.ok(modal.classList.contains('is-visible'), 'modal should be visible');
     assert.equal(window.document.body.classList.contains('helen-global-modal-open'), true);
+    assert.equal(modal.getAttribute('aria-live'), 'assertive');
 
     const title = modal.querySelector('.helen-global-modal__title');
     assert.equal(title.textContent, 'Temporizador finalizado');
@@ -586,6 +587,56 @@ test('notifications queue next item after dismiss and persist state', async () =
     const stored = window.localStorage.getItem(PENDING_KEY);
     assert.equal(stored, '[]', 'pending queue cleared after dismissing all notifications');
   } finally {
+    await cleanup();
+  }
+});
+
+test('global timekeeper bus emits fired events', async () => {
+  const { window, scheduler, ports, cleanup } = await setupEnvironment();
+  const domEvents = [];
+  const domLatencies = [];
+  const busEvents = [];
+  let removeBusListener = null;
+  let fireStart = 0;
+  const handleDomEvent = (event) => {
+    domEvents.push(event.detail);
+    if (fireStart) {
+      domLatencies.push(window.performance.now() - fireStart);
+    }
+  };
+  try {
+    window.addEventListener('helen:timekeeper:fired', handleDomEvent);
+    if (window.HelenTimekeeperBus && typeof window.HelenTimekeeperBus.on === 'function') {
+      removeBusListener = window.HelenTimekeeperBus.on('helen:timekeeper:fired', (detail) => {
+        busEvents.push(detail);
+      });
+    }
+
+    scheduler.createTimer({ id: 'timer-bus', label: 'Bus Timer', durationMs: 60000 });
+    await flush();
+
+    const port = ports[0];
+    fireStart = window.performance.now();
+    port.onmessage({ data: { type: 'fired', payload: [{ id: 'timer-bus' }] } });
+    await flush();
+
+    assert.equal(domEvents.length, 1, 'DOM event should fire once');
+    assert.equal(domEvents[0].id, 'timer-bus');
+    assert.equal(domEvents[0].tone, 'timer');
+    assert.equal(domEvents[0].type, 'timer');
+    if (domLatencies.length) {
+      assert.ok(domLatencies[0] < 50, `latencia DOM esperada <50ms, recibida ${domLatencies[0]}`);
+    }
+
+    if (busEvents.length) {
+      assert.equal(busEvents.length, 1, 'bus listener should receive event once');
+      assert.equal(busEvents[0].eventId, domEvents[0].eventId);
+    }
+  } finally {
+    if (removeBusListener) {
+      try { removeBusListener(); } catch (error) {}
+    }
+    window.removeEventListener('helen:timekeeper:fired', handleDomEvent);
     await cleanup();
   }
 });

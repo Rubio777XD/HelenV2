@@ -1,7 +1,7 @@
 # Informe de sesión de gestos
 
 ## Configuración activa
-- Ventana de consenso: 12 frames (requiere 8)
+- Ventana de consenso: 5 frames (requiere 3)
 - Cooldown tras 'Start': 800 ms
 - Ventana de escucha C/R/I: 4.0 s
 - Debounce de comandos: 750 ms
@@ -16,20 +16,20 @@
 | Inicio | 0.76 | 0.66 |
 
 ## Métricas de sesión
-- Frames procesados tras filtros: 51
+- Frames procesados tras filtros: 18
 - Revisiones de calidad: 0
 - Descartes por calidad: 0 (0.0%)
 
 ### Rendimiento por clase
 | Clase | Precision | Recall | F1 | TP | FP | FN |
 |-------|-----------|--------|----|----|----|----|
-| Start | 1.00 | 0.04 | 0.08 | 2 | 0 | 49 |
-| Inicio | nan | nan | nan | 0 | 0 | 0 |
 | Clima | nan | nan | nan | 0 | 0 | 0 |
 | Reloj | nan | nan | nan | 0 | 0 | 0 |
+| Inicio | nan | nan | nan | 0 | 0 | 0 |
+| Start | 1.00 | 0.11 | 0.20 | 2 | 0 | 16 |
 
 ### Matriz de confusión
 | Actual | None | Start |
 | --- | --- | --- |
-| Start | 49 | 2 |
-
+| Start | 16 | 2 |
+> Nota: La sesión se ejecutó con `process_every_n = 3` (ventana efectiva 5/3) y el dataset sintético `data1.pickle`, por lo que solo se registraron activaciones de inicio.

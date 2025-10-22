@@ -19,8 +19,8 @@
   },
   "global_min_score": 0.6,
   "consensus": {
-    "window_size": 12,
-    "required_votes": 8
+    "window_size": 5,
+    "required_votes": 3
   },
   "durations_s": {
     "cooldown": 0.8,
@@ -40,67 +40,21 @@
     }
   },
   "latency": {
-    "avg_ms": 5.437122749972696,
+    "avg_ms": 9.022139749495546,
     "p95_ms": 12.5,
     "max_ms": 12.5,
     "count": 4
   },
-  "samples": 51,
+  "samples": 18,
   "quality_checks": 0,
   "quality_rejections": {},
   "quality_rejection_rate": 0.0,
   "threshold_rejections": {
     "accepted": 2,
-    "cooldown_active": 12,
-    "awaiting_command": 37
+    "cooldown_active": 4,
+    "awaiting_command": 12
   },
   "classes": {
-    "Start": {
-      "tp": 2,
-      "fp": 0,
-      "fn": 49,
-      "precision": 1.0,
-      "recall": 0.0392156862745098,
-      "f1": 0.07547169811320754,
-      "accepted_scores": {
-        "min": 0.857393534002703,
-        "max": 0.9200577947320406,
-        "mean": 0.8887256643673718,
-        "median": 0.8887256643673718
-      },
-      "rejected_scores": {
-        "min": 0.7247359783888639,
-        "max": 0.9427975866024986,
-        "mean": 0.8524048525757862,
-        "median": 0.8509751615174307
-      },
-      "rejections": {
-        "accepted": 2,
-        "cooldown_active": 12,
-        "awaiting_command": 37
-      }
-    },
-    "Inicio": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 0,
-      "precision": null,
-      "recall": null,
-      "f1": null,
-      "accepted_scores": {
-        "min": null,
-        "max": null,
-        "mean": null,
-        "median": null
-      },
-      "rejected_scores": {
-        "min": null,
-        "max": null,
-        "mean": null,
-        "median": null
-      },
-      "rejections": {}
-    },
     "Clima": {
       "tp": 0,
       "fp": 0,
@@ -142,12 +96,58 @@
         "median": null
       },
       "rejections": {}
+    },
+    "Inicio": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "precision": null,
+      "recall": null,
+      "f1": null,
+      "accepted_scores": {
+        "min": null,
+        "max": null,
+        "mean": null,
+        "median": null
+      },
+      "rejected_scores": {
+        "min": null,
+        "max": null,
+        "mean": null,
+        "median": null
+      },
+      "rejections": {}
+    },
+    "Start": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 16,
+      "precision": 1.0,
+      "recall": 0.1111111111111111,
+      "f1": 0.19999999999999998,
+      "accepted_scores": {
+        "min": 0.9999703168869019,
+        "max": 0.9999834299087524,
+        "mean": 0.9999768733978271,
+        "median": 0.9999768733978271
+      },
+      "rejected_scores": {
+        "min": 0.9999682903289795,
+        "max": 0.9999841451644897,
+        "mean": 0.9999775514006615,
+        "median": 0.9999790787696838
+      },
+      "rejections": {
+        "accepted": 2,
+        "cooldown_active": 4,
+        "awaiting_command": 12
+      }
     }
   },
   "confusion_matrix": {
     "Start": {
       "Start": 2,
-      "None": 49
+      "None": 16
     }
   },
   "suggested_thresholds": []
