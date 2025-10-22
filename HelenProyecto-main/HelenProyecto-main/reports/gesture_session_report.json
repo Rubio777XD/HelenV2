@@ -1,30 +1,30 @@
 {
   "thresholds": {
     "Start": {
-      "enter": 0.405,
-      "release": 0.265
+      "enter": 0.369,
+      "release": 0.259
     },
     "Clima": {
-      "enter": 0.369,
-      "release": 0.22899999999999998
+      "enter": 0.342,
+      "release": 0.242
     },
     "Reloj": {
-      "enter": 0.387,
-      "release": 0.247
+      "enter": 0.351,
+      "release": 0.251
     },
     "Inicio": {
-      "enter": 0.387,
-      "release": 0.247
+      "enter": 0.351,
+      "release": 0.251
     }
   },
-  "global_min_score": 0.369,
+  "global_min_score": 0.32,
   "consensus": {
     "window_size": 4,
     "required_votes": 2
   },
   "durations_s": {
-    "cooldown": 0.72,
-    "listening_window": 5.6,
+    "cooldown": 0.7,
+    "listening_window": 5.5,
     "command_debounce": 0.75
   },
   "dataset": {
@@ -32,17 +32,19 @@
     "primary_available": false,
     "using_fallback": true,
     "exists": true,
-    "profile": "SUAVE",
-    "profile_version": 3,
     "temporal": {
-      "cooldown_s": 0.72,
-      "listen_window_s": 5.6,
-      "consensus_n": 2,
-      "consensus_m": 4,
-      "min_pos_stability_var": 10.0,
-      "activation_delay_s": 0.44
+      "cooldown_s": 0.7,
+      "listen_window_s": 5.5,
+      "consensus_required": 2,
+      "consensus_window": 4,
+      "min_pos_stability_var": 18.0,
+      "activation_delay_s": 0.45
     },
-    "frameskip_base": 3,
+    "frame_stride": 3,
+    "rate": {
+      "process_every_n": 3,
+      "poll_interval_s": 0.12
+    },
     "fallback_secondary": true,
     "normalizer": {
       "dataset": "/workspace/HelenV2/HelenProyecto-main/HelenProyecto-main/Hellen_model_RN/data1.pickle",
@@ -50,59 +52,59 @@
       "uses_transformer": false,
       "uses_stats": false
     },
-    "frameskip_used": 1,
     "baseline_thresholds": {
       "Start": {
-        "enter": 0.405,
-        "release": 0.265
+        "enter": 0.369,
+        "release": 0.259
       },
       "Clima": {
-        "enter": 0.369,
-        "release": 0.22899999999999998
+        "enter": 0.342,
+        "release": 0.242
       },
       "Reloj": {
-        "enter": 0.387,
-        "release": 0.247
+        "enter": 0.351,
+        "release": 0.251
       },
       "Inicio": {
-        "enter": 0.387,
-        "release": 0.247
+        "enter": 0.351,
+        "release": 0.251
       }
     },
     "current_thresholds": {
       "Start": {
-        "enter": 0.405,
-        "release": 0.265
+        "enter": 0.369,
+        "release": 0.259
       },
       "Clima": {
-        "enter": 0.369,
-        "release": 0.22899999999999998
+        "enter": 0.342,
+        "release": 0.242
       },
       "Reloj": {
-        "enter": 0.387,
-        "release": 0.247
+        "enter": 0.351,
+        "release": 0.251
       },
       "Inicio": {
-        "enter": 0.387,
-        "release": 0.247
+        "enter": 0.351,
+        "release": 0.251
       }
-    },
-    "threshold_adjustments": {}
+    }
   },
   "latency": {
-    "avg_ms": 7.826888750051149,
-    "p95_ms": 12.5,
-    "max_ms": 12.5,
-    "count": 4
+    "avg_ms": 2.2268736129262834,
+    "p95_ms": 2.6838960002351087,
+    "max_ms": 6.2745710001763655,
+    "count": 62
   },
-  "samples": 25,
+  "samples": 186,
   "quality_checks": 0,
   "quality_rejections": {},
   "quality_rejection_rate": 0.0,
   "threshold_rejections": {
-    "accepted": 2,
-    "cooldown_active": 10,
-    "start_rearm_deferred": 13
+    "accepted": 62,
+    "cooldown_active": 32,
+    "start_rearm_deferred": 32,
+    "command_debounce_active": 58,
+    "release_hold_active": 2
   },
   "classes": {
     "Inicio": {
@@ -126,52 +128,6 @@
       },
       "rejections": {}
     },
-    "Clima": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 0,
-      "precision": null,
-      "recall": null,
-      "f1": null,
-      "accepted_scores": {
-        "min": null,
-        "max": null,
-        "mean": null,
-        "median": null
-      },
-      "rejected_scores": {
-        "min": null,
-        "max": null,
-        "mean": null,
-        "median": null
-      },
-      "rejections": {}
-    },
-    "Start": {
-      "tp": 2,
-      "fp": 0,
-      "fn": 23,
-      "precision": 1.0,
-      "recall": 0.08,
-      "f1": 0.14814814814814814,
-      "accepted_scores": {
-        "min": 0.9999734163284302,
-        "max": 0.999977707862854,
-        "mean": 0.9999755620956421,
-        "median": 0.9999755620956421
-      },
-      "rejected_scores": {
-        "min": 0.9999686479568481,
-        "max": 0.999981164932251,
-        "mean": 0.9999777804250303,
-        "median": 0.9999793767929077
-      },
-      "rejections": {
-        "accepted": 2,
-        "cooldown_active": 10,
-        "start_rearm_deferred": 13
-      }
-    },
     "Reloj": {
       "tp": 0,
       "fp": 0,
@@ -192,32 +148,84 @@
         "median": null
       },
       "rejections": {}
+    },
+    "Clima": {
+      "tp": 30,
+      "fp": 0,
+      "fn": 63,
+      "precision": 1.0,
+      "recall": 0.3225806451612903,
+      "f1": 0.4878048780487805,
+      "accepted_scores": {
+        "min": 0.5445283651351929,
+        "max": 0.9999840259552002,
+        "mean": 0.9638333976268768,
+        "median": 0.9998059272766113
+      },
+      "rejected_scores": {
+        "min": 0.3857296407222748,
+        "max": 0.9999933242797852,
+        "mean": 0.9790633384321556,
+        "median": 0.9998063445091248
+      },
+      "rejections": {
+        "cooldown_active": 32,
+        "accepted": 30,
+        "command_debounce_active": 29
+      }
+    },
+    "Start": {
+      "tp": 32,
+      "fp": 0,
+      "fn": 61,
+      "precision": 1.0,
+      "recall": 0.34408602150537637,
+      "f1": 0.512,
+      "accepted_scores": {
+        "min": 0.9998818635940552,
+        "max": 0.999982476234436,
+        "mean": 0.9999612309038639,
+        "median": 0.9999690651893616
+      },
+      "rejected_scores": {
+        "min": 0.9998874664306641,
+        "max": 0.9999825954437256,
+        "mean": 0.9999587926708284,
+        "median": 0.9999691247940063
+      },
+      "rejections": {
+        "accepted": 32,
+        "start_rearm_deferred": 32,
+        "command_debounce_active": 29
+      }
     }
   },
   "precision_by_class": {
     "Inicio": null,
-    "Clima": null,
-    "Start": 1.0,
-    "Reloj": null
+    "Reloj": null,
+    "Clima": 1.0,
+    "Start": 1.0
   },
   "recall_by_class": {
     "Inicio": null,
-    "Clima": null,
-    "Start": 0.08,
-    "Reloj": null
+    "Reloj": null,
+    "Clima": 0.3225806451612903,
+    "Start": 0.34408602150537637
   },
   "fp_rate_none": 0.0,
   "consensus_latency_ms": {
-    "p50": 366.61219596862793,
-    "p95": 368.23368072509766
+    "p50": 363.16657066345215,
+    "p95": 371.63567543029785
   },
-  "profile": "SUAVE",
-  "profile_version": 3,
-  "frameskip_used": 1,
+  "frame_stride_used": 3,
   "confusion_matrix": {
     "Start": {
-      "Start": 2,
-      "None": 23
+      "Start": 32,
+      "None": 61
+    },
+    "Clima": {
+      "None": 63,
+      "Clima": 30
     }
   },
   "suggested_thresholds": []

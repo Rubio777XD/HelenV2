@@ -1,0 +1,43 @@
+{
+  "thresholds": {
+    "Start": {
+      "enter": 0.369,
+      "release": 0.259
+    },
+    "Clima": {
+      "enter": 0.342,
+      "release": 0.242
+    },
+    "Reloj": {
+      "enter": 0.351,
+      "release": 0.251
+    },
+    "Inicio": {
+      "enter": 0.351,
+      "release": 0.251
+    }
+  },
+  "global_min_score": 0.32,
+  "temporal": {
+    "consensus_required": 2,
+    "consensus_window": 4,
+    "cooldown_s": 0.7,
+    "listen_window_s": 5.5,
+    "activation_delay_s": 0.45,
+    "min_pos_stability_var": 18.0,
+    "command_debounce_s": 0.75
+  },
+  "quality": {
+    "blur_laplacian_min": 24.0,
+    "roi_min_coverage": 0.52,
+    "hand_range_px": [
+      55.0,
+      640.0
+    ],
+    "roi_margin": 0.05
+  },
+  "rate": {
+    "process_every_n": 3,
+    "poll_interval_s": 0.12
+  }
+}

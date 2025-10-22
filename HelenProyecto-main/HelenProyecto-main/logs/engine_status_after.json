@@ -1,0 +1,114 @@
+{
+  "status": "HEALTHY",
+  "engine": "simple-static",
+  "model_loaded": true,
+  "model_source": "production",
+  "model_path": "/workspace/HelenV2/HelenProyecto-main/HelenProyecto-main/Hellen_model_RN/model.p",
+  "session_id": "f5e41abdd4524811be97e4fa5882cb06",
+  "pipeline_running": true,
+  "stream_source": "synthetic",
+  "clients": 0,
+  "uptime_s": 64.8072783946991,
+  "last_prediction": {
+    "session_id": "f5e41abdd4524811be97e4fa5882cb06",
+    "sequence": 56,
+    "timestamp": "2025-10-22T22:05:14.118376+00:00",
+    "character": "Start",
+    "gesture": "Start",
+    "score": 0.9999,
+    "latency_ms": 2.113963000738295,
+    "source": "pipeline",
+    "numeric": false,
+    "engine": "simple-static",
+    "frame_stride": 3,
+    "active": true,
+    "state": "idle",
+    "position_variance": 0.0,
+    "consensus_support": 1,
+    "consensus_total": 1,
+    "consensus_span_ms": 0.0,
+    "consensus_average": 0.9998981952667236,
+    "votes_required": 2,
+    "decision_reason": "accepted",
+    "next_state": "cooldown"
+  },
+  "last_prediction_at": "2025-10-22T22:05:14.118547+00:00",
+  "avg_latency_ms": 2.237,
+  "camera_ok": true,
+  "camera_index": null,
+  "camera_backend": null,
+  "camera_last_capture": "2025-10-22T22:05:14.116247+00:00",
+  "camera_last_error": null,
+  "latency_p95_ms": 2.729,
+  "latency_max_ms": 6.275,
+  "latency_count": 57,
+  "frames_total": 0,
+  "frames_with_hand": 0,
+  "frames_valid": 0,
+  "frames_returned": 0,
+  "fps": 0.0,
+  "quality_rejections": {},
+  "reason_counts": {
+    "accepted": 57,
+    "cooldown_active": 29,
+    "start_rearm_deferred": 29,
+    "command_debounce_active": 54,
+    "release_hold_active": 2
+  },
+  "thresholds": {
+    "Start": {
+      "enter": 0.369,
+      "release": 0.259
+    },
+    "Clima": {
+      "enter": 0.342,
+      "release": 0.242
+    },
+    "Reloj": {
+      "enter": 0.351,
+      "release": 0.251
+    },
+    "Inicio": {
+      "enter": 0.351,
+      "release": 0.251
+    }
+  },
+  "dataset_info": {
+    "path": "/workspace/HelenV2/HelenProyecto-main/HelenProyecto-main/Hellen_model_RN/data1.pickle",
+    "primary_available": false,
+    "using_fallback": true,
+    "exists": true,
+    "temporal": {
+      "cooldown_s": 0.7,
+      "listen_window_s": 5.5,
+      "consensus_required": 2,
+      "consensus_window": 4,
+      "min_pos_stability_var": 18.0,
+      "activation_delay_s": 0.45
+    },
+    "frame_stride": 3,
+    "rate": {
+      "process_every_n": 3,
+      "poll_interval_s": 0.12
+    },
+    "fallback_secondary": true,
+    "metrics_summary": {
+      "samples": 171,
+      "accepted": 57,
+      "rejected": 114,
+      "accepted_ratio": 0.3333333333333333,
+      "quality_checks": 0,
+      "quality_rejections": {},
+      "quality_rejection_rate": 0.0,
+      "reason_counts": {
+        "accepted": 57,
+        "cooldown_active": 29,
+        "start_rearm_deferred": 29,
+        "command_debounce_active": 54,
+        "release_hold_active": 2
+      }
+    }
+  },
+  "last_quality_reason": null,
+  "last_error": null
+}
