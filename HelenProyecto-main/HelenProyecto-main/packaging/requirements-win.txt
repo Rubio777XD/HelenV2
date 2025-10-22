@@ -1,4 +1,24 @@
 # Runtime dependencies for the frozen HELEN backend on Windows
+# Flask + SocketIO stack
+Flask==3.0.3
+Flask-SocketIO==5.3.6
+python-socketio==5.11.2
+python-engineio==4.9.1
+eventlet==0.36.1
+bidict==0.23.1
+blinker==1.8.2
+greenlet==3.0.3
+dnspython==2.6.1
+simple-websocket==1.0.0
+wsproto==1.2.0
+Werkzeug==3.0.3
+Jinja2==3.1.4
+itsdangerous==2.2.0
+MarkupSafe==2.1.5
+click==8.1.7
+h11==0.14.0
+
+# Numerical + vision stack
 numpy==1.26.4
 scipy==1.16.2
 scikit-learn==1.4.2
@@ -7,4 +27,4 @@ opencv-python==4.9.0.80
 mediapipe==0.10.21
 sounddevice==0.4.7
 
-# Build tooling is installed separately in the workflow to keep this list focused
+# Keep build tooling (PyInstaller, etc.) managed separately

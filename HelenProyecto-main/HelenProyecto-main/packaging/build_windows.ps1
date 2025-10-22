@@ -38,9 +38,14 @@ Write-Host "==> Actualizando pip"
 Write-Host "==> Instalando dependencias de Windows"
 & $venvPython -m pip install -r (Join-Path $scriptDir "requirements-win.txt")
 
+Write-Host "==> Instalando herramientas de empaquetado"
+& $venvPython -m pip install pyinstaller==6.6.0 pyinstaller-hooks-contrib==2024.6 requests==2.31.0
+
 Write-Host "==> Ejecutando PyInstaller"
 $specFile = Join-Path $scriptDir "helen_backend.spec"
-& $venvPython -m PyInstaller --clean --noconfirm $specFile
+$distPath = Join-Path $projectRoot "dist"
+$workPath = Join-Path $projectRoot "build"
+& $venvPython -m PyInstaller --clean --noconfirm --distpath $distPath --workpath $workPath $specFile
 
 if (-not $SkipInstaller) {
     $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
