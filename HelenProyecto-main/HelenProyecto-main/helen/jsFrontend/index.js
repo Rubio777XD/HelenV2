@@ -1,124 +1,179 @@
 $(function () {
-  // --- Selectores principales (ya existentes) ---
-  const clock = $('.clock');          // <div class="clock">
-  const dateSection = $('.date-section');   // <div class="date-section">
-  const locationSection = $('.location');       // <div class="location">
-  const weatherIcon = $('.weather-icon');   // <div class="weather-icon"> (usamos clases de Bootstrap Icons)
-  const temperature = $('.temperature');    // <div class="temperature">
-  const weatherDescription = $('.status');       // <div class="status">
+  const clock = $('.clock');
+  const dateSection = $('.date-section');
+  const locationSection = $('.location');
+  const weatherIcon = $('.weather-icon');
+  const temperature = $('.temperature');
+  const weatherDescription = $('.status');
   const activeSensor = $('.active-sensor');
 
-  // --- NUEVOS selectores para métricas extra en la tarjeta ---
-  const feelsLike = $('#feels-like-value');  // <span id="feels-like-value">
-  const humidityValue = $('#humidity-value');    // <span id="humidity-value">
-  const windValue = $('#wind-value');        // <span id="wind-value">
-  const pressureValue = $('#pressure-value');     // <span id="pressure-value">
+  const feelsLike = $('#feels-like-value');
+  const humidityValue = $('#humidity-value');
+  const windValue = $('#wind-value');
+  const pressureValue = $('#pressure-value');
 
-  // =================== HORA/FECHA ===================
-  const getTime = () => {
-    const date = new Date();
-    const hours = date.getHours();
-    const minutes = date.getMinutes();
-    const seconds = date.getSeconds();
-    const day = date.getDate();
-    const month = date.getMonth();
-    const year = date.getFullYear();
-    const dayOfWeek = date.getDay();
+  const DAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-    const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-    const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-
-    // HH:MM:SS (24h, con cero a la izquierda)
-    const hh = String(hours).padStart(2, '0');
-    const mm = String(minutes).padStart(2, '0');
-    const ss = String(seconds).padStart(2, '0');
-    clock.html(`${hh}:${mm}`);
-    dateSection.html(`${days[dayOfWeek]}, ${day} de ${months[month]} de ${year}`);
-
-    setTimeout(getTime, 1000);
+  const WEATHER_REFRESH_SUCCESS_MS = 10 * 60 * 1000;
+  const WEATHER_REFRESH_ERROR_MS = 90 * 1000;
+  const WEATHER_ICON_CLASSES = {
+    '01d': 'bi-brightness-high', '01n': 'bi-moon',
+    '02d': 'bi-cloud-sun', '02n': 'bi-cloud-moon',
+    '03d': 'bi-cloud', '03n': 'bi-cloud',
+    '04d': 'bi-clouds', '04n': 'bi-clouds',
+    '09d': 'bi-cloud-drizzle', '09n': 'bi-cloud-drizzle',
+    '10d': 'bi-cloud-rain', '10n': 'bi-cloud-rain',
+    '11d': 'bi-cloud-lightning', '11n': 'bi-cloud-lightning',
+    '13d': 'bi-cloud-snow', '13n': 'bi-cloud-snow',
+    '50d': 'bi-cloud-haze', '50n': 'bi-cloud-haze'
   };
 
-  // =================== UBICACIÓN (FIJA DE MOMENTO) ===================
-  const getLocation = () => {
-    const city = 'Tijuana';
-    const country = 'MX';
-    locationSection.html(`${city}, ${country}`);
+  const WEATHER_ENDPOINT = (() => {
+    const key = '6266f75957014a7de4ae0ded34d1e7cc';
+    const lat = 32.43347;
+    const lon = -116.67447;
+    return `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${key}&units=metric&lang=es`;
+  })();
+
+  let clockTimerId = null;
+  let weatherTimerId = null;
+  let lastWeatherSnapshot = null;
+
+  const setTextIfChanged = (element, value) => {
+    if (!element || !element.length) {
+      return;
+    }
+    const node = element[0];
+    const next = String(value);
+    if (node.textContent !== next) {
+      element.text(next);
+    }
   };
 
-  // =================== CLIMA (OpenWeather) ===================
-  const getWeather = async () => {
-    try {
-      const key = '6266f75957014a7de4ae0ded34d1e7cc';
-      const lat = 32.43347;
-      const lon = -116.67447;
-      const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${key}&units=metric&lang=es`;
+  const scheduleClockTick = () => {
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const day = now.getDate();
+    const month = now.getMonth();
+    const year = now.getFullYear();
+    const weekDay = now.getDay();
 
-      const response = await axios.get(url);
-      const data = response.data;
+    setTextIfChanged(clock, `${hours}:${minutes}`);
+    setTextIfChanged(dateSection, `${DAYS[weekDay]}, ${day} de ${MONTHS[month]} de ${year}`);
 
-      const weatherInfo = {
-        icon: data.weather[0]?.icon || '',
-        temperature: Math.round(data.main?.temp ?? 0),
-        description: (data.weather[0]?.description || '').toString()
-      };
+    const millisUntilNextMinute = 60000 - (now.getSeconds() * 1000 + now.getMilliseconds());
+    const delay = Math.max(500, millisUntilNextMinute);
+    clockTimerId = window.setTimeout(scheduleClockTick, delay);
+  };
 
-      // Map a Bootstrap Icons
-      const mappingIcons = {
-        '01d': 'bi-brightness-high', '01n': 'bi-moon',
-        '02d': 'bi-cloud-sun', '02n': 'bi-cloud-moon',
-        '03d': 'bi-cloud', '03n': 'bi-cloud',
-        '04d': 'bi-clouds', '04n': 'bi-clouds',
-        '09d': 'bi-cloud-drizzle', '09n': 'bi-cloud-drizzle',
-        '10d': 'bi-cloud-rain', '10n': 'bi-cloud-rain',
-        '11d': 'bi-cloud-lightning', '11n': 'bi-cloud-lightning',
-        '13d': 'bi-cloud-snow', '13n': 'bi-cloud-snow',
-        '50d': 'bi-cloud-haze', '50n': 'bi-cloud-haze'
-      };
+  const startClock = () => {
+    if (clockTimerId) {
+      window.clearTimeout(clockTimerId);
+    }
+    scheduleClockTick();
+  };
 
-      // Evitar acumular clases en el icono
-      const biClass = mappingIcons[weatherInfo.icon] || '';
-      weatherIcon.attr('class', `weather-icon bi ${biClass}`);
+  const updateLocation = () => {
+    setTextIfChanged(locationSection, 'Tijuana, MX');
+  };
 
-      // Pintar estado y temperatura
-      weatherDescription.html(weatherInfo.description.charAt(0).toUpperCase() + weatherInfo.description.slice(1));
-      temperature.html(`${weatherInfo.temperature}°C`);
-
-      // --- Métricas extra (si existen los elementos en el DOM) ---
-      if (feelsLike.length) feelsLike.text(`${Math.round(data.main?.feels_like ?? weatherInfo.temperature)}°`);
-      if (humidityValue.length) humidityValue.text(`${data.main?.humidity ?? '--'}%`);
-      if (windValue.length) windValue.text(`${Math.round((data.wind?.speed ?? 0))} km/h`);
-      if (feelsLike.length)
-        feelsLike.text(`${Math.round(data.main?.feels_like ?? weatherInfo.temperature)}°`);
-
-      if (humidityValue.length)
-        humidityValue.text(`${data.main?.humidity ?? '--'}%`);
-
-      if (windValue.length) {
-        // OpenWeather: velocidad del viento en m/s → km/h
-        const windMs = data.wind?.speed ?? 0;
-        windValue.text(`${Math.round(windMs * 3.6)} km/h`);
-      }
-
-      if (pressureValue.length)
-        pressureValue.text(`${Math.round(data.main?.pressure ?? 0)} hPa`);
-    } catch (err) {
-      console.error('[getWeather] error:', err);
-      weatherDescription.html('No disponible');
-      // Evita dejar valores “sucios”
-      if (temperature.length) temperature.html('--°C');
+  const applyWeatherSnapshot = (snapshot) => {
+    if (!snapshot) {
+      return;
     }
 
-    // refresco cada 10 minutos
-    setTimeout(getWeather, 1000 * 60 * 10);
+    if (!lastWeatherSnapshot || lastWeatherSnapshot.icon !== snapshot.icon) {
+      const iconClass = WEATHER_ICON_CLASSES[snapshot.icon] || '';
+      weatherIcon.attr('class', iconClass ? `weather-icon bi ${iconClass}` : 'weather-icon');
+    }
+
+    if (!lastWeatherSnapshot || lastWeatherSnapshot.description !== snapshot.description) {
+      const capitalized = snapshot.description
+        ? `${snapshot.description.charAt(0).toUpperCase()}${snapshot.description.slice(1)}`
+        : 'No disponible';
+      setTextIfChanged(weatherDescription, capitalized);
+    }
+
+    if (!lastWeatherSnapshot || lastWeatherSnapshot.temperature !== snapshot.temperature) {
+      setTextIfChanged(temperature, `${snapshot.temperature}°C`);
+    }
+
+    if (feelsLike.length && (!lastWeatherSnapshot || lastWeatherSnapshot.feelsLike !== snapshot.feelsLike)) {
+      setTextIfChanged(feelsLike, `${snapshot.feelsLike}°`);
+    }
+
+    if (humidityValue.length && (!lastWeatherSnapshot || lastWeatherSnapshot.humidity !== snapshot.humidity)) {
+      setTextIfChanged(humidityValue, `${snapshot.humidity}%`);
+    }
+
+    if (windValue.length && (!lastWeatherSnapshot || lastWeatherSnapshot.wind !== snapshot.wind)) {
+      setTextIfChanged(windValue, `${snapshot.wind} km/h`);
+    }
+
+    if (pressureValue.length && (!lastWeatherSnapshot || lastWeatherSnapshot.pressure !== snapshot.pressure)) {
+      setTextIfChanged(pressureValue, `${snapshot.pressure} hPa`);
+    }
+
+    lastWeatherSnapshot = snapshot;
   };
 
-  // =================== OTROS ===================
-  activeSensor.on('click', function () {
-    alert('Sensor activado');
-  });
+  const fetchWeather = async () => {
+    if (weatherTimerId) {
+      window.clearTimeout(weatherTimerId);
+      weatherTimerId = null;
+    }
 
-  // Lanzar iniciales
-  getTime();
-  getLocation();
-  getWeather();
+    let nextRefresh = WEATHER_REFRESH_SUCCESS_MS;
+
+    try {
+      const response = await axios.get(WEATHER_ENDPOINT, { timeout: 8000 });
+      const data = response.data || {};
+
+      const snapshot = {
+        icon: data.weather && data.weather[0] ? data.weather[0].icon || '' : '',
+        description: data.weather && data.weather[0] ? String(data.weather[0].description || '').trim() : '',
+        temperature: Math.round(data.main?.temp ?? 0),
+        feelsLike: Math.round(data.main?.feels_like ?? data.main?.temp ?? 0),
+        humidity: Math.round(data.main?.humidity ?? 0),
+        wind: Math.max(0, Math.round((data.wind?.speed ?? 0) * 3.6)),
+        pressure: Math.round(data.main?.pressure ?? 0)
+      };
+
+      applyWeatherSnapshot(snapshot);
+    } catch (error) {
+      console.error('[Helen] No se pudo actualizar el clima:', error);
+      nextRefresh = WEATHER_REFRESH_ERROR_MS;
+      if (!lastWeatherSnapshot) {
+        setTextIfChanged(weatherDescription, 'No disponible');
+        setTextIfChanged(temperature, '--°C');
+      }
+    } finally {
+      weatherTimerId = window.setTimeout(fetchWeather, nextRefresh);
+    }
+  };
+
+  const cleanup = () => {
+    if (clockTimerId) {
+      window.clearTimeout(clockTimerId);
+      clockTimerId = null;
+    }
+    if (weatherTimerId) {
+      window.clearTimeout(weatherTimerId);
+      weatherTimerId = null;
+    }
+  };
+
+  if (activeSensor.length) {
+    activeSensor.on('click', () => {
+      console.info('Sensor activado');
+    });
+  }
+
+  $(window).on('beforeunload pagehide', cleanup);
+
+  startClock();
+  updateLocation();
+  fetchWeather();
 });
