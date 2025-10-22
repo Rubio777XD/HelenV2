@@ -15,7 +15,8 @@
 </head>
 
 <body>
-    <main class="tutorial-wrap" data-tutorial-root>
+    <div class="tutorial-shell">
+        <main class="tutorial-wrap" data-tutorial-root>
 
         <!-- ================= MENÚ ================= -->
         <section id="menu" class="tut-view is-active" data-title="Tutorial">
@@ -78,7 +79,7 @@
                         class="gesture-trainer"
                         data-module="clima"
                         data-success="¡Perfecto! HELEN detectó la secuencia de clima."
-                        data-feedback-start="HELEN activada. Pide el clima."
+                        data-feedback-start="Helen está lista. Pide el clima."
                         data-feedback-clima="Clima actualizado en la pantalla principal."
                         data-feedback-inicio="Volviendo al panel principal."
                     >
@@ -169,7 +170,7 @@
                         class="gesture-trainer"
                         data-module="hora"
                         data-success="¡Excelente! Ya dominas la seña de reloj."
-                        data-feedback-start="HELEN activada. Pide la hora."
+                        data-feedback-start="Helen está lista. Pide la hora."
                         data-feedback-reloj="Hora consultada y mostrada en pantalla."
                         data-feedback-inicio="Regresando al inicio."
                     >
@@ -302,7 +303,8 @@
                 </div>
             </div>
         </section>
-    </main>
+        </main>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="../../jsSignHandler/SocketIO.js"></script>

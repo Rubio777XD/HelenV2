@@ -759,175 +759,49 @@ body.force-ambient::after{
 }
 
 /* ==============================================
-   Aro de activación – marco respirante
+   Aro de activación – realce estático
    ============================================== */
 .activation-ring{
-  --ring-main: var(--blue-a, #5fe1ff);
-  --ring-secondary: var(--blue-b, #2e6bff);
-  --ring-shadow: rgba(95,225,255,.48);
-  --ring-soft-shadow: rgba(95,225,255,.18);
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 9998;
   opacity: 0;
-  transition: opacity .38s ease;
+  transition: opacity .24s ease;
 }
 
 .activation-ring.is-visible{ opacity: 1; }
 
 .activation-ring__halo{
   position: absolute;
-  inset: 0;
-  border-radius: 0;
-  border: 3px solid rgba(95,225,255,.58);
-  background: linear-gradient(160deg, rgba(95,225,255,.05), rgba(46,107,255,.03));
-  box-shadow:
-    0 0 22px var(--ring-shadow),
-    0 0 110px rgba(95,225,255,.24);
+  inset: clamp(18px, 5vw, 68px);
+  border-radius: clamp(20px, 4vw, 54px);
+  border: 2px solid transparent;
+  box-shadow: 0 0 0 2px transparent;
   opacity: 0;
-  transform: scale(.997);
-  transition: opacity .42s ease, transform .56s cubic-bezier(.18,.8,.32,1);
+  transition: opacity .24s ease, border-color .3s ease, box-shadow .3s ease;
+  background: transparent;
 }
 
-.activation-ring__halo::after{
-  content: '';
-  position: absolute;
-  inset: -24px;
-  border-radius: inherit;
-  box-shadow: 0 0 140px rgba(95,225,255,.28);
-  opacity: 0;
-  transition: opacity .5s ease;
-}
-
-.activation-ring.is-detected .activation-ring__halo,
-.activation-ring.is-active .activation-ring__halo,
-.activation-ring.is-error .activation-ring__halo{
+.activation-ring.is-detected .activation-ring__halo{
   opacity: 1;
-  transform: scale(1);
+  border-color: rgba(95,225,255,.45);
+  box-shadow: 0 0 42px rgba(95,225,255,.22);
 }
 
 .activation-ring.is-active .activation-ring__halo{
-  animation: glowBreath 3.6s ease-in-out infinite alternate;
-}
-
-.activation-ring.is-active .activation-ring__halo::after{
-  opacity: .75;
-  animation: glowBreathSoft 3.6s ease-in-out infinite alternate;
-}
-
-.activation-ring__pulse{
-  position: absolute;
-  left: 50%;
-  bottom: clamp(12px, 2vw, 28px);
-  transform: translate(-50%, 0);
-  width: clamp(180px, 32vw, 380px);
-  height: clamp(14px, 2.8vw, 22px);
-  border-radius: 999px;
-  background: radial-gradient(closest-side, rgba(95,225,255,.85), rgba(95,225,255,0));
-  box-shadow: 0 0 24px rgba(95,225,255,.24), 0 18px 42px rgba(0,0,0,.52);
-  opacity: 0;
-  will-change: transform, opacity, box-shadow;
-}
-
-.activation-ring.is-detected .activation-ring__pulse{
   opacity: 1;
-  animation: confirmBump .34s cubic-bezier(.18,.8,.32,1.25);
-}
-
-.activation-ring.is-active .activation-ring__pulse{
-  opacity: .92;
-  animation: indicatorBreath 3.1s ease-in-out infinite alternate;
-}
-
-body.helen-gesture-confirmed .activation-ring.is-active .activation-ring__pulse{
-  animation: confirmBump .34s cubic-bezier(.18,.8,.32,1.25), indicatorBreath 3.1s ease-in-out infinite alternate;
-}
-
-.activation-ring.is-error{
-  --ring-main: #ff5f8f;
-  --ring-secondary: #ff8c6c;
-  --ring-shadow: rgba(255,118,162,.52);
-  --ring-soft-shadow: rgba(255,118,162,.24);
+  border-color: rgba(95,225,255,.68);
+  box-shadow: 0 0 56px rgba(95,225,255,.32);
 }
 
 .activation-ring.is-error .activation-ring__halo{
-  border-color: rgba(255,118,162,.8);
-  background: linear-gradient(160deg, rgba(255,118,162,.18), rgba(255,118,162,.08));
-  box-shadow: 0 0 24px var(--ring-shadow), 0 0 82px var(--ring-soft-shadow);
-  animation: ringErrorFrame .48s ease-in-out 2;
-}
-
-.activation-ring.is-error .activation-ring__halo::after{
-  opacity: .75;
-  box-shadow: 0 0 120px rgba(255,118,162,.38);
-}
-
-.activation-ring.is-error .activation-ring__pulse{
-  background: radial-gradient(closest-side, rgba(255,118,162,.88), rgba(255,118,162,0));
   opacity: 1;
-  animation: indicatorError .42s ease-in-out 2;
+  border-color: rgba(255,118,150,.75);
+  box-shadow: 0 0 48px rgba(255,118,150,.28);
 }
 
-body.helen-active .activation-ring__halo{ border-color: rgba(95,225,255,.7); }
-
-@keyframes glowBreath{
-  0%{ box-shadow: 0 0 22px var(--ring-shadow), 0 0 72px var(--ring-soft-shadow); }
-  50%{ box-shadow: 0 0 34px rgba(95,225,255,.62), 0 0 108px rgba(95,225,255,.32); }
-  100%{ box-shadow: 0 0 22px var(--ring-shadow), 0 0 72px var(--ring-soft-shadow); }
-}
-
-@keyframes glowBreathSoft{
-  0%{ box-shadow: 0 0 80px rgba(95,225,255,.24); opacity: .58; }
-  50%{ box-shadow: 0 0 140px rgba(95,225,255,.36); opacity: .82; }
-  100%{ box-shadow: 0 0 80px rgba(95,225,255,.24); opacity: .58; }
-}
-
-@keyframes confirmBump{
-  0%{ transform: translate(-50%, 18px) scaleX(.84); opacity: 0; }
-  55%{ transform: translate(-50%, -6px) scaleX(1.08); opacity: 1; }
-  100%{ transform: translate(-50%, 0) scaleX(1); opacity: 1; }
-}
-
-/* Alias legacy animation name for automated checks */
-@keyframes activation-ring-pulse{
-  0%{ transform: translate(-50%, 18px) scaleX(.84); opacity: 0; }
-  55%{ transform: translate(-50%, -6px) scaleX(1.08); opacity: 1; }
-  100%{ transform: translate(-50%, 0) scaleX(1); opacity: 1; }
-}
-
-@keyframes indicatorBreath{
-  0%{ transform: translate(-50%, 0) scaleX(.94); box-shadow: 0 0 24px rgba(95,225,255,.24), 0 18px 42px rgba(0,0,0,.52); }
-  50%{ transform: translate(-50%, 0) scaleX(1.04); box-shadow: 0 0 38px rgba(95,225,255,.3), 0 20px 48px rgba(0,0,0,.46); }
-  100%{ transform: translate(-50%, 0) scaleX(.94); box-shadow: 0 0 24px rgba(95,225,255,.24), 0 18px 42px rgba(0,0,0,.52); }
-}
-
-@keyframes ringErrorFrame{
-  0%{ transform: scale(1); }
-  40%{ transform: scale(1.012) translateY(-4px); }
-  70%{ transform: scale(.996) translateY(2px); }
-  100%{ transform: scale(1); }
-}
-
-@keyframes indicatorError{
-  0%{ transform: translate(-50%, 0); box-shadow: 0 0 24px rgba(255,118,162,.28), 0 18px 42px rgba(0,0,0,.52); }
-  40%{ transform: translate(-50%, -4px); box-shadow: 0 0 36px rgba(255,118,162,.38), 0 20px 46px rgba(0,0,0,.46); }
-  70%{ transform: translate(-50%, 3px); box-shadow: 0 0 20px rgba(255,118,162,.24), 0 16px 38px rgba(0,0,0,.52); }
-  100%{ transform: translate(-50%, 0); box-shadow: 0 0 24px rgba(255,118,162,.28), 0 18px 42px rgba(0,0,0,.52); }
-}
-
-@media (prefers-reduced-motion: reduce){
-  .activation-ring__halo,
-  .activation-ring__pulse{
-    animation: none !important;
-    transition-duration: .2s !important;
-  }
-}
-
-body.is-reduced-motion .activation-ring__halo,
-body.is-reduced-motion .activation-ring__pulse{
-  animation: none !important;
-}
+.activation-ring__pulse{ display: none !important; }
 
 /* ==============================================
    Sistema de alertas translúcidas

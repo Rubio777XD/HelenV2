@@ -8,6 +8,7 @@
   const trainerStates = new Map();
   const body = document.body;
   const tutorialRoot = document.querySelector('[data-tutorial-root]');
+  const tutorialShell = document.querySelector('.tutorial-shell');
 
   const raf = (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function')
     ? window.requestAnimationFrame.bind(window)
@@ -35,23 +36,22 @@
     const target = activeView || tutorialRoot;
     const rect = target.getBoundingClientRect();
     const availableHeight = window.innerHeight || document.documentElement.clientHeight || rect.height;
-    const availableWidth = window.innerWidth || document.documentElement.clientWidth || rect.width;
-    const shouldCenter = rect.height > 0 && rect.height + 40 < availableHeight;
+    const container = tutorialShell || tutorialRoot;
+    const shouldCenter = rect.height > 0 && rect.height + 80 < availableHeight;
+
+    if (!container) {
+      return;
+    }
+
+    container.style.alignItems = shouldCenter ? 'center' : 'flex-start';
 
     if (shouldCenter) {
-      const verticalPadding = Math.max(28, Math.floor((availableHeight - rect.height) / 2));
-      const horizontalPadding = Math.max(22, Math.floor(availableWidth * 0.04));
-      tutorialRoot.style.justifyContent = 'center';
-      tutorialRoot.style.paddingTop = `${verticalPadding}px`;
-      tutorialRoot.style.paddingBottom = `${verticalPadding}px`;
-      tutorialRoot.style.paddingLeft = `${horizontalPadding}px`;
-      tutorialRoot.style.paddingRight = `${horizontalPadding}px`;
+      const verticalPadding = Math.max(36, Math.floor((availableHeight - rect.height) / 2));
+      container.style.paddingTop = `${verticalPadding}px`;
+      container.style.paddingBottom = `${verticalPadding}px`;
     } else {
-      tutorialRoot.style.justifyContent = '';
-      tutorialRoot.style.paddingTop = '';
-      tutorialRoot.style.paddingBottom = '';
-      tutorialRoot.style.paddingLeft = '';
-      tutorialRoot.style.paddingRight = '';
+      container.style.paddingTop = '';
+      container.style.paddingBottom = '';
     }
   };
 
@@ -150,7 +150,7 @@
     let message = state.feedbackMessages[stageKey];
     if (!message) {
       if (stageKey === 'start') {
-        message = state.feedbackMessages.start || 'HELEN activada. Sigue las instrucciones en pantalla.';
+        message = state.feedbackMessages.start || 'Helen está lista. Sigue las instrucciones en pantalla.';
       } else if (stageKey === state.moduleKey) {
         const label = state.moduleLabel || state.moduleKey;
         message = state.feedbackMessages[state.moduleKey] || `Seña ${label} detectada.`;

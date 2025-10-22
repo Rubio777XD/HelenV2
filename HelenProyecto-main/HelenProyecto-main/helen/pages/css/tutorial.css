@@ -24,31 +24,38 @@
 }
 
 /* ================== Layout general ================== */
-.tutorial-wrap{
+.tutorial-shell{
+  width: 100%;
   min-height: 100svh;
   display: flex;
-  flex-direction: column;
+  justify-content: center;
   align-items: center;
-  justify-content: flex-start;   /* mucho contenido → inicia arriba */
-  padding: 32px 22px;
-  gap: 20px;
+  padding: 36px 20px 28px;
   overflow-x: hidden;            /* previene scroll lateral */
+}
+
+.tutorial-wrap{
+  width: min(1200px, 96vw);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(24px, 4vw, 32px);
+  align-items: stretch;
 }
 
 /* Safe areas (iOS) */
 @supports (padding: max(0px)){
-  .tutorial-wrap{
-    padding-left: max(22px, env(safe-area-inset-left));
-    padding-right: max(22px, env(safe-area-inset-right));
-    padding-top: max(28px, env(safe-area-inset-top));
+  .tutorial-shell{
+    padding-left: max(20px, env(safe-area-inset-left));
+    padding-right: max(20px, env(safe-area-inset-right));
+    padding-top: max(36px, env(safe-area-inset-top));
     padding-bottom: max(28px, env(safe-area-inset-bottom));
   }
 }
 
 /* ================== Encabezado ================== */
 .tut-header{
-  width: min(1200px, 96vw);
-  margin: 4px auto 6px;
+  width: 100%;
+  margin: 4px 0 6px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -97,8 +104,8 @@
 
 /* ================== Menú (3 tarjetas) ================== */
 .tut-grid{
-  width: min(1200px, 96vw);
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0,1fr));
   gap: 24px;
@@ -135,8 +142,8 @@
 
 /* ================== Panel contenedor ================== */
 .panel{
-  width: min(1200px, 96vw);
-  margin: 8px auto 16px;
+  width: 100%;
+  margin: 8px 0 16px;
   padding: clamp(18px, 3.2vw, 28px);
   background: linear-gradient(180deg, var(--card-top), var(--card-bot));
   border: 1px solid var(--card-border);
@@ -509,6 +516,7 @@
   .gesture-visual__practice{ position: static; margin-top: 6px; }
   .gesture-visual{ padding-bottom: clamp(26px, 5vw, 36px); }
   .module-preview{ width: 100%; }
+  .tutorial-shell{ padding: 28px 16px 24px; }
 }
 
 /* ================== Guía rápida (Instrucciones) ================== */
@@ -579,8 +587,7 @@
   .step-icon{ width: 60px; height: 60px; font-size: 28px; }
 }
 @media (max-width: 640px){
-  .tutorial-wrap{ padding: 22px 16px; }
-  .tut-header{ width: min(1200px, 94vw); }
+  .tut-header{ width: 100%; }
   .qcard{ padding: 22px 14px; min-height: 180px; }
   .panel{ padding: 18px; }
   .step-card{ padding: 12px; }

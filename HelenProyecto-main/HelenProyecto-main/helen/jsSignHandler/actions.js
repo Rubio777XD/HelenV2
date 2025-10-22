@@ -95,6 +95,12 @@ const triggerActivationRing = () => {
     }
 };
 
+const triggerRingErrorSignal = () => {
+    if (typeof window.triggerRingError === 'function') {
+        window.triggerRingError();
+    }
+};
+
 const resetRingToIdle = () => {
     if (typeof window.setActivationRingState === 'function') {
         window.setActivationRingState('idle');
@@ -118,7 +124,6 @@ socket.on('message', (data = {}) => {
     if (data && data.active === false) {
         isActive = false;
         console.log('Sistema desactivado desde el backend.');
-        showPopup('Sistema desactivado desde el backend.', 'info');
         resetRingToIdle();
         return;
     }
@@ -136,7 +141,6 @@ socket.on('message', (data = {}) => {
     if (isActivation) {
         isActive = true;
         console.log('Sistema activado. Ahora puedes realizar acciones.');
-        showPopup('¡Sistema activado! Puedes realizar acciones ahora.', 'success');
         triggerActivationRing();
         resetDeactivationTimer();
         return;
@@ -144,7 +148,6 @@ socket.on('message', (data = {}) => {
 
     if (!isActive) {
         console.log('Sistema inactivo. Usa la seña "Start" para activarlo.');
-        showPopup('Sistema inactivo. Usa la seña "Start" para activarlo.', 'info');
         resetRingToIdle();
         return;
     }
@@ -175,5 +178,5 @@ socket.on('message', (data = {}) => {
     }
 
     console.warn('Seña no reconocida:', normalizedGesture);
-    showPopup(`No reconozco la seña "${normalizedGesture}"`, 'warning');
+    triggerRingErrorSignal();
 });
