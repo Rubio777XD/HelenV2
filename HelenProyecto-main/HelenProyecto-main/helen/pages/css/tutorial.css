@@ -1,57 +1,49 @@
-/* =====================================================
-   HELEN – Tutorial interactivo (2024)
-   - Layout centrado alineado con globals/settings
-   - Tarjetas principales estilo quick-nav
-   - Flujo paso a paso con confirmación visual simulada
-   ===================================================== */
-
 :root{
-  --tutorial-max: 1120px;
-  --tutorial-panel-padding: clamp(28px, 6vw, 48px);
+  --tutorial-shell-max: 1120px;
+  --tutorial-padding: clamp(28px, 5vw, 44px);
+  --tutorial-gap: clamp(24px, 4vw, 36px);
   --tutorial-card-gap: clamp(18px, 5vw, 28px);
 }
 
-/* ========================== Layout base ========================== */
-.main-container{
+.tutorial-container{
   width: 100%;
   min-height: 100svh;
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: clamp(36px, 7vh, 72px) clamp(20px, 6vw, 48px) clamp(32px, 6vh, 64px);
+  padding: clamp(36px, 7vh, 72px) clamp(24px, 6vw, 48px);
   position: relative;
   z-index: 0;
-  overflow: hidden;
 }
 
 @supports(padding:max(0px)){
-  .main-container{
-    padding-left: max(20px, env(safe-area-inset-left));
-    padding-right: max(20px, env(safe-area-inset-right));
+  .tutorial-container{
     padding-top: max(36px, env(safe-area-inset-top));
-    padding-bottom: max(32px, env(safe-area-inset-bottom));
+    padding-bottom: max(36px, env(safe-area-inset-bottom));
+    padding-left: max(24px, env(safe-area-inset-left));
+    padding-right: max(24px, env(safe-area-inset-right));
   }
 }
 
-.screen-wrapper{
-  width: min(var(--tutorial-max), 100%);
-  max-height: clamp(560px, 80vh, 920px);
+.tutorial-shell{
+  width: min(var(--tutorial-shell-max), 100%);
+  max-height: min(860px, 82vh);
   display: flex;
   flex-direction: column;
-  gap: clamp(24px, 4vw, 36px);
-  position: relative;
-  z-index: 1;
-  padding: clamp(28px, 5vw, 44px);
-  border-radius: var(--r-lg, 32px);
+  gap: var(--tutorial-gap);
+  padding: var(--tutorial-padding);
+  border-radius: var(--r-lg, 26px);
   background: linear-gradient(180deg, rgba(18,28,46,.94), rgba(12,21,36,.88));
   box-shadow: var(--shadow-card, 0 26px 60px rgba(0,0,0,.38));
   overflow: hidden;
+  position: relative;
+  z-index: 1;
 }
 
-.screen-header{
+.tutorial-header{
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 18px;
   flex-wrap: wrap;
 }
 
@@ -83,26 +75,26 @@
   }
 }
 
-.screen-title h1{
+.tutorial-heading h1{
   margin: 0;
-  font-size: clamp(40px, 6vw, 52px);
+  font-size: clamp(40px, 5.6vw, 52px);
   font-weight: 700;
   letter-spacing: -.3px;
   color: var(--fg-strong, #fff);
 }
 
-.screen-description{
+.tutorial-subtitle{
   margin: 6px 0 0;
   color: var(--fg-soft, rgba(220,235,255,.74));
-  font-size: clamp(14px, 2.4vw, 18px);
+  font-size: clamp(15px, 2.5vw, 18px);
   max-width: 640px;
 }
 
 .view-stack{
-  width: 100%;
-  position: relative;
   flex: 1;
+  width: 100%;
   display: flex;
+  position: relative;
   overflow: hidden;
 }
 
@@ -111,8 +103,6 @@
   flex-direction: column;
   gap: clamp(20px, 4vw, 28px);
   width: 100%;
-  flex: 1;
-  overflow: hidden;
 }
 
 .tutorial-view.is-active{
@@ -129,15 +119,14 @@
   .tutorial-view.is-active{ animation: none; }
 }
 
-/* ========================== Tarjetas menú ========================== */
-.menu-intro p{
+.tutorial-menu__intro p{
   margin: 0;
   color: var(--fg-soft, rgba(220,235,255,.74));
   font-size: clamp(15px, 2.6vw, 18px);
-  max-width: 640px;
+  max-width: 680px;
 }
 
-.card-grid{
+.tutorial-menu__cards{
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: var(--tutorial-card-gap);
@@ -206,14 +195,13 @@
   color: rgba(95,225,255,.9);
 }
 
-/* ========================== Flujo interactivo ========================== */
 .tutorial-flow{ min-height: clamp(480px, 70svh, 720px); }
 
 .flow-panel{
   display: flex;
   flex-direction: column;
   gap: clamp(20px, 4vw, 32px);
-  padding: var(--tutorial-panel-padding);
+  padding: clamp(24px, 6vw, 36px);
   border-radius: var(--r-lg, 26px);
   background: linear-gradient(180deg, var(--card-top, rgba(18,28,46,.92)), var(--card-bot, rgba(14,23,39,.88)));
   border: 1px solid var(--card-border, rgba(160,190,220,.14));
@@ -320,7 +308,7 @@
   width: 100%;
   max-width: 720px;
   margin: 0 auto;
-  min-height: clamp(320px, 60svh, 520px);
+  min-height: clamp(320px, 58svh, 520px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -409,9 +397,6 @@
   transform: scale(1);
 }
 
-.step-visual.is-complete .step-text{ opacity: .88; }
-
-/* ========================== Botones flujo ========================== */
 .flow-controls{
   display: flex;
   justify-content: center;
@@ -513,20 +498,19 @@
 
 .flow-footnote.is-hidden{ display: none; }
 
-/* ========================== Responsivo ========================== */
 @media (max-width: 860px){
-  .main-container{ padding: clamp(32px, 9vh, 64px) clamp(16px, 8vw, 32px); }
+  .tutorial-container{ padding: clamp(32px, 9vh, 64px) clamp(16px, 8vw, 32px); }
   .flow-panel{ padding: clamp(24px, 8vw, 36px); }
 }
 
 @media (max-width: 720px){
-  .screen-header{ gap: 12px; }
+  .tutorial-header{ gap: 12px; }
   .flow-heading{ align-items: flex-start; gap: 14px; }
   .flow-heading__icon{ width: 56px; height: 56px; font-size: 26px; }
+  .tutorial-card{ padding: clamp(24px, 7vw, 32px); }
 }
 
 @media (max-width: 520px){
-  .tutorial-card{ padding: 26px; }
-  .flow-panel{ padding: clamp(22px, 10vw, 32px); }
+  .tutorial-shell{ padding: clamp(24px, 9vw, 32px); }
   .step-visual{ min-height: clamp(280px, 60svh, 460px); }
 }

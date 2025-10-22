@@ -12,25 +12,26 @@
 </head>
 
 <body>
-  <div class="main-container">
-    <div class="screen-wrapper" data-tutorial>
-      <header class="screen-header">
+  <div class="tutorial-container">
+    <div class="tutorial-shell" data-tutorial>
+      <header class="tutorial-header">
         <button class="back-button" type="button" onclick="window.location.href='../../index.html'">
-          <i class="bi bi-arrow-left"></i>
+          <i class="bi bi-arrow-left" aria-hidden="true"></i>
+          <span class="visually-hidden">Volver al inicio</span>
         </button>
-        <div class="screen-title">
+        <div class="tutorial-heading">
           <h1>Tutorial interactivo</h1>
-          <p class="screen-description">Explora las señas esenciales de HELEN con guías paso a paso.</p>
+          <p class="tutorial-subtitle">Explora las señas esenciales de HELEN con guías paso a paso.</p>
         </div>
       </header>
 
       <div class="view-stack">
         <section class="tutorial-view tutorial-menu is-active" data-view="menu">
-          <div class="menu-intro">
+          <div class="tutorial-menu__intro">
             <p>Selecciona una categoría para practicar la secuencia oficial. Cada paso se confirma visualmente para simular la detección real.</p>
           </div>
 
-          <div class="card-grid">
+          <div class="tutorial-menu__cards">
             <button class="tutorial-card" type="button" data-module-trigger="weather">
               <span class="tutorial-card__icon" aria-hidden="true"><i class="bi bi-cloud-sun"></i></span>
               <span class="tutorial-card__title">Clima</span>
@@ -58,7 +59,7 @@
           <div class="flow-panel">
             <header class="flow-header">
               <button class="flow-close" type="button" data-action="close-flow" aria-label="Volver al menú de tutoriales">
-                <i class="bi bi-arrow-left"></i>
+                <i class="bi bi-arrow-left" aria-hidden="true"></i>
               </button>
 
               <div class="flow-heading">
@@ -92,8 +93,7 @@
 
             <p class="flow-footnote" data-flow-footnote>Secuencia oficial: H → C → H + I.</p>
 
-            <button class="tutorial-button tutorial-button--secondary flow-return" type="button" data-action="return-menu"
-              aria-hidden="true">
+            <button class="tutorial-button tutorial-button--secondary flow-return" type="button" data-action="return-menu" aria-hidden="true">
               Volver al menú de tutoriales
             </button>
           </div>
