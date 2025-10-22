@@ -2,7 +2,26 @@
 (function () {
   'use strict';
 
+  const scope = typeof self !== 'undefined' ? self : globalThis;
   const connections = new Set();
+  let nodeParentPort = null;
+  let nodePortAdapter = null;
+
+  if (typeof process !== 'undefined' && process.versions && process.versions.node && typeof require === 'function') {
+    try {
+      const { parentPort } = require('worker_threads');
+      if (parentPort) {
+        nodeParentPort = parentPort;
+        nodePortAdapter = {
+          postMessage: (message) => parentPort.postMessage(message),
+          start: null,
+        };
+      }
+    } catch (error) {
+      nodeParentPort = null;
+      nodePortAdapter = null;
+    }
+  }
   const state = {
     items: new Map(),
     tickTimer: null,
@@ -121,6 +140,12 @@
       case 'ping':
         postToPort(port, { type: 'pong', timestamp: now() });
         break;
+      case 'debug-fast-forward':
+        if (typeof data.milliseconds === 'number' && Number.isFinite(data.milliseconds)) {
+          state.baseEpoch += data.milliseconds;
+          runTick();
+        }
+        break;
       default:
         break;
     }
@@ -137,18 +162,29 @@
     scheduleTick();
   };
 
-  if (typeof self !== 'undefined' && typeof self.onconnect === 'function') {
-    self.onconnect = (event) => {
+  if (nodeParentPort && nodePortAdapter) {
+    const adapter = nodePortAdapter;
+    connections.add(adapter);
+    if (typeof nodeParentPort.on === 'function') {
+      nodeParentPort.on('message', (data) => handleMessage(data, adapter));
+      nodeParentPort.on('close', () => connections.delete(adapter));
+    } else if (typeof nodeParentPort.addEventListener === 'function') {
+      nodeParentPort.addEventListener('message', (event) => handleMessage(event.data, adapter));
+    }
+    postToPort(adapter, { type: 'ready' });
+    scheduleTick();
+  } else if (typeof scope !== 'undefined' && typeof scope.onconnect === 'function') {
+    scope.onconnect = (event) => {
       const [port] = event.ports;
       attachPort(port);
     };
   } else {
     const dedicatedPort = {
-      postMessage: (message) => self.postMessage(message),
+      postMessage: (message) => scope.postMessage(message),
       start: null,
     };
     connections.add(dedicatedPort);
-    self.onmessage = (event) => handleMessage(event.data, dedicatedPort);
+    scope.onmessage = (event) => handleMessage(event.data, dedicatedPort);
     postToPort(dedicatedPort, { type: 'ready' });
   }
 })();

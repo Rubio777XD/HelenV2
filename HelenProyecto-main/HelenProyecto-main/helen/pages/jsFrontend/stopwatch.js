@@ -2,17 +2,187 @@
 // Configuración global
 // =========================
 const CONFIG = {
-  UPDATE_INTERVAL: 10, // 10 ms -> mostramos centésimas
   DIAS: ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'],
-  MESES: ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+  MESES: ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'],
 };
+
+const STOPWATCH_WORKER_URL = (() => {
+  if (typeof document !== 'undefined') {
+    const current = document.currentScript;
+    if (current && current.src) {
+      return new URL('./stopwatch-worker.js', current.src).toString();
+    }
+    const scripts = document.getElementsByTagName('script');
+    const last = scripts[scripts.length - 1];
+    if (last && last.src) {
+      return new URL('./stopwatch-worker.js', last.src).toString();
+    }
+  }
+  return 'stopwatch-worker.js';
+})();
+
+class StopwatchEngine {
+  constructor(onTick) {
+    this.onTick = typeof onTick === 'function' ? onTick : () => {};
+    this.worker = null;
+    this.ready = false;
+    this.pendingMessages = [];
+    this.elapsed = 0;
+    this.supportsWorker = typeof Worker !== 'undefined';
+    this.fallbackTimer = null;
+    this.fallbackStart = 0;
+    this.fallbackElapsed = 0;
+
+    if (this.supportsWorker) {
+      try {
+        this._initWorker();
+        return;
+      } catch (error) {
+        console.warn('[Stopwatch] No se pudo iniciar el worker dedicado:', error);
+        this.supportsWorker = false;
+      }
+    }
+
+    this._initFallback();
+  }
+
+  _initWorker() {
+    const worker = new Worker(STOPWATCH_WORKER_URL);
+    worker.onmessage = (event) => {
+      const data = event.data || {};
+      switch (data.type) {
+        case 'ready':
+          this.ready = true;
+          while (this.pendingMessages.length) {
+            worker.postMessage(this.pendingMessages.shift());
+          }
+          break;
+        case 'tick':
+          this.elapsed = Math.max(0, Number(data.elapsedMs) || 0);
+          this.onTick(this.elapsed);
+          break;
+        default:
+          break;
+      }
+    };
+    worker.onerror = (error) => {
+      console.warn('[Stopwatch] Error en worker, usando modo fallback.', error);
+      this.supportsWorker = false;
+      this._initFallback();
+      this.start(this.elapsed);
+    };
+    this.worker = worker;
+  }
+
+  _initFallback() {
+    if (this.fallbackTimer) {
+      clearInterval(this.fallbackTimer);
+    }
+    this.fallbackTimer = null;
+    this.fallbackElapsed = 0;
+    this.fallbackStart = 0;
+  }
+
+  _post(message) {
+    if (!this.supportsWorker || !this.worker) {
+      return;
+    }
+    if (!this.ready) {
+      this.pendingMessages.push(message);
+      return;
+    }
+    try {
+      this.worker.postMessage(message);
+    } catch (error) {
+      console.warn('[Stopwatch] No se pudo enviar mensaje al worker:', error);
+    }
+  }
+
+  _startFallback(initialElapsed) {
+    if (this.fallbackTimer) {
+      clearInterval(this.fallbackTimer);
+    }
+    this.fallbackElapsed = initialElapsed;
+    this.fallbackStart = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now();
+    this.fallbackTimer = setInterval(() => {
+      const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
+      const delta = now - this.fallbackStart;
+      this.elapsed = Math.max(0, this.fallbackElapsed + delta);
+      this.onTick(this.elapsed);
+    }, 40);
+  }
+
+  start(initialElapsed = 0) {
+    const safeElapsed = Math.max(0, Number(initialElapsed) || 0);
+    this.elapsed = safeElapsed;
+    if (this.supportsWorker && this.worker) {
+      this._post({ type: 'start', elapsedMs: safeElapsed });
+    } else {
+      this._startFallback(safeElapsed);
+    }
+    this.onTick(this.elapsed);
+  }
+
+  stop() {
+    if (this.supportsWorker && this.worker) {
+      this._post({ type: 'stop' });
+      return;
+    }
+    if (this.fallbackTimer) {
+      clearInterval(this.fallbackTimer);
+      this.fallbackTimer = null;
+    }
+    const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now();
+    const delta = now - this.fallbackStart;
+    this.elapsed = Math.max(0, this.fallbackElapsed + delta);
+    this.fallbackElapsed = this.elapsed;
+    this.onTick(this.elapsed);
+  }
+
+  reset() {
+    if (this.supportsWorker && this.worker) {
+      this._post({ type: 'reset' });
+    } else {
+      if (this.fallbackTimer) {
+        clearInterval(this.fallbackTimer);
+        this.fallbackTimer = null;
+      }
+      this.fallbackElapsed = 0;
+      this.fallbackStart = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
+      this.elapsed = 0;
+      this.onTick(0);
+    }
+  }
+
+  dispose() {
+    if (this.worker) {
+      try {
+        this.worker.terminate();
+      } catch (error) {
+        console.warn('[Stopwatch] Error cerrando worker:', error);
+      }
+      this.worker = null;
+    }
+    if (this.fallbackTimer) {
+      clearInterval(this.fallbackTimer);
+      this.fallbackTimer = null;
+    }
+  }
+}
 
 // =========================
 // Clase principal TimerApp
 // =========================
 class TimerApp {
   constructor() {
-    // Elementos DOM
     this.elements = {
       dateSection: $('.date-section'),
       timerDisplay: $('.timer-display'),
@@ -23,7 +193,7 @@ class TimerApp {
       lapCount: $('.lap-count'),
       avgLap: $('.avg-lap'),
       bestLap: $('.best-lap'),
-      worstLap: $('.worstLap'), // opcional si no existe en HTML
+      worstLap: $('.worstLap'),
 
       startBtn: $('.start-btn'),
       resetBtn: $('.reset-btn'),
@@ -34,99 +204,83 @@ class TimerApp {
 
       statsCard: $('.stats-card'),
       loadingIndicator: $('.timer-loading'),
-      backBtn: $('.back-btn')
+      backBtn: $('.back-btn'),
     };
 
-    // Estado
-    this.startTime = 0;       // timestamp de inicio (corrige pausas)
-    this.elapsedTime = 0;     // ms acumulados cuando se pausa
-    this.timerInterval = null;
+    this.elapsedTime = 0;
     this.running = false;
-    this.laps = [];           // [{number, time (acumulado), lapTime (duración)}]
+    this.laps = [];
+    this.engine = new StopwatchEngine((elapsed) => {
+      this.elapsedTime = elapsed;
+      this.updateTimerDisplay();
+    });
 
-    // Init
     this.init();
   }
 
-  // -------------------------
-  // Ciclo de vida
-  // -------------------------
   init() {
     this.setupEventListeners();
     this.startDateTimer();
     this.resetTimer();
 
-    // Oculta loading si existiera
     setTimeout(() => {
       if (this.elements.loadingIndicator && this.elements.loadingIndicator.length) {
         this.elements.loadingIndicator.fadeOut();
       }
     }, 500);
+
+    $(window).on('beforeunload', () => {
+      if (this.engine) {
+        this.engine.dispose();
+      }
+    });
   }
 
   setupEventListeners() {
-    // Play / Pause
     this.elements.startBtn.on('click', () => {
       if (!this.running) this.startTimer();
       else this.stopTimer();
     });
 
-    // Reset
     this.elements.resetBtn.on('click', () => this.resetTimer());
-
-    // Lap
     this.elements.lapBtn.on('click', () => this.addLap());
 
-    // Back (barra superior)
     if (this.elements.backBtn && this.elements.backBtn.length) {
       this.elements.backBtn.on('click', () => history.back());
     }
 
-    // Teclado
     $(document).on('keydown', (e) => {
-      // Espacio → start/stop
       if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault();
         if (!this.running) this.startTimer();
         else this.stopTimer();
       }
-      // L → vuelta (si está corriendo)
       if ((e.key === 'l' || e.key === 'L') && this.running) this.addLap();
-      // R → reset (si está detenido)
       if ((e.key === 'r' || e.key === 'R') && !this.running) this.resetTimer();
     });
   }
 
-  // -------------------------
-  // Fecha (si decides mostrarla)
-  // -------------------------
   startDateTimer() {
     this.updateDate();
     setInterval(() => this.updateDate(), 60000);
   }
+
   updateDate() {
     const d = new Date();
     const s = `${CONFIG.DIAS[d.getDay()]}, ${d.getDate()} de ${CONFIG.MESES[d.getMonth()]} de ${d.getFullYear()}`;
     this.elements.dateSection.html(s);
   }
 
-  // -------------------------
-  // Control del cronómetro
-  // -------------------------
   startTimer() {
     if (this.running) return;
     this.running = true;
 
-    const now = Date.now();
-    this.startTime = now - this.elapsedTime; // respeta el tiempo acumulado
+    this.engine.start(this.elapsedTime);
 
-    this.timerInterval = setInterval(() => this.updateElapsedTime(), CONFIG.UPDATE_INTERVAL);
-
-    // UI
     this.elements.startBtn.html('<i class="bi bi-pause-fill"></i><span>Detener</span>');
-    this.elements.startBtn.addClass('stop-btn'); // CSS la vuelve roja
-    this.elements.resetBtn.prop('disabled', true);  // oculta Reset (slot)
-    this.elements.lapBtn.prop('disabled', false);   // muestra Vuelta (slot)
+    this.elements.startBtn.addClass('stop-btn');
+    this.elements.resetBtn.prop('disabled', true);
+    this.elements.lapBtn.prop('disabled', false);
     this.elements.timerIcon.removeClass('bi-stopwatch').addClass('bi-stopwatch-fill');
   }
 
@@ -134,46 +288,31 @@ class TimerApp {
     if (!this.running) return;
     this.running = false;
 
-    clearInterval(this.timerInterval);
-    this.timerInterval = null;
+    this.engine.stop();
 
-    // Acumular lo transcurrido hasta ahora
-    this.elapsedTime = Date.now() - this.startTime;
-
-    // UI
     this.elements.startBtn.html('<i class="bi bi-play-fill"></i><span>Continuar</span>');
-    this.elements.startBtn.removeClass('stop-btn'); // vuelve a verde
-    this.elements.resetBtn.prop('disabled', false); // muestra Reset (slot)
-    this.elements.lapBtn.prop('disabled', true);    // oculta Vuelta (slot)
+    this.elements.startBtn.removeClass('stop-btn');
+    this.elements.resetBtn.prop('disabled', false);
+    this.elements.lapBtn.prop('disabled', true);
     this.elements.timerIcon.removeClass('bi-stopwatch-fill').addClass('bi-stopwatch');
   }
 
   resetTimer() {
-    // Detener si estaba corriendo
     if (this.running) this.stopTimer();
 
+    this.engine.reset();
     this.elapsedTime = 0;
-    this.startTime = 0;
     this.laps = [];
 
-    // UI base
     this.updateTimerDisplay();
     this.elements.startBtn.html('<i class="bi bi-play-fill"></i><span>Iniciar</span>');
     this.elements.resetBtn.prop('disabled', true);
     this.elements.lapBtn.prop('disabled', true);
     this.elements.lapsList.empty();
 
-    // Stats y badge
     this.updateLapStats();
     this.updateLapsCountBadge();
     this.toggleStatsVisibility();
-  }
-
-  updateElapsedTime() {
-    // tiempo transcurrido = ahora - startTime
-    const now = Date.now();
-    this.elapsedTime = now - this.startTime;
-    this.updateTimerDisplay();
   }
 
   updateTimerDisplay() {
@@ -183,20 +322,17 @@ class TimerApp {
     this.elements.totalTime.text(`Tiempo Total: ${t.main}`);
   }
 
-  // -------------------------
-  // Vueltas
-  // -------------------------
   addLap() {
     if (!this.running) return;
 
-    const lapTime = this.elapsedTime; // acumulado en ms
+    const lapTime = this.elapsedTime;
     const prevCumulative = this.laps.length > 0 ? this.laps[this.laps.length - 1].time : 0;
     const lapDuration = lapTime - prevCumulative;
 
     this.laps.push({
       number: this.laps.length + 1,
-      time: lapTime,        // acumulado total hasta esta vuelta
-      lapTime: lapDuration, // duración de la vuelta
+      time: lapTime,
+      lapTime: lapDuration,
     });
 
     this.updateLapsList();
@@ -208,12 +344,10 @@ class TimerApp {
   updateLapsList() {
     this.elements.lapsList.empty();
 
-    // Mostramos la más reciente arriba
-    [...this.laps].reverse().forEach(lap => {
+    [...this.laps].reverse().forEach((lap) => {
       const lapTimeFormatted = this.formatTime(lap.lapTime);
       const totalFormatted = this.formatTime(lap.time);
 
-      // Estructura: # | Vuelta | Total (usa estilos existentes .lap-item / .lap-number / .lap-delta)
       const item = `
         <div class="lap-item">
           <div class="lap-number">#${lap.number}</div>
@@ -230,13 +364,11 @@ class TimerApp {
     this.elements.lapCount.text(`Vueltas: ${n}`);
 
     if (n > 0) {
-      // Promedio (de duraciones de vueltas)
       const avg = this.calculateAverageLapTime();
       const avgF = this.formatTime(avg);
       this.elements.avgLap.text(`Promedio: ${avgF.main}`);
 
-      // Best / Worst (si existen en el HTML)
-      const lapsOnly = this.laps.map(l => l.lapTime);
+      const lapsOnly = this.laps.map((l) => l.lapTime);
       const best = Math.min(...lapsOnly);
       const worst = Math.max(...lapsOnly);
 
@@ -273,28 +405,19 @@ class TimerApp {
     }
   }
 
-  // -------------------------
-  // Utilidades de tiempo
-  // -------------------------
-  /**
-   * Formatea ms -> { main: "HH:MM:SS", ms: "cc" } (centésimas)
-   */
   formatTime(timeInMs) {
     const totalSeconds = Math.floor(timeInMs / 1000);
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = totalSeconds % 60;
-    const centiseconds = Math.floor((timeInMs % 1000) / 10); // 0-99
+    const centiseconds = Math.floor((timeInMs % 1000) / 10);
 
     return {
       main: `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`,
-      ms: centiseconds.toString().padStart(2, '0')
+      ms: centiseconds.toString().padStart(2, '0'),
     };
   }
 
-  /**
-   * Promedio de duración de vueltas (no del acumulado)
-   */
   calculateAverageLapTime() {
     if (this.laps.length === 0) return 0;
     const total = this.laps.reduce((sum, lap) => sum + lap.lapTime, 0);
@@ -302,9 +425,6 @@ class TimerApp {
   }
 }
 
-// -------------------------
-// Bootstrap
-// -------------------------
 $(document).ready(() => {
   window.timerApp = new TimerApp();
 });

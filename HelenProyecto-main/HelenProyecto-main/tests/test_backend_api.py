@@ -7,7 +7,15 @@ from urllib.parse import urlparse
 
 import pytest
 
-from backendHelen.server import HelenRequestHandler, HelenRuntime, ThreadingHTTPServer
+from backendHelen.server import (
+    HelenRequestHandler,
+    HelenRuntime,
+    ThreadingHTTPServer,
+    GestureDecisionEngine,
+    GestureMetrics,
+    ConsensusConfig,
+)
+from Hellen_model_RN.simple_classifier import Prediction
 
 
 def find_free_port() -> int:
@@ -166,3 +174,24 @@ def test_foco_command_is_not_flagged_as_activation(live_server):
             pytest.fail('No se recibió el evento de Foco enviado por HTTP')
     finally:
         client.close()
+
+
+def test_command_debounce_prevents_spam():
+    metrics = GestureMetrics()
+    engine = GestureDecisionEngine(
+        metrics=metrics,
+        consensus=ConsensusConfig(window_size=3, required_votes=1),
+    )
+
+    timestamp = 0.0
+    outcome_start = engine.process(Prediction(label='Start', score=0.92), timestamp=timestamp)
+    assert outcome_start.emit is True
+
+    timestamp += 1.0  # supera el cooldown de activación
+    outcome_clima = engine.process(Prediction(label='Clima', score=0.93), timestamp=timestamp)
+    assert outcome_clima.emit is True
+
+    timestamp += 0.3  # dentro del periodo de debounce (0.75s)
+    outcome_repeat = engine.process(Prediction(label='Clima', score=0.94), timestamp=timestamp)
+    assert outcome_repeat.emit is False
+    assert outcome_repeat.reason == 'command_debounce_active'
