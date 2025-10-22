@@ -33,14 +33,16 @@ import threading
 import time
 import urllib.request
 import uuid
-from collections import deque
+import math
+from collections import Counter, defaultdict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler
 from pathlib import Path
-from typing import Any, Deque, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Deque, Dict, Iterable, List, NamedTuple, Optional, Tuple
+import statistics
 from xml.sax.saxutils import escape
 
 try:  # pragma: no cover - optional dependency in CI
@@ -84,6 +86,9 @@ PRIMARY_DATASET_NAME = "data.pickle"
 LEGACY_DATASET_NAME = "data1.pickle"
 
 
+_MISSING_DATASET_NOTIFIED: set[Path] = set()
+
+
 def _default_dataset_path() -> Path:
     """Pick the best available dataset shipped with the build.
 
@@ -110,15 +115,1001 @@ def _default_dataset_path() -> Path:
 
 
 def _notify_missing_dataset(dataset_path: Path) -> None:
+    resolved = dataset_path.resolve()
+    if resolved in _MISSING_DATASET_NOTIFIED:
+        return
+
+    _MISSING_DATASET_NOTIFIED.add(resolved)
+
     if dataset_path.name.lower() == PRIMARY_DATASET_NAME:
-        LOGGER.error(
-            "data.pickle no encontrado (archivo grande omitido del repo, ver documentación de build)"
+        LOGGER.warning(
+            "data.pickle no encontrado (archivo grande omitido del repo, ver documentación de build). "
+            "Fallback activo; la calibración puede degradar accuracy."
         )
     else:
         LOGGER.error("Dataset no encontrado en %s", dataset_path)
 
 
 DATASET_PATH = _default_dataset_path()
+
+TRACKED_GESTURES = {"Start", "Clima", "Reloj", "Inicio"}
+GESTURE_ALIASES = {"Start": "H", "Clima": "C", "Reloj": "R", "Inicio": "I"}
+
+
+@dataclass(frozen=True)
+class ClassThreshold:
+    enter: float
+    release: float
+
+
+DEFAULT_CLASS_THRESHOLDS: Dict[str, ClassThreshold] = {
+    "Start": ClassThreshold(enter=0.75, release=0.65),
+    "Clima": ClassThreshold(enter=0.8, release=0.7),
+    "Reloj": ClassThreshold(enter=0.78, release=0.68),
+    "Inicio": ClassThreshold(enter=0.76, release=0.66),
+}
+
+GLOBAL_MIN_SCORE = 0.6
+
+
+@dataclass(frozen=True)
+class ConsensusConfig:
+    window_size: int = 12
+    required_votes: int = 8
+
+
+DEFAULT_CONSENSUS_CONFIG = ConsensusConfig()
+
+SMOOTHING_WINDOW_SIZE = 4
+COOLDOWN_SECONDS = 0.75
+LISTENING_WINDOW_SECONDS = 4.0
+COMMAND_DEBOUNCE_SECONDS = 0.75
+
+QUALITY_MIN_LANDMARKS = 21
+QUALITY_MIN_HAND_SCORE = 0.55
+QUALITY_MIN_BBOX_AREA = 0.012
+QUALITY_MIN_BBOX_SIDE = 0.09
+QUALITY_BLUR_THRESHOLD = 35.0
+
+
+class ConsensusVote(NamedTuple):
+    label: str
+    score: float
+    timestamp: float
+
+
+class ConsensusResult(NamedTuple):
+    votes: int
+    total: int
+    average: float
+    span_ms: float
+
+
+class DecisionOutcome(NamedTuple):
+    emit: bool
+    label: str
+    score: float
+    payload: Dict[str, Any]
+    reason: str
+    state: str
+    hint_label: Optional[str]
+    support: int
+    window_ms: float
+
+
+@dataclass
+class SampleRecord:
+    timestamp: float
+    label: str
+    score: float
+    accepted: bool
+    reason: str
+    state: str
+    hint_label: Optional[str] = None
+    support: int = 0
+    window_ms: float = 0.0
+
+
+@dataclass
+class ThresholdSuggestion:
+    label: str
+    current: float
+    recommended: float
+    delta: float
+    reason: str
+    expected_f1: float
+
+
+class FeatureNormalizer:
+    """Apply the same normalisation used during model training when available."""
+
+    def __init__(self, dataset_path: Path) -> None:
+        self._dataset_path = dataset_path
+        self._transformer: Optional[Any] = None
+        self._mean: Optional[List[float]] = None
+        self._scale: Optional[List[float]] = None
+        self._lock = threading.Lock()
+        self._loaded = False
+        self.reload_if_available()
+
+    # ------------------------------------------------------------------
+    def reload_if_available(self) -> None:
+        path = self._dataset_path
+        if not path.exists():
+            return
+
+        try:
+            import pickle
+        except ModuleNotFoundError:
+            LOGGER.debug("pickle no disponible: no se puede cargar el normalizador")
+            return
+
+        try:
+            with path.open("rb") as handle:
+                data = pickle.load(handle)
+        except Exception as exc:  # pragma: no cover - archivo corrupto
+            LOGGER.warning("No se pudo cargar metadatos de %s: %s", path, exc)
+            return
+
+        transformer = data.get("normalizer") or data.get("scaler")
+        mean = data.get("feature_mean") or data.get("mean_")
+        scale = data.get("feature_std") or data.get("scale_") or data.get("feature_scale")
+
+        # Liberar listas pesadas para evitar retener en memoria la copia completa del dataset.
+        data.pop("data", None)
+        data.pop("labels", None)
+
+        with self._lock:
+            self._transformer = transformer if hasattr(transformer, "transform") else None
+            if self._transformer is None:
+                self._mean = [float(v) for v in mean] if mean else None
+                if scale:
+                    self._scale = [float(v) if abs(float(v)) > 1e-6 else 1.0 for v in scale]
+                else:
+                    self._scale = None
+            else:
+                self._mean = None
+                self._scale = None
+
+            self._loaded = bool(self._transformer or (self._mean and self._scale))
+
+    # ------------------------------------------------------------------
+    def transform(self, features: Iterable[float]) -> List[float]:
+        vector = [float(value) for value in features]
+
+        with self._lock:
+            transformer = self._transformer
+            mean = self._mean
+            scale = self._scale
+
+        if transformer is not None:
+            try:
+                transformed = transformer.transform([vector])  # type: ignore[call-arg]
+                return list(transformed[0])
+            except Exception as exc:  # pragma: no cover - depende del artefacto
+                LOGGER.warning("Normalizador entrenado falló, usando vector original: %s", exc)
+
+        if mean and scale and len(mean) == len(vector) and len(scale) == len(vector):
+            return [(value - mean[idx]) / (scale[idx] or 1.0) for idx, value in enumerate(vector)]
+
+        return vector
+
+    # ------------------------------------------------------------------
+    def snapshot(self) -> Dict[str, Any]:
+        with self._lock:
+            return {
+                "dataset": str(self._dataset_path),
+                "loaded": self._loaded,
+                "uses_transformer": bool(self._transformer),
+                "uses_stats": bool(self._mean and self._scale),
+            }
+
+
+class ConsensusTracker:
+    """Maintain a rolling window of predictions for temporal consensus."""
+
+    def __init__(self, config: ConsensusConfig) -> None:
+        self._config = config
+        self._votes: Deque[ConsensusVote] = deque(maxlen=config.window_size)
+        self._lock = threading.Lock()
+
+    # ------------------------------------------------------------------
+    def reset(self) -> None:
+        with self._lock:
+            self._votes.clear()
+
+    # ------------------------------------------------------------------
+    def add(self, label: str, score: float, timestamp: float) -> None:
+        with self._lock:
+            self._votes.append(ConsensusVote(label=label, score=score, timestamp=timestamp))
+
+    # ------------------------------------------------------------------
+    def evaluate(self, label: str, threshold: float) -> ConsensusResult:
+        with self._lock:
+            votes = list(self._votes)
+
+        matching = [vote for vote in votes if vote.label == label]
+        passing = [vote for vote in matching if vote.score >= threshold]
+
+        average = float(sum(vote.score for vote in matching) / len(matching)) if matching else 0.0
+        span_ms = (votes[-1].timestamp - votes[0].timestamp) * 1000.0 if len(votes) >= 2 else 0.0
+
+        return ConsensusResult(votes=len(passing), total=len(votes), average=average, span_ms=span_ms)
+
+    # ------------------------------------------------------------------
+    def snapshot(self) -> Dict[str, Any]:
+        with self._lock:
+            votes = list(self._votes)
+
+        return {
+            "window_size": self._config.window_size,
+            "required_votes": self._config.required_votes,
+            "votes": [vote._asdict() for vote in votes],
+        }
+
+
+class GestureMetrics:
+    """Aggregate per-session metrics for calibration and reporting."""
+
+    def __init__(self) -> None:
+        self._samples: List[SampleRecord] = []
+        self._accepted_scores: Dict[str, List[float]] = defaultdict(list)
+        self._rejected_scores: Dict[str, List[float]] = defaultdict(list)
+        self._quality_checks = 0
+        self._quality_rejections: Counter[str] = Counter()
+        self._reason_counts: Counter[str] = Counter()
+        self._reason_by_label: Dict[str, Counter[str]] = defaultdict(Counter)
+        self._lock = threading.Lock()
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _normalise(label: Optional[str]) -> str:
+        return str(label or "").strip().lower()
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _canonical(label: Optional[str]) -> str:
+        if not label:
+            return ""
+        text = str(label).strip()
+        lowered = text.lower()
+        for candidate in TRACKED_GESTURES:
+            if lowered == candidate.lower():
+                return candidate
+        return text
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _score_stats(values: Iterable[float]) -> Dict[str, Optional[float]]:
+        values = [float(v) for v in values if math.isfinite(float(v))]
+        if not values:
+            return {"min": None, "max": None, "mean": None, "median": None}
+
+        return {
+            "min": min(values),
+            "max": max(values),
+            "mean": statistics.fmean(values) if hasattr(statistics, "fmean") else sum(values) / len(values),
+            "median": statistics.median(values),
+        }
+
+    # ------------------------------------------------------------------
+    def register_quality_check(self, valid: bool, reason: Optional[str]) -> None:
+        with self._lock:
+            self._quality_checks += 1
+            if not valid and reason:
+                self._quality_rejections[reason] += 1
+
+    # ------------------------------------------------------------------
+    def record_sample(self, record: SampleRecord) -> None:
+        canonical_label = self._canonical(record.label)
+        record.label = canonical_label
+        canonical_hint = self._canonical(record.hint_label)
+        record.hint_label = canonical_hint or None
+
+        with self._lock:
+            self._samples.append(record)
+            target = canonical_label or "__unlabelled__"
+            if record.accepted:
+                self._accepted_scores[target].append(record.score)
+            else:
+                self._rejected_scores[target].append(record.score)
+
+            self._reason_counts[record.reason] += 1
+            if canonical_label:
+                self._reason_by_label[canonical_label][record.reason] += 1
+
+    # ------------------------------------------------------------------
+    def _f1_counts(self, samples: List[SampleRecord], label: str) -> Tuple[int, int, int]:
+        label_norm = self._normalise(label)
+        tp = fp = fn = 0
+
+        for record in samples:
+            predicted = self._normalise(record.label)
+            actual = self._normalise(record.hint_label)
+
+            if actual == label_norm and actual:
+                if record.accepted and predicted == label_norm:
+                    tp += 1
+                else:
+                    fn += 1
+            elif record.accepted and predicted == label_norm and actual:
+                fp += 1
+
+        return tp, fp, fn
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _precision_recall_f1(tp: int, fp: int, fn: int) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+        precision = tp / (tp + fp) if (tp + fp) > 0 else None
+        recall = tp / (tp + fn) if (tp + fn) > 0 else None
+        if precision is None or recall is None or (precision + recall) == 0:
+            f1 = None
+        else:
+            f1 = 2 * precision * recall / (precision + recall)
+        return precision, recall, f1
+
+    # ------------------------------------------------------------------
+    def _simulate_raise(self, samples: List[SampleRecord], label: str, new_threshold: float) -> Tuple[int, int, int]:
+        base_tp, base_fp, base_fn = self._f1_counts(samples, label)
+        label_norm = self._normalise(label)
+
+        for record in samples:
+            if not record.accepted:
+                continue
+            if self._normalise(record.label) != label_norm:
+                continue
+            if record.score >= new_threshold:
+                continue
+
+            actual = self._normalise(record.hint_label)
+            if actual == label_norm and actual:
+                base_tp = max(0, base_tp - 1)
+                base_fn += 1
+            elif actual:
+                base_fp = max(0, base_fp - 1)
+
+        return base_tp, base_fp, base_fn
+
+    # ------------------------------------------------------------------
+    def _simulate_lower(self, samples: List[SampleRecord], label: str, new_threshold: float) -> Tuple[int, int, int]:
+        base_tp, base_fp, base_fn = self._f1_counts(samples, label)
+        label_norm = self._normalise(label)
+
+        for record in samples:
+            if record.accepted:
+                continue
+            if self._normalise(record.label) != label_norm:
+                continue
+            if record.score < new_threshold:
+                continue
+            if record.reason not in {"score_below_threshold", "score_below_global"}:
+                continue
+
+            actual = self._normalise(record.hint_label)
+            if actual == label_norm and actual:
+                base_tp += 1
+                base_fn = max(0, base_fn - 1)
+            elif actual:
+                base_fp += 1
+
+        return base_tp, base_fp, base_fn
+
+    # ------------------------------------------------------------------
+    def threshold_suggestions(self, thresholds: Dict[str, ClassThreshold]) -> List[ThresholdSuggestion]:
+        with self._lock:
+            samples = list(self._samples)
+
+        suggestions: List[ThresholdSuggestion] = []
+
+        if not samples:
+            return suggestions
+
+        for label, threshold in thresholds.items():
+            label_samples = [record for record in samples if self._canonical(record.label) == label]
+            if not label_samples:
+                continue
+
+            base_tp, base_fp, base_fn = self._f1_counts(samples, label)
+            _, _, base_f1 = self._precision_recall_f1(base_tp, base_fp, base_fn)
+            if base_f1 is None:
+                continue
+
+            candidate: Optional[ThresholdSuggestion] = None
+
+            # Try increasing the threshold first to reduce false positives.
+            for delta in (0.02, 0.03, 0.05):
+                new_threshold = min(0.99, threshold.enter + delta)
+                tp, fp, fn = self._simulate_raise(label_samples, label, new_threshold)
+                _, _, candidate_f1 = self._precision_recall_f1(tp, fp, fn)
+                if candidate_f1 is None:
+                    continue
+                if candidate_f1 >= base_f1 * 1.05 and fp <= base_fp:
+                    candidate = ThresholdSuggestion(
+                        label=label,
+                        current=threshold.enter,
+                        recommended=new_threshold,
+                        delta=new_threshold - threshold.enter,
+                        reason="Reducir falsos positivos manteniendo precisión",
+                        expected_f1=candidate_f1,
+                    )
+                    break
+
+            if candidate is None:
+                for delta in (-0.05, -0.03, -0.02):
+                    new_threshold = max(0.4, threshold.enter + delta)
+                    tp, fp, fn = self._simulate_lower(label_samples, label, new_threshold)
+                    _, _, candidate_f1 = self._precision_recall_f1(tp, fp, fn)
+                    if candidate_f1 is None:
+                        continue
+                    if candidate_f1 >= base_f1 * 1.05 and fp <= base_fp:
+                        candidate = ThresholdSuggestion(
+                            label=label,
+                            current=threshold.enter,
+                            recommended=new_threshold,
+                            delta=new_threshold - threshold.enter,
+                            reason="Aumentar recall sin penalizar falsos positivos",
+                            expected_f1=candidate_f1,
+                        )
+                        break
+
+            if candidate:
+                suggestions.append(candidate)
+
+        return suggestions
+
+    # ------------------------------------------------------------------
+    def snapshot(self) -> Dict[str, Any]:
+        with self._lock:
+            samples = list(self._samples)
+            quality_checks = self._quality_checks
+            quality_rejections = dict(self._quality_rejections)
+            reason_counts = dict(self._reason_counts)
+            reason_by_label = {label: dict(counter) for label, counter in self._reason_by_label.items()}
+            accepted_scores = {label: list(values) for label, values in self._accepted_scores.items()}
+            rejected_scores = {label: list(values) for label, values in self._rejected_scores.items()}
+
+        return {
+            "samples": [record.__dict__ for record in samples],
+            "quality_checks": quality_checks,
+            "quality_rejections": quality_rejections,
+            "reason_counts": reason_counts,
+            "reason_by_label": reason_by_label,
+            "accepted_scores": accepted_scores,
+            "rejected_scores": rejected_scores,
+        }
+
+    # ------------------------------------------------------------------
+    def generate_report(
+        self,
+        *,
+        thresholds: Dict[str, ClassThreshold],
+        consensus: ConsensusConfig,
+        dataset_info: Dict[str, Any],
+        latency_stats: Dict[str, float],
+    ) -> Dict[str, Any]:
+        with self._lock:
+            samples = list(self._samples)
+            quality_checks = self._quality_checks
+            quality_rejections = dict(self._quality_rejections)
+            reason_counts = dict(self._reason_counts)
+            reason_by_label = {label: dict(counter) for label, counter in self._reason_by_label.items()}
+            accepted_scores = {label: list(values) for label, values in self._accepted_scores.items()}
+            rejected_scores = {label: list(values) for label, values in self._rejected_scores.items()}
+
+        total_rejections = sum(quality_rejections.values())
+        quality_ratio = (total_rejections / quality_checks) if quality_checks else 0.0
+
+        per_label: Dict[str, Any] = {}
+        for label in TRACKED_GESTURES:
+            tp, fp, fn = self._f1_counts(samples, label)
+            precision, recall, f1 = self._precision_recall_f1(tp, fp, fn)
+            accepted = accepted_scores.get(label, [])
+            rejected = rejected_scores.get(label, [])
+            per_label[label] = {
+                "tp": tp,
+                "fp": fp,
+                "fn": fn,
+                "precision": precision,
+                "recall": recall,
+                "f1": f1,
+                "accepted_scores": self._score_stats(accepted),
+                "rejected_scores": self._score_stats(rejected),
+                "rejections": reason_by_label.get(label, {}),
+            }
+
+        confusion: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        for record in samples:
+            actual = self._canonical(record.hint_label)
+            if not actual:
+                continue
+            predicted = self._canonical(record.label) if record.accepted else "None"
+            confusion[actual][predicted] += 1
+
+        suggestions = [suggestion.__dict__ for suggestion in self.threshold_suggestions(thresholds)]
+
+        return {
+            "thresholds": {label: {"enter": th.enter, "release": th.release} for label, th in thresholds.items()},
+            "global_min_score": GLOBAL_MIN_SCORE,
+            "consensus": {
+                "window_size": consensus.window_size,
+                "required_votes": consensus.required_votes,
+            },
+            "durations_s": {
+                "cooldown": COOLDOWN_SECONDS,
+                "listening_window": LISTENING_WINDOW_SECONDS,
+                "command_debounce": COMMAND_DEBOUNCE_SECONDS,
+            },
+            "dataset": dataset_info,
+            "latency": latency_stats,
+            "samples": len(samples),
+            "quality_checks": quality_checks,
+            "quality_rejections": quality_rejections,
+            "quality_rejection_rate": quality_ratio,
+            "threshold_rejections": reason_counts,
+            "classes": per_label,
+            "confusion_matrix": {actual: dict(preds) for actual, preds in confusion.items()},
+            "suggested_thresholds": suggestions,
+        }
+
+    # ------------------------------------------------------------------
+    def to_markdown(self, report: Dict[str, Any]) -> str:
+        lines = ["# Informe de sesión de gestos", ""]
+        lines.append("## Configuración activa")
+        lines.append("- Ventana de consenso: {window} frames (requiere {votes})".format(
+            window=report["consensus"]["window_size"], votes=report["consensus"]["required_votes"]
+        ))
+        lines.append("- Cooldown tras 'Start': {0:.0f} ms".format(COOLDOWN_SECONDS * 1000))
+        lines.append("- Ventana de escucha C/R/I: {0:.1f} s".format(LISTENING_WINDOW_SECONDS))
+        lines.append("- Debounce de comandos: {0:.0f} ms".format(COMMAND_DEBOUNCE_SECONDS * 1000))
+        lines.append("- Umbral global mínimo: {0:.2f}".format(report["global_min_score"]))
+        lines.append("")
+        lines.append("### Umbrales por clase")
+        lines.append("| Clase | Entrada | Liberación |")
+        lines.append("|-------|---------|------------|")
+        for label, data in report["thresholds"].items():
+            lines.append(f"| {label} | {data['enter']:.2f} | {data['release']:.2f} |")
+
+        lines.append("")
+        lines.append("## Métricas de sesión")
+        lines.append(f"- Frames procesados tras filtros: {report['samples']}")
+        lines.append(f"- Revisiones de calidad: {report['quality_checks']}")
+        lines.append(
+            "- Descartes por calidad: {0} ({1:.1%})".format(
+                sum(report["quality_rejections"].values()), report["quality_rejection_rate"]
+            )
+        )
+        lines.append("")
+
+        lines.append("### Rendimiento por clase")
+        lines.append("| Clase | Precision | Recall | F1 | TP | FP | FN |")
+        lines.append("|-------|-----------|--------|----|----|----|----|")
+        for label in TRACKED_GESTURES:
+            stats = report["classes"][label]
+            precision = stats["precision"] if stats["precision"] is not None else float("nan")
+            recall = stats["recall"] if stats["recall"] is not None else float("nan")
+            f1 = stats["f1"] if stats["f1"] is not None else float("nan")
+            lines.append(
+                "| {label} | {p:.2f} | {r:.2f} | {f:.2f} | {tp} | {fp} | {fn} |".format(
+                    label=label,
+                    p=precision if math.isfinite(precision) else float("nan"),
+                    r=recall if math.isfinite(recall) else float("nan"),
+                    f=f1 if math.isfinite(f1) else float("nan"),
+                    tp=stats["tp"],
+                    fp=stats["fp"],
+                    fn=stats["fn"],
+                )
+            )
+
+        lines.append("")
+        lines.append("### Matriz de confusión")
+        if report["confusion_matrix"]:
+            all_labels = sorted({pred for preds in report["confusion_matrix"].values() for pred in preds})
+            header = "| Actual | " + " | ".join(all_labels) + " |"
+            separator = "| " + " | ".join(["---"] * (len(all_labels) + 1)) + " |"
+            lines.append(header)
+            lines.append(separator)
+            for actual, preds in sorted(report["confusion_matrix"].items()):
+                row = [actual]
+                for pred in all_labels:
+                    row.append(str(preds.get(pred, 0)))
+                lines.append("| " + " | ".join(row) + " |")
+        else:
+            lines.append("Sin datos de validación etiquetados.")
+
+        lines.append("")
+        if report["suggested_thresholds"]:
+            lines.append("### Sugerencias de ajuste")
+            lines.append("| Clase | Actual | Recomendado | Δ | Motivo | F1 estimado |")
+            lines.append("|-------|--------|-------------|---|--------|-------------|")
+            for suggestion in report["suggested_thresholds"]:
+                lines.append(
+                    "| {label} | {current:.2f} | {recommended:.2f} | {delta:+.2f} | {reason} | {f1:.2f} |".format(
+                        label=suggestion["label"],
+                        current=suggestion["current"],
+                        recommended=suggestion["recommended"],
+                        delta=suggestion["delta"],
+                        reason=suggestion["reason"],
+                        f1=suggestion["expected_f1"],
+                    )
+                )
+
+        return "\n".join(lines) + "\n"
+
+    # ------------------------------------------------------------------
+    def dump_report(
+        self,
+        *,
+        markdown_path: Path,
+        thresholds: Dict[str, ClassThreshold],
+        consensus: ConsensusConfig,
+        dataset_info: Dict[str, Any],
+        latency_stats: Dict[str, float],
+    ) -> None:
+        report = self.generate_report(
+            thresholds=thresholds, consensus=consensus, dataset_info=dataset_info, latency_stats=latency_stats
+        )
+        markdown = self.to_markdown(report)
+
+        markdown_path.parent.mkdir(parents=True, exist_ok=True)
+        markdown_path.write_text(markdown, encoding="utf-8")
+
+        json_path = markdown_path.with_suffix(".json")
+        json_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+class GestureDecisionEngine:
+    """Stateful filter applying consensus, hysteresis and cooldown rules."""
+
+    def __init__(
+        self,
+        *,
+        metrics: GestureMetrics,
+        thresholds: Optional[Dict[str, ClassThreshold]] = None,
+        consensus: ConsensusConfig = DEFAULT_CONSENSUS_CONFIG,
+        global_min_score: float = GLOBAL_MIN_SCORE,
+    ) -> None:
+        self._metrics = metrics
+        base_thresholds = dict(DEFAULT_CLASS_THRESHOLDS)
+        if thresholds:
+            base_thresholds.update(thresholds)
+        self._thresholds = base_thresholds
+        self._consensus_config = consensus
+        self._consensus = ConsensusTracker(consensus)
+        self._global_min_score = float(global_min_score)
+
+        self._state = "idle"
+        self._cooldown_until = 0.0
+        self._listen_until = 0.0
+        self._command_debounce_until = 0.0
+        self._listening_duration = LISTENING_WINDOW_SECONDS
+        self._dominant_label: Optional[str] = None
+        self._last_state_change = time.time()
+        self._last_activation_at = 0.0
+        self._lock = threading.Lock()
+
+    # ------------------------------------------------------------------
+    def _reset_consensus(self) -> None:
+        self._consensus.reset()
+        self._dominant_label = None
+
+    # ------------------------------------------------------------------
+    def _update_state(self, timestamp: float) -> None:
+        if self._state == "cooldown" and timestamp >= self._cooldown_until:
+            self._state = "listening"
+            self._listen_until = timestamp + self._listening_duration
+            self._last_state_change = timestamp
+            self._reset_consensus()
+
+        if self._state == "command_debounce" and timestamp >= self._command_debounce_until:
+            self._state = "idle"
+            self._last_state_change = timestamp
+            self._reset_consensus()
+
+        if self._state == "listening" and timestamp >= self._listen_until:
+            self._state = "idle"
+            self._last_state_change = timestamp
+            self._reset_consensus()
+
+    # ------------------------------------------------------------------
+    def _current_threshold(self, label: str) -> Optional[ClassThreshold]:
+        return self._thresholds.get(label)
+
+    # ------------------------------------------------------------------
+    def _record(
+        self,
+        *,
+        label: str,
+        score: float,
+        accepted: bool,
+        reason: str,
+        state: str,
+        hint_label: Optional[str],
+        support: int,
+        window_ms: float,
+        timestamp: float,
+    ) -> None:
+        record = SampleRecord(
+            timestamp=timestamp,
+            label=label,
+            score=score,
+            accepted=accepted,
+            reason=reason,
+            state=state,
+            hint_label=hint_label,
+            support=support,
+            window_ms=window_ms,
+        )
+        self._metrics.record_sample(record)
+
+    # ------------------------------------------------------------------
+    def _apply_hysteresis(self, label: str) -> Optional[str]:
+        if not self._dominant_label:
+            return None
+        if self._dominant_label == label:
+            return None
+
+        thresholds = self._current_threshold(self._dominant_label)
+        if thresholds is None:
+            self._dominant_label = None
+            return None
+
+        result = self._consensus.evaluate(self._dominant_label, thresholds.release)
+        if result.average < thresholds.release:
+            self._dominant_label = None
+            return None
+        return self._dominant_label
+
+    # ------------------------------------------------------------------
+    def process(
+        self,
+        prediction: Prediction,
+        *,
+        timestamp: float,
+        hint_label: Optional[str] = None,
+        latency_ms: float = 0.0,
+    ) -> DecisionOutcome:
+        with self._lock:
+            self._update_state(timestamp)
+
+            canonical_label = GestureMetrics._canonical(prediction.label)
+            canonical_hint = GestureMetrics._canonical(hint_label)
+            score = float(prediction.score)
+
+            thresholds = self._current_threshold(canonical_label)
+            self._consensus.add(canonical_label, score, timestamp)
+            result = self._consensus.evaluate(
+                canonical_label,
+                thresholds.enter if thresholds else self._global_min_score,
+            )
+
+            support = result.votes
+            window_ms = result.span_ms
+
+            if thresholds and result.average >= thresholds.enter:
+                self._dominant_label = canonical_label
+
+            locked_label = self._apply_hysteresis(canonical_label)
+            state = self._state
+
+            payload: Dict[str, Any] = {
+                "consensus_support": support,
+                "consensus_total": result.total,
+                "consensus_span_ms": window_ms,
+                "latency_ms": latency_ms,
+                "state": state,
+            }
+
+            if locked_label and locked_label != canonical_label:
+                reason = "hysteresis_locked"
+                self._record(
+                    label=canonical_label,
+                    score=score,
+                    accepted=False,
+                    reason=reason,
+                    state=state,
+                    hint_label=canonical_hint,
+                    support=support,
+                    window_ms=window_ms,
+                    timestamp=timestamp,
+                )
+                payload["locked_label"] = locked_label
+                payload["decision_reason"] = reason
+                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+
+            if score < self._global_min_score:
+                reason = "score_below_global"
+                self._record(
+                    label=canonical_label,
+                    score=score,
+                    accepted=False,
+                    reason=reason,
+                    state=state,
+                    hint_label=canonical_hint,
+                    support=support,
+                    window_ms=window_ms,
+                    timestamp=timestamp,
+                )
+                payload["decision_reason"] = reason
+                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+
+            if thresholds is None:
+                reason = "not_tracked"
+                self._record(
+                    label=canonical_label,
+                    score=score,
+                    accepted=False,
+                    reason=reason,
+                    state=state,
+                    hint_label=canonical_hint,
+                    support=support,
+                    window_ms=window_ms,
+                    timestamp=timestamp,
+                )
+                payload["decision_reason"] = reason
+                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+
+            if state == "command_debounce" and timestamp < self._command_debounce_until:
+                reason = "command_debounce_active"
+                self._record(
+                    label=canonical_label,
+                    score=score,
+                    accepted=False,
+                    reason=reason,
+                    state=state,
+                    hint_label=canonical_hint,
+                    support=support,
+                    window_ms=window_ms,
+                    timestamp=timestamp,
+                )
+                payload["decision_reason"] = reason
+                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+
+            if state == "cooldown" and timestamp < self._cooldown_until:
+                reason = "cooldown_active"
+                self._record(
+                    label=canonical_label,
+                    score=score,
+                    accepted=False,
+                    reason=reason,
+                    state=state,
+                    hint_label=canonical_hint,
+                    support=support,
+                    window_ms=window_ms,
+                    timestamp=timestamp,
+                )
+                payload["decision_reason"] = reason
+                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+
+            if state == "idle" and canonical_label != "Start":
+                reason = "awaiting_activation"
+                self._record(
+                    label=canonical_label,
+                    score=score,
+                    accepted=False,
+                    reason=reason,
+                    state=state,
+                    hint_label=canonical_hint,
+                    support=support,
+                    window_ms=window_ms,
+                    timestamp=timestamp,
+                )
+                payload["decision_reason"] = reason
+                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+
+            if state == "listening" and canonical_label == "Start":
+                reason = "awaiting_command"
+                self._record(
+                    label=canonical_label,
+                    score=score,
+                    accepted=False,
+                    reason=reason,
+                    state=state,
+                    hint_label=canonical_hint,
+                    support=support,
+                    window_ms=window_ms,
+                    timestamp=timestamp,
+                )
+                payload["decision_reason"] = reason
+                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+
+            if state == "listening" and canonical_label not in {"Clima", "Reloj", "Inicio"}:
+                reason = "unsupported_command"
+                self._record(
+                    label=canonical_label,
+                    score=score,
+                    accepted=False,
+                    reason=reason,
+                    state=state,
+                    hint_label=canonical_hint,
+                    support=support,
+                    window_ms=window_ms,
+                    timestamp=timestamp,
+                )
+                payload["decision_reason"] = reason
+                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+
+            if score < thresholds.enter:
+                reason = "score_below_threshold"
+                self._record(
+                    label=canonical_label,
+                    score=score,
+                    accepted=False,
+                    reason=reason,
+                    state=state,
+                    hint_label=canonical_hint,
+                    support=support,
+                    window_ms=window_ms,
+                    timestamp=timestamp,
+                )
+                payload["threshold_enter"] = thresholds.enter
+                payload["decision_reason"] = reason
+                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+
+            passes_votes = support >= self._consensus_config.required_votes
+            passes_average = result.average >= thresholds.enter
+
+            if not passes_votes and not passes_average:
+                reason = "consensus_short"
+                self._record(
+                    label=canonical_label,
+                    score=score,
+                    accepted=False,
+                    reason=reason,
+                    state=state,
+                    hint_label=canonical_hint,
+                    support=support,
+                    window_ms=window_ms,
+                    timestamp=timestamp,
+                )
+                payload["decision_reason"] = reason
+                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+
+            reason = "accepted"
+            self._record(
+                label=canonical_label,
+                score=score,
+                accepted=True,
+                reason=reason,
+                state=state,
+                hint_label=canonical_hint,
+                support=support,
+                window_ms=window_ms,
+                timestamp=timestamp,
+            )
+
+            payload.update(
+                {
+                    "consensus_average": result.average,
+                    "votes_required": self._consensus_config.required_votes,
+                }
+            )
+            payload["decision_reason"] = reason
+
+            if canonical_label == "Start":
+                self._state = "cooldown"
+                self._cooldown_until = timestamp + COOLDOWN_SECONDS
+                self._last_activation_at = timestamp
+                payload["next_state"] = "cooldown"
+                self._reset_consensus()
+            else:
+                self._state = "command_debounce"
+                self._command_debounce_until = timestamp + COMMAND_DEBOUNCE_SECONDS
+                self._listen_until = timestamp
+                payload["next_state"] = "command_debounce"
+                self._reset_consensus()
+
+            self._last_state_change = timestamp
+
+            return DecisionOutcome(True, canonical_label, score, payload, reason, self._state, canonical_hint, support, window_ms)
+
+    # ------------------------------------------------------------------
+    def thresholds(self) -> Dict[str, ClassThreshold]:
+        return dict(self._thresholds)
+
+    # ------------------------------------------------------------------
+    @property
+    def consensus_config(self) -> ConsensusConfig:
+        return self._consensus_config
 
 ACTIVATION_ALIASES = {
     # Mantener sincronizado con ``ACTIVATION_ALIASES`` en
@@ -630,6 +1621,7 @@ class CameraGestureStream:
         camera_index: int = 0,
         detection_confidence: float = 0.7,
         tracking_confidence: float = 0.6,
+        metrics: Optional[GestureMetrics] = None,
     ) -> None:
         if cv2 is None:
             raise RuntimeError("OpenCV no está instalado. Ejecuta `pip install opencv-python`.")
@@ -639,6 +1631,7 @@ class CameraGestureStream:
         self._camera_index = camera_index
         self._detection_confidence = detection_confidence
         self._tracking_confidence = tracking_confidence
+        self._metrics = metrics
 
         self._cap: Optional[Any] = None
         self._hands: Optional[Any] = None
@@ -648,6 +1641,8 @@ class CameraGestureStream:
         self._last_error: Optional[str] = None
         self._healthy = False
         self._frames_without_hand = 0
+        self._landmark_buffer: Deque[List[Tuple[float, float, float]]] = deque(maxlen=SMOOTHING_WINDOW_SIZE)
+        self._quality_rejections: Counter[str] = Counter()
 
     # ------------------------------------------------------------------
     def open(self) -> None:
@@ -707,12 +1702,21 @@ class CameraGestureStream:
 
             if not results.multi_hand_landmarks:
                 self._frames_without_hand += 1
+                if self._frames_without_hand > 2:
+                    self._landmark_buffer.clear()
                 time.sleep(0.02)
                 continue
 
             self._frames_without_hand = 0
             landmarks = results.multi_hand_landmarks[0]
-            features = self._extract_features(landmarks)
+            if not self._validate_landmarks(frame, results, landmarks):
+                continue
+
+            coords = [(float(lm.x), float(lm.y), float(getattr(lm, "z", 0.0))) for lm in landmarks.landmark]
+            self._landmark_buffer.append(coords)
+            smoothed = self._smooth_landmarks()
+            features = self._extract_features(smoothed)
+            self._register_quality_check(True, None)
             self._last_capture = time.time()
             self._last_error = None
             self._healthy = True
@@ -726,20 +1730,87 @@ class CameraGestureStream:
             "last_capture": self._last_capture,
             "last_error": self._last_error,
             "frames_without_hand": self._frames_without_hand,
+            "quality_rejections": dict(self._quality_rejections),
         }
 
     # ------------------------------------------------------------------
+    def _register_quality_check(self, valid: bool, reason: Optional[str]) -> None:
+        if self._metrics:
+            self._metrics.register_quality_check(valid, reason)
+        if not valid and reason:
+            self._quality_rejections[reason] += 1
+
+    # ------------------------------------------------------------------
+    def _validate_landmarks(self, frame: Any, results: Any, landmarks: Any) -> bool:
+        hand_score = 1.0
+        try:
+            classifications = results.multi_handedness[0].classification
+            if classifications:
+                hand_score = float(classifications[0].score)
+        except (AttributeError, IndexError, TypeError):
+            hand_score = 1.0
+
+        if hand_score < QUALITY_MIN_HAND_SCORE:
+            self._register_quality_check(False, "low_confidence")
+            return False
+
+        if len(getattr(landmarks, "landmark", [])) < QUALITY_MIN_LANDMARKS:
+            self._register_quality_check(False, "incomplete_landmarks")
+            return False
+
+        x_coords = [float(lm.x) for lm in landmarks.landmark]
+        y_coords = [float(lm.y) for lm in landmarks.landmark]
+        width = max(x_coords) - min(x_coords)
+        height = max(y_coords) - min(y_coords)
+        area = width * height
+        if width < QUALITY_MIN_BBOX_SIDE or height < QUALITY_MIN_BBOX_SIDE or area < QUALITY_MIN_BBOX_AREA:
+            self._register_quality_check(False, "small_bbox")
+            return False
+
+        if QUALITY_BLUR_THRESHOLD:
+            try:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                variance = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+                if variance < QUALITY_BLUR_THRESHOLD:
+                    self._register_quality_check(False, "blur")
+                    return False
+            except Exception:
+                # If blur detection fails we do not discard the frame.
+                pass
+
+        return True
+
+    # ------------------------------------------------------------------
+    def _smooth_landmarks(self) -> List[Tuple[float, float]]:
+        if not self._landmark_buffer:
+            return []
+
+        buffer = list(self._landmark_buffer)
+        count = len(buffer)
+        length = len(buffer[0])
+        smoothed: List[Tuple[float, float]] = []
+        for index in range(length):
+            avg_x = sum(item[index][0] for item in buffer) / count
+            avg_y = sum(item[index][1] for item in buffer) / count
+            smoothed.append((avg_x, avg_y))
+        return smoothed
+
+    # ------------------------------------------------------------------
     @staticmethod
-    def _extract_features(landmarks: Any) -> List[float]:
-        x_coords = [lm.x for lm in landmarks.landmark]
-        y_coords = [lm.y for lm in landmarks.landmark]
+    def _extract_features(coords: Iterable[Tuple[float, float]]) -> List[float]:
+        coords = list(coords)
+        if not coords:
+            return []
+
+        x_coords = [point[0] for point in coords]
+        y_coords = [point[1] for point in coords]
         min_x = min(x_coords)
         min_y = min(y_coords)
 
         data_aux: List[float] = []
-        for lm in landmarks.landmark:
-            data_aux.append(lm.x - min_x)
-            data_aux.append(lm.y - min_y)
+        for x, y in coords:
+            data_aux.append(x - min_x)
+            data_aux.append(y - min_y)
 
         return data_aux
 
@@ -857,8 +1928,14 @@ class GesturePipeline:
                 continue
 
             try:
+                transformed = self._runtime.feature_normalizer.transform(features)
+            except Exception as error:  # pragma: no cover - unexpected normalization failure
+                LOGGER.warning("No se pudo normalizar el frame: %s", error)
+                transformed = list(features)
+
+            try:
                 start = time.perf_counter()
-                prediction: Prediction = self._runtime.classifier.predict(features)
+                prediction: Prediction = self._runtime.classifier.predict(transformed)
                 latency_ms = (time.perf_counter() - start) * 1000.0
             except Exception as error:  # pragma: no cover - classifier failure
                 self._runtime.report_error(f"classifier_error: {error}")
@@ -866,18 +1943,28 @@ class GesturePipeline:
                 continue
 
             timestamp = time.time()
-            event = self._runtime.build_event(
-                label=prediction.label,
-                score=prediction.score,
-                latency_ms=latency_ms,
+            decision = self._runtime.decision_engine.process(
+                prediction,
                 timestamp=timestamp,
-                sequence=self._sequence,
-                origin="pipeline",
                 hint_label=source_label,
+                latency_ms=latency_ms,
             )
+
             self._runtime.clear_error()
-            self._runtime.push_prediction(event)
-            self._sequence += 1
+
+            if decision.emit:
+                event = self._runtime.build_event(
+                    label=decision.label,
+                    score=decision.score,
+                    latency_ms=latency_ms,
+                    timestamp=timestamp,
+                    sequence=self._sequence,
+                    origin="pipeline",
+                    hint_label=decision.hint_label,
+                    payload=decision.payload,
+                )
+                self._runtime.push_prediction(event)
+                self._sequence += 1
             time.sleep(self._interval)
 
         LOGGER.info("Gesture pipeline stopped")
@@ -891,6 +1978,20 @@ class HelenRuntime:
         self.session_id = uuid.uuid4().hex
         self.started_at = time.time()
         self.event_stream = EventStream()
+        self.metrics = GestureMetrics()
+
+        dataset_path = self.config.dataset_path
+        primary_exists = (MODEL_DIR / PRIMARY_DATASET_NAME).exists()
+        using_fallback = dataset_path.exists() and dataset_path.name != PRIMARY_DATASET_NAME
+        self.dataset_info = {
+            "path": str(dataset_path),
+            "primary_available": primary_exists,
+            "using_fallback": using_fallback,
+            "exists": dataset_path.exists(),
+        }
+
+        self.feature_normalizer = FeatureNormalizer(dataset_path)
+        self.decision_engine = GestureDecisionEngine(metrics=self.metrics)
 
         classifier, classifier_meta = self._create_classifier()
         self.classifier = classifier
@@ -932,6 +2033,7 @@ class HelenRuntime:
                     camera_index=self.config.camera_index,
                     detection_confidence=self.config.detection_confidence,
                     tracking_confidence=self.config.tracking_confidence,
+                    metrics=self.metrics,
                 )
                 LOGGER.info("Usando cámara física en el índice %s", self.config.camera_index)
                 return stream, {"source": CameraGestureStream.source}
@@ -958,6 +2060,7 @@ class HelenRuntime:
         close_stream = getattr(self.stream, "close", None)
         if callable(close_stream):
             close_stream()
+        self._export_session_report()
 
     # ------------------------------------------------------------------
     def register_heartbeat(self) -> None:
@@ -1049,6 +2152,42 @@ class HelenRuntime:
 
         self.push_prediction(event)
         return event
+
+    # ------------------------------------------------------------------
+    def _latency_snapshot(self) -> Dict[str, float]:
+        with self.lock:
+            samples = list(self.latency_history)
+
+        if samples:
+            average = statistics.fmean(samples) if hasattr(statistics, "fmean") else sum(samples) / len(samples)
+            sorted_samples = sorted(samples)
+            index = min(len(sorted_samples) - 1, int(len(sorted_samples) * 0.95))
+            p95 = sorted_samples[index]
+            maximum = max(sorted_samples)
+        else:
+            average = 0.0
+            p95 = 0.0
+            maximum = 0.0
+
+        return {"avg_ms": average, "p95_ms": p95, "max_ms": maximum, "count": len(samples)}
+
+    # ------------------------------------------------------------------
+    def _export_session_report(self) -> None:
+        try:
+            latency_stats = self._latency_snapshot()
+            dataset_info = dict(self.dataset_info)
+            dataset_info["normalizer"] = self.feature_normalizer.snapshot()
+            report_path = REPO_ROOT / "reports" / "gesture_session_report.md"
+            self.metrics.dump_report(
+                markdown_path=report_path,
+                thresholds=self.decision_engine.thresholds(),
+                consensus=self.decision_engine.consensus_config,
+                dataset_info=dataset_info,
+                latency_stats=latency_stats,
+            )
+            LOGGER.info("Reporte de métricas actualizado en %s", report_path)
+        except Exception as error:  # pragma: no cover - escritura opcional
+            LOGGER.warning("No se pudo escribir el reporte de métricas: %s", error)
 
     # ------------------------------------------------------------------
     def health(self) -> HealthSnapshot:
