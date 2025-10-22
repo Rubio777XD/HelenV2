@@ -153,10 +153,10 @@ class ClassThreshold:
 
 
 DEFAULT_CLASS_THRESHOLDS: Dict[str, ClassThreshold] = {
-    "Start": ClassThreshold(enter=0.62, release=0.52),
-    "Clima": ClassThreshold(enter=0.65, release=0.55),
-    "Reloj": ClassThreshold(enter=0.63, release=0.53),
-    "Inicio": ClassThreshold(enter=0.62, release=0.52),
+    "Start": ClassThreshold(enter=0.41, release=0.29),
+    "Clima": ClassThreshold(enter=0.38, release=0.27),
+    "Reloj": ClassThreshold(enter=0.39, release=0.28),
+    "Inicio": ClassThreshold(enter=0.39, release=0.28),
 }
 
 
@@ -201,22 +201,19 @@ class HysteresisProfile:
 
 @dataclass(frozen=True)
 class RateLimitProfile:
-    frameskip_strict: int
-    frameskip_balanced: int
-    frameskip_relaxed: int
+    frameskip: int
     fps_threshold: float
+    min_frameskip: int = 1
 
 
 @dataclass(frozen=True)
 class SensitivityProfile:
-    mode: str
     quality: QualityProfile
     temporal: TemporalProfile
     classes: Dict[str, ClassProfile]
 
 
 SENSITIVITY_CONFIG_PATH = REPO_ROOT / "config" / "thresholds.json"
-SENSITIVITY_MODES = {"STRICT", "BALANCED", "RELAXED"}
 
 
 @dataclass(frozen=True)
@@ -230,164 +227,202 @@ DEFAULT_CONSENSUS_CONFIG = ConsensusConfig()
 ACTIVATION_DELAY = 0.45
 SMOOTHING_WINDOW_SIZE = 4
 COOLDOWN_SECONDS = 0.7
-LISTENING_WINDOW_SECONDS = 6.0
+LISTENING_WINDOW_SECONDS = 5.6
 COMMAND_DEBOUNCE_SECONDS = 0.75
 
 
 QUALITY_BLUR_THRESHOLD = 28.0
 
 
-def _default_sensitivity() -> Tuple[Dict[str, SensitivityProfile], HysteresisProfile, RateLimitProfile, int]:
-    quality = QualityProfile(blur_laplacian_min=QUALITY_BLUR_THRESHOLD, roi_min_coverage=0.62, hand_range_px=(70, 560))
+def _default_sensitivity_profile() -> Tuple[SensitivityProfile, HysteresisProfile, RateLimitProfile, int]:
+    quality = QualityProfile(blur_laplacian_min=32.0, roi_min_coverage=0.58, hand_range_px=(60.0, 600.0))
     temporal = TemporalProfile(
-        consensus_n=DEFAULT_CONSENSUS_CONFIG.required_votes,
-        consensus_m=DEFAULT_CONSENSUS_CONFIG.window_size,
-        cooldown_s=COOLDOWN_SECONDS,
-        listen_window_s=LISTENING_WINDOW_SECONDS,
-        min_pos_stability_var=12.0,
-        activation_delay_s=ACTIVATION_DELAY,
+        consensus_n=2,
+        consensus_m=4,
+        cooldown_s=0.72,
+        listen_window_s=5.6,
+        min_pos_stability_var=10.0,
+        activation_delay_s=0.44,
     )
-    classes: Dict[str, ClassProfile] = {}
-    for canonical, threshold in DEFAULT_CLASS_THRESHOLDS.items():
-        classes[canonical] = ClassProfile(score_min=threshold.enter, angle_tol_deg=18.0, norm_dev_max=0.2)
-    profiles = {
-        mode: SensitivityProfile(mode=mode, quality=quality, temporal=temporal, classes=dict(classes))
-        for mode in SENSITIVITY_MODES
+    classes: Dict[str, ClassProfile] = {
+        "Start": ClassProfile(score_min=0.405, angle_tol_deg=32.0, norm_dev_max=0.36),
+        "Clima": ClassProfile(
+            score_min=0.369,
+            angle_tol_deg=40.0,
+            norm_dev_max=0.39,
+            curvature_min=0.20,
+            gap_ratio_range=(0.20, 0.68),
+            missing_distal_allowance=2,
+            missing_distal_strict_curvature=0.24,
+            curvature_consistency_boost=0.03,
+            curvature_consistency_window=3,
+            curvature_consistency_min_frames=2,
+            curvature_consistency_tolerance=0.08,
+            curvature_consistency_min_curvature=0.26,
+        ),
+        "Reloj": ClassProfile(score_min=0.387, angle_tol_deg=33.0, norm_dev_max=0.35),
+        "Inicio": ClassProfile(score_min=0.387, angle_tol_deg=33.0, norm_dev_max=0.35),
     }
-    hysteresis = HysteresisProfile(on_offset=0.0, off_delta=0.12)
-    rate_limit = RateLimitProfile(frameskip_strict=4, frameskip_balanced=2, frameskip_relaxed=2, fps_threshold=25.0)
-    return profiles, hysteresis, rate_limit, 0
+    hysteresis = HysteresisProfile(on_offset=0.0, off_delta=0.14)
+    rate_limit = RateLimitProfile(frameskip=3, fps_threshold=24.0, min_frameskip=1)
+    profile = SensitivityProfile(quality=quality, temporal=temporal, classes=classes)
+    return profile, hysteresis, rate_limit, 3
 
 
-def _load_sensitivity_profiles() -> Tuple[Dict[str, SensitivityProfile], HysteresisProfile, RateLimitProfile, int]:
+def _parse_class_profiles(
+    payload: Dict[str, Any],
+    *,
+    defaults: Dict[str, ClassProfile],
+    inverse_alias: Dict[str, str],
+) -> Dict[str, ClassProfile]:
+    class_profiles: Dict[str, ClassProfile] = {}
+    for alias, class_payload in payload.items():
+        alias_upper = str(alias).strip().upper()
+        gesture = inverse_alias.get(alias_upper) or alias_upper.title()
+        if gesture not in TRACKED_GESTURES:
+            continue
+
+        base_profile = defaults.get(gesture)
+        score_min = float(class_payload.get("score_min", getattr(base_profile, "score_min", DEFAULT_CLASS_THRESHOLDS.get(gesture, ClassThreshold(0.4, 0.3)).enter)))
+        angle_tol = float(class_payload.get("angle_tol_deg", getattr(base_profile, "angle_tol_deg", 28.0)))
+        norm_dev = float(class_payload.get("norm_dev_max", getattr(base_profile, "norm_dev_max", 0.3)))
+        curvature = class_payload.get("curvature_min", getattr(base_profile, "curvature_min", None))
+        curvature_min = float(curvature) if curvature is not None else None
+        gap_range = class_payload.get("gap_ratio_range", getattr(base_profile, "gap_ratio_range", None))
+        gap_tuple: Optional[Tuple[float, float]] = None
+        if isinstance(gap_range, (list, tuple)) and len(gap_range) >= 2:
+            gap_tuple = (float(gap_range[0]), float(gap_range[1]))
+
+        missing_allowance = int(class_payload.get("missing_distal_allowance", getattr(base_profile, "missing_distal_allowance", 0)) or 0)
+        missing_strict_curvature = class_payload.get(
+            "missing_distal_strict_curvature",
+            getattr(base_profile, "missing_distal_strict_curvature", None),
+        )
+        missing_strict_value = float(missing_strict_curvature) if missing_strict_curvature is not None else None
+        consistency_boost = float(class_payload.get(
+            "curvature_consistency_boost",
+            getattr(base_profile, "curvature_consistency_boost", 0.0),
+        ) or 0.0)
+        consistency_window = int(class_payload.get(
+            "curvature_consistency_window",
+            getattr(base_profile, "curvature_consistency_window", 0),
+        ) or 0)
+        consistency_min_frames = int(class_payload.get(
+            "curvature_consistency_min_frames",
+            getattr(base_profile, "curvature_consistency_min_frames", 0),
+        ) or 0)
+        consistency_tolerance = float(class_payload.get(
+            "curvature_consistency_tolerance",
+            getattr(base_profile, "curvature_consistency_tolerance", 0.0),
+        ) or 0.0)
+        consistency_min_curvature_raw = class_payload.get(
+            "curvature_consistency_min_curvature",
+            getattr(base_profile, "curvature_consistency_min_curvature", None),
+        )
+        consistency_min_curvature = (
+            float(consistency_min_curvature_raw)
+            if consistency_min_curvature_raw is not None
+            else None
+        )
+
+        class_profiles[gesture] = ClassProfile(
+            score_min=score_min,
+            angle_tol_deg=angle_tol,
+            norm_dev_max=norm_dev,
+            curvature_min=curvature_min,
+            gap_ratio_range=gap_tuple,
+            missing_distal_allowance=missing_allowance,
+            missing_distal_strict_curvature=missing_strict_value,
+            curvature_consistency_boost=consistency_boost,
+            curvature_consistency_window=consistency_window,
+            curvature_consistency_min_frames=consistency_min_frames,
+            curvature_consistency_tolerance=consistency_tolerance,
+            curvature_consistency_min_curvature=consistency_min_curvature,
+        )
+
+    return class_profiles
+
+
+def _load_sensitivity_profile() -> Tuple[SensitivityProfile, HysteresisProfile, RateLimitProfile, int]:
+    default_profile, default_hysteresis, default_rate_limit, default_version = _default_sensitivity_profile()
+
     if not SENSITIVITY_CONFIG_PATH.exists():
         LOGGER.warning(
-            "Archivo de configuración de sensibilidad no encontrado en %s; usando valores por defecto", SENSITIVITY_CONFIG_PATH
+            "Archivo de configuración de sensibilidad no encontrado en %s; usando perfil suave por defecto",
+            SENSITIVITY_CONFIG_PATH,
         )
-        return _default_sensitivity()
+        return default_profile, default_hysteresis, default_rate_limit, default_version
 
     try:
         data = json.loads(SENSITIVITY_CONFIG_PATH.read_text(encoding="utf-8"))
     except Exception as error:  # pragma: no cover - lectura de disco
         LOGGER.error("No se pudo leer thresholds.json: %s", error)
-        return _default_sensitivity()
+        return default_profile, default_hysteresis, default_rate_limit, default_version
 
-    version = int(data.get("version", 0) or 0)
+    version = int(data.get("version", default_version) or default_version)
     hysteresis_data = data.get("hysteresis", {})
     rate_data = data.get("rate_limit", {})
     hysteresis = HysteresisProfile(
-        on_offset=float(hysteresis_data.get("on_offset", 0.0)),
-        off_delta=float(hysteresis_data.get("off_delta", 0.12)),
+        on_offset=float(hysteresis_data.get("on_offset", default_hysteresis.on_offset)),
+        off_delta=float(hysteresis_data.get("off_delta", default_hysteresis.off_delta)),
     )
     rate_limit = RateLimitProfile(
-        frameskip_strict=int(rate_data.get("frameskip_strict", 4) or 4),
-        frameskip_balanced=int(rate_data.get("frameskip_balanced", 3) or 3),
-        frameskip_relaxed=int(rate_data.get("frameskip_relaxed", 3) or 3),
-        fps_threshold=float(rate_data.get("fps_threshold", 25.0) or 25.0),
+        frameskip=int(rate_data.get("frameskip", default_rate_limit.frameskip) or default_rate_limit.frameskip),
+        fps_threshold=float(rate_data.get("fps_threshold", default_rate_limit.fps_threshold) or default_rate_limit.fps_threshold),
+        min_frameskip=int(rate_data.get("min_frameskip", default_rate_limit.min_frameskip) or default_rate_limit.min_frameskip),
     )
 
-    modes_payload = data.get("modes", {})
+    profile_payload: Optional[Dict[str, Any]] = data.get("profile")
     inverse_alias = {alias: gesture for gesture, alias in GESTURE_ALIASES.items()}
-    profiles: Dict[str, SensitivityProfile] = {}
 
-    for mode_name, payload in modes_payload.items():
-        upper_mode = str(mode_name).strip().upper()
-        if upper_mode not in SENSITIVITY_MODES:
-            continue
+    if profile_payload is None and "modes" in data:
+        LOGGER.warning("thresholds.json utiliza formato legacy de modos; se tomará el perfil BALANCED como base")
+        legacy_modes = data.get("modes", {})
+        profile_payload = legacy_modes.get("BALANCED") or next(iter(legacy_modes.values()), None)
 
-        quality_data = payload.get("global", {}).get("quality", {})
-        temporal_data = payload.get("global", {}).get("temporal", {})
-        quality = QualityProfile(
-            blur_laplacian_min=float(quality_data.get("blur_laplacian_min", QUALITY_BLUR_THRESHOLD)),
-            roi_min_coverage=float(quality_data.get("roi_min_coverage", 0.62)),
-            hand_range_px=tuple(float(v) for v in quality_data.get("hand_range_px", (70, 560)))[:2],
-        )
-        if len(quality.hand_range_px) != 2:
-            quality = QualityProfile(
-                blur_laplacian_min=quality.blur_laplacian_min,
-                roi_min_coverage=quality.roi_min_coverage,
-                hand_range_px=(70.0, 560.0),
-            )
+    if not profile_payload:
+        return default_profile, hysteresis, rate_limit, version
 
-        temporal = TemporalProfile(
-            consensus_n=int(temporal_data.get("consensus_N", DEFAULT_CONSENSUS_CONFIG.required_votes) or 1),
-            consensus_m=int(temporal_data.get("consensus_M", DEFAULT_CONSENSUS_CONFIG.window_size) or 1),
-            cooldown_s=float(temporal_data.get("cooldown_s", COOLDOWN_SECONDS)),
-            listen_window_s=float(temporal_data.get("listen_window_s", LISTENING_WINDOW_SECONDS)),
-            min_pos_stability_var=float(temporal_data.get("min_pos_stability_var", 12.0)),
-            activation_delay_s=float(temporal_data.get("activation_delay_s", ACTIVATION_DELAY)),
-        )
+    quality_data = profile_payload.get("global", {}).get("quality", {}) if "global" in profile_payload else profile_payload.get("quality", {})
+    temporal_data = profile_payload.get("global", {}).get("temporal", {}) if "global" in profile_payload else profile_payload.get("temporal", {})
 
-        class_profiles: Dict[str, ClassProfile] = {}
-        for alias, class_payload in payload.get("classes", {}).items():
-            alias_upper = str(alias).strip().upper()
-            gesture = inverse_alias.get(alias_upper)
-            if not gesture:
-                continue
-            score_min = float(class_payload.get("score_min", DEFAULT_CLASS_THRESHOLDS.get(gesture, ClassThreshold(0.6, 0.52)).enter))
-            angle_tol = float(class_payload.get("angle_tol_deg", 18.0))
-            norm_dev = float(class_payload.get("norm_dev_max", 0.2))
-            curvature = class_payload.get("curvature_min")
-            curvature_min = float(curvature) if curvature is not None else None
-            gap_range = class_payload.get("gap_ratio_range")
-            gap_tuple: Optional[Tuple[float, float]] = None
-            if isinstance(gap_range, (list, tuple)) and len(gap_range) >= 2:
-                gap_tuple = (float(gap_range[0]), float(gap_range[1]))
+    hand_range_raw = quality_data.get("hand_range_px", default_profile.quality.hand_range_px)
+    hand_range_tuple = tuple(float(v) for v in hand_range_raw)[:2] if isinstance(hand_range_raw, (list, tuple)) else default_profile.quality.hand_range_px
+    if len(hand_range_tuple) != 2:
+        hand_range_tuple = default_profile.quality.hand_range_px
 
-            missing_allowance = int(class_payload.get("missing_distal_allowance", 0) or 0)
-            missing_strict_curvature = class_payload.get("missing_distal_strict_curvature")
-            missing_strict_value = (
-                float(missing_strict_curvature)
-                if missing_strict_curvature is not None
-                else None
-            )
-            consistency_boost = float(class_payload.get("curvature_consistency_boost", 0.0) or 0.0)
-            consistency_window = int(class_payload.get("curvature_consistency_window", 0) or 0)
-            consistency_min_frames = int(class_payload.get("curvature_consistency_min_frames", 0) or 0)
-            consistency_tolerance = float(class_payload.get("curvature_consistency_tolerance", 0.0) or 0.0)
-            consistency_min_curvature_raw = class_payload.get("curvature_consistency_min_curvature")
-            consistency_min_curvature = (
-                float(consistency_min_curvature_raw)
-                if consistency_min_curvature_raw is not None
-                else None
-            )
+    quality = QualityProfile(
+        blur_laplacian_min=float(quality_data.get("blur_laplacian_min", default_profile.quality.blur_laplacian_min)),
+        roi_min_coverage=float(quality_data.get("roi_min_coverage", default_profile.quality.roi_min_coverage)),
+        hand_range_px=tuple(float(v) for v in hand_range_tuple),
+    )
 
-            class_profiles[gesture] = ClassProfile(
-                score_min=score_min,
-                angle_tol_deg=angle_tol,
-                norm_dev_max=norm_dev,
-                curvature_min=curvature_min,
-                gap_ratio_range=gap_tuple,
-                missing_distal_allowance=missing_allowance,
-                missing_distal_strict_curvature=missing_strict_value,
-                curvature_consistency_boost=consistency_boost,
-                curvature_consistency_window=consistency_window,
-                curvature_consistency_min_frames=consistency_min_frames,
-                curvature_consistency_tolerance=consistency_tolerance,
-                curvature_consistency_min_curvature=consistency_min_curvature,
-            )
+    temporal = TemporalProfile(
+        consensus_n=int(temporal_data.get("consensus_N", temporal_data.get("consensus_n", default_profile.temporal.consensus_n)) or 1),
+        consensus_m=int(temporal_data.get("consensus_M", temporal_data.get("consensus_m", default_profile.temporal.consensus_m)) or 1),
+        cooldown_s=float(temporal_data.get("cooldown_s", default_profile.temporal.cooldown_s)),
+        listen_window_s=float(temporal_data.get("listen_window_s", default_profile.temporal.listen_window_s)),
+        min_pos_stability_var=float(temporal_data.get("min_pos_stability_var", default_profile.temporal.min_pos_stability_var)),
+        activation_delay_s=float(temporal_data.get("activation_delay_s", default_profile.temporal.activation_delay_s)),
+    )
 
-        if not class_profiles:
-            continue
+    classes_payload = (
+        profile_payload.get("classes", {})
+        if "classes" in profile_payload
+        else profile_payload.get("class_profiles", {})
+    )
 
-        profiles[upper_mode] = SensitivityProfile(
-            mode=upper_mode,
-            quality=quality,
-            temporal=temporal,
-            classes=class_profiles,
-        )
+    class_profiles = _parse_class_profiles(classes_payload, defaults=default_profile.classes, inverse_alias=inverse_alias)
+    if not class_profiles:
+        class_profiles = dict(default_profile.classes)
 
-    if not profiles:
-        return _default_sensitivity()
-
-    return profiles, hysteresis, rate_limit, version
+    profile = SensitivityProfile(quality=quality, temporal=temporal, classes=class_profiles)
+    return profile, hysteresis, rate_limit, version
 
 
-SENSITIVITY_PROFILES, HYSTERESIS_SETTINGS, RATE_LIMIT_SETTINGS, SENSITIVITY_PROFILE_VERSION = _load_sensitivity_profiles()
+SENSITIVITY_PROFILE, HYSTERESIS_SETTINGS, RATE_LIMIT_SETTINGS, SENSITIVITY_PROFILE_VERSION = _load_sensitivity_profile()
 
-DEFAULT_SENS_MODE = os.getenv("HELEN_SENS_MODE", "BALANCED").strip().upper() or "BALANCED"
-if DEFAULT_SENS_MODE not in SENSITIVITY_PROFILES:
-    DEFAULT_SENS_MODE = "BALANCED" if "BALANCED" in SENSITIVITY_PROFILES else next(iter(SENSITIVITY_PROFILES))
+SOFT_PROFILE_NAME = "SUAVE"
 
 
 def _class_thresholds_from_profile(profile: SensitivityProfile, hysteresis: HysteresisProfile) -> Dict[str, ClassThreshold]:
@@ -398,7 +433,7 @@ def _class_thresholds_from_profile(profile: SensitivityProfile, hysteresis: Hyst
         thresholds[canonical] = ClassThreshold(enter=enter, release=release)
     return thresholds
 
-GLOBAL_MIN_SCORE = 0.46
+GLOBAL_MIN_SCORE = 0.36
 DEFAULT_POLL_INTERVAL_S = 0.12
 
 AUTO_THRESHOLD_WINDOW_S = 60.0
@@ -614,7 +649,7 @@ class GestureMetrics:
         self._reason_counts: Counter[str] = Counter()
         self._reason_by_label: Dict[str, Counter[str]] = defaultdict(Counter)
         self._lock = threading.Lock()
-        self._context_mode: str = DEFAULT_SENS_MODE
+        self._context_profile: str = SOFT_PROFILE_NAME
         self._context_version: int = SENSITIVITY_PROFILE_VERSION
 
     # ------------------------------------------------------------------
@@ -656,9 +691,9 @@ class GestureMetrics:
                 self._quality_rejections[reason] += 1
 
     # ------------------------------------------------------------------
-    def configure_context(self, mode: str, version: int) -> None:
+    def configure_context(self, profile: str, version: int) -> None:
         with self._lock:
-            self._context_mode = str(mode)
+            self._context_profile = str(profile)
             self._context_version = int(version)
 
     # ------------------------------------------------------------------
@@ -854,10 +889,13 @@ class GestureMetrics:
             sum(quality_rejections.values()) / quality_checks if quality_checks else 0.0
         )
 
+        accepted_ratio = (accepted / total_samples) if total_samples else 0.0
+
         return {
             "samples": total_samples,
             "accepted": accepted,
             "rejected": rejected,
+            "accepted_ratio": accepted_ratio,
             "quality_checks": quality_checks,
             "quality_rejections": quality_rejections,
             "quality_rejection_rate": rejection_rate,
@@ -957,7 +995,7 @@ class GestureMetrics:
             "recall_by_class": recall_by_class,
             "fp_rate_none": fp_rate_none,
             "consensus_latency_ms": {"p50": p50_latency, "p95": p95_latency},
-            "mode": self._context_mode,
+            "profile": self._context_profile,
             "profile_version": self._context_version,
             "frameskip_used": dataset_info.get("frameskip_used"),
             "confusion_matrix": {actual: dict(preds) for actual, preds in confusion.items()},
@@ -979,7 +1017,7 @@ class GestureMetrics:
         )
         lines.append("- Debounce de comandos: {0:.0f} ms".format(COMMAND_DEBOUNCE_SECONDS * 1000))
         lines.append("- Umbral global mínimo: {0:.2f}".format(report["global_min_score"]))
-        lines.append("- Modo: {0} (perfil v{1})".format(report.get("mode", "UNKNOWN"), report.get("profile_version", "?")))
+        lines.append("- Perfil: {0} (versión {1})".format(report.get("profile", "UNKNOWN"), report.get("profile_version", "?")))
         consensus_latency = report.get("consensus_latency_ms", {})
         lines.append(
             "- Latencia consenso p50/p95: {0:.1f} / {1:.1f} ms".format(
@@ -1295,14 +1333,14 @@ class LandmarkGeometryVerifier:
 
                 curvature_floor = None
                 if class_profile.curvature_min is not None:
-                    curvature_floor = class_profile.curvature_min * 0.82
+                    curvature_floor = class_profile.curvature_min * 0.75
                 if curvature_floor is not None and avg_curvature < curvature_floor:
                     return reject("geometry_clima_curvature")
 
                 if class_profile.gap_ratio_range:
                     low, high = class_profile.gap_ratio_range
-                    low *= 0.85
-                    high *= 1.15
+                    low *= 0.8
+                    high *= 1.2
                     if not (low <= gap_ratio <= high):
                         return reject("geometry_clima_gap")
 
@@ -1320,7 +1358,7 @@ class LandmarkGeometryVerifier:
                 if angles and class_profile.angle_tol_deg:
                     avg_angle = sum(angles) / len(angles)
                     max_delta = max(abs(angle - avg_angle) for angle in angles)
-                    allowed_delta = class_profile.angle_tol_deg * 1.35
+                    allowed_delta = class_profile.angle_tol_deg * 1.5
                     if max_delta > allowed_delta:
                         return reject("geometry_clima_angle")
 
@@ -1328,7 +1366,7 @@ class LandmarkGeometryVerifier:
                     max_length = max(lengths) or 1.0
                     normalised = [length / max_length for length in lengths]
                     deviation = statistics.pstdev(normalised) if len(normalised) > 1 else 0.0
-                    allowed_deviation = class_profile.norm_dev_max * 1.28
+                    allowed_deviation = class_profile.norm_dev_max * 1.4
                     if deviation > allowed_deviation:
                         return reject("geometry_clima_norm")
 
@@ -1336,7 +1374,7 @@ class LandmarkGeometryVerifier:
                     if missing_distal > effective_allowance:
                         return reject("geometry_clima_missing_distal")
                     if strict_curvature is not None:
-                        strict_threshold = strict_curvature * 0.85
+                        strict_threshold = strict_curvature * 0.8
                         if avg_curvature < strict_threshold:
                             return reject("geometry_clima_missing_curvature")
 
@@ -1386,7 +1424,7 @@ class GestureDecisionEngine:
         global_min_score: float = GLOBAL_MIN_SCORE,
         geometry_verifier: Optional[LandmarkGeometryVerifier] = None,
         temporal_profile: Optional[TemporalProfile] = None,
-        sensitivity_mode: str = DEFAULT_SENS_MODE,
+        profile_name: str = SOFT_PROFILE_NAME,
         profile_version: int = SENSITIVITY_PROFILE_VERSION,
         session_started_at: Optional[float] = None,
     ) -> None:
@@ -1401,7 +1439,7 @@ class GestureDecisionEngine:
         self._global_min_score = float(global_min_score)
         self._geometry_verifier = geometry_verifier
         self._temporal_profile = temporal_profile
-        self._mode = sensitivity_mode
+        self._profile_name = profile_name
         self._profile_version = profile_version
         self._session_started_at = float(session_started_at or time.time())
         self._activation_delay = (
@@ -1697,7 +1735,7 @@ class GestureDecisionEngine:
             curvature_metrics: Optional[Dict[str, Any]] = None
 
             self._record_position(roi)
-            payload["mode"] = self._mode
+            payload["profile"] = self._profile_name
             payload["profile_version"] = self._profile_version
 
             if self._geometry_verifier is not None and landmarks is not None:
@@ -2504,7 +2542,6 @@ class RuntimeConfig:
     model_path: Path = MODEL_PATH
     dataset_path: Path = field(default_factory=_default_dataset_path)
     process_every_n: int = 3
-    sensitivity_mode: Optional[str] = None
 
 
 @dataclass
@@ -2538,7 +2575,7 @@ class HealthSnapshot:
     thresholds: Dict[str, Dict[str, float]] = field(default_factory=dict)
     threshold_adjustments: Dict[str, float] = field(default_factory=dict)
     model_path: str = ""
-    engine_mode: str = ""
+    profile_name: str = ""
     sensitivity_version: int = 0
     last_quality_reason: Optional[str] = None
     dataset_info: Dict[str, Any] = field(default_factory=dict)
@@ -2666,7 +2703,7 @@ class CameraGestureStream:
         tracking_confidence: float = 0.6,
         metrics: Optional[GestureMetrics] = None,
         quality_profile: Optional[QualityProfile] = None,
-        sensitivity_mode: str = DEFAULT_SENS_MODE,
+        profile_name: str = SOFT_PROFILE_NAME,
     ) -> None:
         if cv2 is None:
             raise RuntimeError("OpenCV no está instalado. Ejecuta `pip install opencv-python`.")
@@ -2688,7 +2725,7 @@ class CameraGestureStream:
             roi_min_coverage=float(quality.roi_min_coverage),
             hand_range_px=hand_range,
         )
-        self._sensitivity_mode = sensitivity_mode
+        self._profile_name = profile_name
 
         self._cap: Optional[Any] = None
         self._hands: Optional[Any] = None
@@ -2713,7 +2750,7 @@ class CameraGestureStream:
         self._frames_with_hand = 0
         self._frames_valid = 0
         self._frames_returned = 0
-        self._weak_frame_budget = 2
+        self._weak_frame_budget = 1
         self._weak_allow_reasons = {
             "low_confidence",
             "hand_near_edge",
@@ -3010,19 +3047,19 @@ class CameraGestureStream:
         if max_x <= min_x or max_y <= min_y:
             return None
 
-        pixel_coords = [
-            (
-                self._normalised_to_pixel(point[0], width),
-                self._normalised_to_pixel(point[1], height),
-            )
-            for point in coords
-        ]
+        margin = 0.035
+        min_x = max(0.0, min_x - margin)
+        max_x = min(1.0, max_x + margin)
+        min_y = max(0.0, min_y - margin)
+        max_y = min(1.0, max_y + margin)
 
-        x_pixels = [coord[0] for coord in pixel_coords]
-        y_pixels = [coord[1] for coord in pixel_coords]
+        x1 = self._normalised_to_pixel(min_x, width)
+        x2 = self._normalised_to_pixel(max_x, width)
+        y1 = self._normalised_to_pixel(min_y, height)
+        y2 = self._normalised_to_pixel(max_y, height)
 
-        pixel_width = max(x_pixels) - min(x_pixels)
-        pixel_height = max(y_pixels) - min(y_pixels)
+        pixel_width = x2 - x1
+        pixel_height = y2 - y1
         if pixel_width <= 0 or pixel_height <= 0:
             return None
 
@@ -3030,10 +3067,10 @@ class CameraGestureStream:
         pixel_coverage = float((pixel_width / width) * (pixel_height / height))
 
         return {
-            "x1": int(min(x_pixels)),
-            "y1": int(min(y_pixels)),
-            "x2": int(max(x_pixels)),
-            "y2": int(max(y_pixels)),
+            "x1": int(x1),
+            "y1": int(y1),
+            "x2": int(x2),
+            "y2": int(y2),
             "width": int(width),
             "height": int(height),
             "normalized_area": coverage,
@@ -3046,14 +3083,14 @@ class CameraGestureStream:
         if self._metrics:
             self._metrics.register_quality_check(valid, reason)
         if valid:
-            self._weak_frame_budget = 2
+            self._weak_frame_budget = 1
         elif reason:
             self._quality_rejections[reason] += 1
 
     # ------------------------------------------------------------------
     def _log_quality_rejection(self, reason: str) -> None:
         if reason != self._last_quality_reason:
-            LOGGER.debug("Descartado por calidad (%s) en modo %s", reason, self._sensitivity_mode)
+            LOGGER.debug("Descartado por calidad (%s) con perfil %s", reason, self._profile_name)
             self._last_quality_reason = reason
 
     # ------------------------------------------------------------------
@@ -3165,7 +3202,7 @@ class CameraGestureStream:
         blur_threshold = float(quality.blur_laplacian_min or 0.0)
         if (
             blur_threshold > 0.0
-            and self._sensitivity_mode == "BALANCED"
+            and self._profile_name == SOFT_PROFILE_NAME
             and pixel_coverage >= 0.68
         ):
             blur_threshold *= 0.85
@@ -3442,7 +3479,7 @@ class GesturePipeline:
                         prediction = Prediction(label=prediction.label, score=max(prediction.score, fallback_score))
                         LOGGER.info(
                             "fallback_confirmed %s score=%.3f", canonical_label, fallback_score
-                        )  # // SENS_MODE
+                        )
 
             decision = self._runtime.decision_engine.process(
                 prediction,
@@ -3484,18 +3521,11 @@ class HelenRuntime:
     def __init__(self, config: Optional[RuntimeConfig] = None) -> None:
         self.config = config or RuntimeConfig()
 
-        requested_mode = (self.config.sensitivity_mode or DEFAULT_SENS_MODE).strip().upper() or DEFAULT_SENS_MODE
-        if requested_mode not in SENSITIVITY_PROFILES:
-            LOGGER.warning(
-                "Modo de sensibilidad %s no disponible, se utilizará %s", requested_mode, DEFAULT_SENS_MODE
-            )
-            requested_mode = DEFAULT_SENS_MODE
-
-        self.sensitivity_mode = requested_mode
-        self.sensitivity_profile = SENSITIVITY_PROFILES[self.sensitivity_mode]
+        self.profile_name = SOFT_PROFILE_NAME
+        self.sensitivity_profile = SENSITIVITY_PROFILE
         self.hysteresis_profile = HYSTERESIS_SETTINGS
         self.rate_limit_profile = RATE_LIMIT_SETTINGS
-        LOGGER.info("mode=%s profile=version:%s", self.sensitivity_mode, SENSITIVITY_PROFILE_VERSION)  # // SENS_MODE
+        LOGGER.info("profile=%s version=%s", self.profile_name, SENSITIVITY_PROFILE_VERSION)
 
         if (
             PI_CAMERA_PROFILE
@@ -3514,16 +3544,14 @@ class HelenRuntime:
                 PI_CAMERA_PROFILE.model,
             )
 
-        base_frameskip_map = {
-            "STRICT": max(1, int(self.rate_limit_profile.frameskip_strict or 1)),
-            "BALANCED": max(1, int(self.rate_limit_profile.frameskip_balanced or 1)),
-            "RELAXED": max(1, int(self.rate_limit_profile.frameskip_relaxed or 1)),
-        }
-        self.base_frameskip = base_frameskip_map.get(self.sensitivity_mode, 3)
+        self.base_frameskip = max(
+            self.rate_limit_profile.min_frameskip,
+            int(self.rate_limit_profile.frameskip or self.rate_limit_profile.min_frameskip),
+        )
         stride = int(getattr(self.config, "process_every_n", 0) or 0)
         if stride <= 0:
             stride = self.base_frameskip
-        if PI_CAMERA_PROFILE and stride == self.base_frameskip == 3:
+        if PI_CAMERA_PROFILE and stride == self.base_frameskip:
             stride = max(1, int(getattr(PI_CAMERA_PROFILE, "process_every_n", stride) or stride))
         self.config.process_every_n = max(1, stride)
         self.active_frameskip = self.config.process_every_n
@@ -3541,7 +3569,7 @@ class HelenRuntime:
             "primary_available": primary_exists,
             "using_fallback": using_fallback,
             "exists": dataset_path.exists(),
-            "sensitivity_mode": self.sensitivity_mode,
+            "profile": self.profile_name,
             "profile_version": SENSITIVITY_PROFILE_VERSION,
             "temporal": {
                 "cooldown_s": self.sensitivity_profile.temporal.cooldown_s,
@@ -3574,7 +3602,8 @@ class HelenRuntime:
                 required_votes=self.consensus_config.window_size,
             )
 
-        self.metrics.configure_context(self.sensitivity_mode, SENSITIVITY_PROFILE_VERSION)
+        self.metrics.configure_context(self.profile_name, SENSITIVITY_PROFILE_VERSION)
+        self._write_profile_snapshot()
 
         classifier, classifier_meta = self._create_classifier()
         self.classifier = classifier
@@ -3598,8 +3627,8 @@ class HelenRuntime:
             using_fallback,
         )
         LOGGER.info(
-            "Umbrales aplicados modo=%s perfil_v%s => %s",
-            self.sensitivity_mode,
+            "Umbrales aplicados perfil=%s v%s => %s",
+            self.profile_name,
             SENSITIVITY_PROFILE_VERSION,
             threshold_log,
         )
@@ -3619,7 +3648,7 @@ class HelenRuntime:
             global_min_score=self.global_min_score,
             geometry_verifier=self.geometry_verifier,
             temporal_profile=self.sensitivity_profile.temporal,
-            sensitivity_mode=self.sensitivity_mode,
+            profile_name=self.profile_name,
             profile_version=SENSITIVITY_PROFILE_VERSION,
             session_started_at=self.started_at,
         )
@@ -3672,7 +3701,7 @@ class HelenRuntime:
             return None
         try:
             fallback = SimpleGestureClassifier(dataset_path)
-            LOGGER.info("Clasificador secundario preparado desde %s", dataset_path)  # // SENS_MODE
+            LOGGER.info("Clasificador secundario preparado desde %s", dataset_path)
             return fallback
         except Exception as error:
             LOGGER.warning("No se pudo inicializar el clasificador secundario: %s", error)
@@ -3688,7 +3717,7 @@ class HelenRuntime:
                     tracking_confidence=self.config.tracking_confidence,
                     metrics=self.metrics,
                     quality_profile=self.sensitivity_profile.quality,
-                    sensitivity_mode=self.sensitivity_mode,
+                    profile_name=self.profile_name,
                 )
                 LOGGER.info("Usando cámara física en el índice %s", self.config.camera_index)
                 return stream, {"source": CameraGestureStream.source}
@@ -3706,6 +3735,45 @@ class HelenRuntime:
         return SyntheticStreamAdapter(dataset_path), {"source": "synthetic"}
 
     # ------------------------------------------------------------------
+    def _write_profile_snapshot(self) -> None:
+        try:
+            snapshot = {
+                "profile": self.profile_name,
+                "profile_version": SENSITIVITY_PROFILE_VERSION,
+                "quality": {
+                    "blur_laplacian_min": self.sensitivity_profile.quality.blur_laplacian_min,
+                    "roi_min_coverage": self.sensitivity_profile.quality.roi_min_coverage,
+                    "hand_range_px": list(self.sensitivity_profile.quality.hand_range_px),
+                },
+                "temporal": {
+                    "consensus_n": self.sensitivity_profile.temporal.consensus_n,
+                    "consensus_m": self.sensitivity_profile.temporal.consensus_m,
+                    "cooldown_s": self.sensitivity_profile.temporal.cooldown_s,
+                    "listen_window_s": self.sensitivity_profile.temporal.listen_window_s,
+                    "min_pos_stability_var": self.sensitivity_profile.temporal.min_pos_stability_var,
+                    "activation_delay_s": self.sensitivity_profile.temporal.activation_delay_s,
+                },
+                "hysteresis": {
+                    "on_offset": self.hysteresis_profile.on_offset,
+                    "off_delta": self.hysteresis_profile.off_delta,
+                },
+                "rate_limit": {
+                    "frameskip": self.rate_limit_profile.frameskip,
+                    "min_frameskip": self.rate_limit_profile.min_frameskip,
+                    "fps_threshold": self.rate_limit_profile.fps_threshold,
+                },
+                "thresholds": {
+                    label: {"enter": value.enter, "release": value.release}
+                    for label, value in self.class_thresholds.items()
+                },
+            }
+            snapshot_path = REPO_ROOT / "logs" / "profile_snapshot.json"
+            snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+            snapshot_path.write_text(json.dumps(snapshot, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception as error:  # pragma: no cover - escritura opcional
+            LOGGER.warning("No se pudo guardar el snapshot de perfil: %s", error)
+
+    # ------------------------------------------------------------------
     def start(self) -> None:
         self.pipeline.start()
 
@@ -3721,21 +3789,18 @@ class HelenRuntime:
     # ------------------------------------------------------------------
     def update_frameskip(self, measured_fps: float) -> int:
         target = self.base_frameskip
-        if self.sensitivity_mode == "BALANCED":
-            if measured_fps > self.rate_limit_profile.fps_threshold:
-                target = max(1, int(self.rate_limit_profile.frameskip_balanced or target))
-            else:
-                target = 1
-        elif self.sensitivity_mode == "RELAXED":
-            target = max(1, int(self.rate_limit_profile.frameskip_relaxed or target))
+        fps_threshold = float(self.rate_limit_profile.fps_threshold or 0.0)
+        min_frameskip = max(1, int(self.rate_limit_profile.min_frameskip or 1))
+        if measured_fps < fps_threshold:
+            target = min_frameskip
         else:
-            target = max(1, int(self.rate_limit_profile.frameskip_strict or target))
+            target = max(min_frameskip, self.base_frameskip)
 
         if target != self.active_frameskip:
             self.active_frameskip = target
             if hasattr(self, "pipeline") and self.pipeline:
                 self.pipeline.set_frame_stride(target)
-        return self.active_frameskip  # // SENS_MODE
+        return self.active_frameskip
 
     # ------------------------------------------------------------------
     def register_heartbeat(self) -> None:
@@ -3779,7 +3844,8 @@ class HelenRuntime:
             "latency_ms": round(float(latency_ms), 3),
             "source": origin,
             "numeric": collapsed.isdigit(),
-            "mode": self.sensitivity_mode,
+            "profile": self.profile_name,
+            "mode": self.profile_name,  # Legacy field kept for backward compatibility
             "profile_version": SENSITIVITY_PROFILE_VERSION,
             "frameskip_used": int(self.active_frameskip),
         }
@@ -3877,7 +3943,7 @@ class HelenRuntime:
             report_path.write_text(markdown, encoding="utf-8")
             json_path = report_path.with_suffix(".json")
             json_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
-            logs_path = REPO_ROOT / "logs" / f"metrics_{self.sensitivity_mode}.json"
+            logs_path = REPO_ROOT / "logs" / f"metrics_{self.profile_name.lower()}.json"
             logs_path.parent.mkdir(parents=True, exist_ok=True)
             logs_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
             LOGGER.info("Reporte de métricas actualizado en %s", report_path)
@@ -3892,18 +3958,21 @@ class HelenRuntime:
             adjustments = self.decision_engine.threshold_adjustments()
             consensus = self.decision_engine.consensus_config
             temporal = self.sensitivity_profile.temporal
+            session_summary = self.metrics.summary()
 
             lines = [
                 "# Ajustes de umbrales",
                 "",
                 f"- Sesión: {self.session_id}",
-                f"- Modo: {self.sensitivity_mode} (perfil v{SENSITIVITY_PROFILE_VERSION})",
+                f"- Perfil activo: {self.profile_name} (v{SENSITIVITY_PROFILE_VERSION})",
                 f"- Modelo: {self.model_source} ({self.config.model_path})",
                 "- Consenso requerido: "
                 f"{consensus.required_votes}/{consensus.window_size}",
                 f"- Ventana de comandos: {temporal.listen_window_s:.2f} s",
                 f"- Cooldown tras H: {temporal.cooldown_s:.2f} s",
                 f"- Retardo de activación: {temporal.activation_delay_s:.2f} s",
+                f"- Secuencias aceptadas: {session_summary.get('accepted', 0)} / {session_summary.get('samples', 0)} "
+                f"({session_summary.get('accepted_ratio', 0.0)*100:.1f}%)",
                 "",
                 "| Gesto | Enter inicial | Enter final | Δ | Release final |",
                 "|-------|--------------:|------------:|----:|--------------:|",
@@ -3943,10 +4012,10 @@ class HelenRuntime:
                 for label, values in health_snapshot.thresholds.items()
             )
             LOGGER.info(
-                "diagnostic session=%s mode=%s model=%s frames_total=%d frames_valid=%d fps=%.2f latency_avg=%.2fms "
+                "diagnostic session=%s profile=%s model=%s frames_total=%d frames_valid=%d fps=%.2f latency_avg=%.2fms "
                 "latency_p95=%.2fms thresholds={%s} reasons=%s",
                 self.session_id,
-                self.sensitivity_mode,
+                self.profile_name,
                 health_snapshot.model_path,
                 health_snapshot.frames_total,
                 health_snapshot.frames_valid,
@@ -4027,7 +4096,7 @@ class HelenRuntime:
             thresholds=thresholds_dict,
             threshold_adjustments=threshold_adjustments,
             model_path=str(self.config.model_path),
-            engine_mode=self.sensitivity_mode,
+            profile_name=self.profile_name,
             sensitivity_version=SENSITIVITY_PROFILE_VERSION,
             last_quality_reason=stream_status.get("last_quality_reason"),
             dataset_info=dataset_snapshot,
@@ -4236,13 +4305,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         action="store_true",
         help="Falla si la cámara no está disponible en lugar de usar el dataset sintético",
     )
-    parser.add_argument(
-        "--sensitivity-mode",
-        choices=sorted(SENSITIVITY_MODES),
-        default=None,
-        help="Override del modo de sensibilidad (STRICT, BALANCED, RELAXED)",
-    )
-
     args = parser.parse_args(argv)
     config = RuntimeConfig(
         camera_index=args.camera_index,
@@ -4252,7 +4314,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         enable_camera=not args.no_camera,
         fallback_to_synthetic=not args.no_synthetic_fallback,
         process_every_n=max(1, args.frame_stride),
-        sensitivity_mode=args.sensitivity_mode,
     )
 
     run(args.host, args.port, config=config)

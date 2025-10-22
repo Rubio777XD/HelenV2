@@ -1,6 +1,4 @@
-"""Tests covering HELEN sensitivity profiles and runtime switching."""
-
-from __future__ import annotations
+"""Tests covering the soft sensitivity profile and runtime behaviour."""
 
 from typing import Tuple
 
@@ -9,52 +7,44 @@ import pytest
 import backendHelen.server as server
 
 
-@pytest.mark.parametrize("mode", ["STRICT", "BALANCED", "RELAXED"])
-def test_sensitivity_profiles_are_available(mode: str) -> None:
-    """Every expected sensitivity mode should be parsed from the JSON file."""
+def test_soft_profile_matches_configuration() -> None:
+    """The global soft profile should reflect the calibrated thresholds."""
 
-    assert mode in server.SENSITIVITY_PROFILES
+    profile = server.SENSITIVITY_PROFILE
 
+    assert profile.quality.blur_laplacian_min == pytest.approx(32.0)
+    assert profile.quality.roi_min_coverage == pytest.approx(0.58)
+    assert profile.quality.hand_range_px == pytest.approx((60.0, 600.0))
 
-def test_balanced_profile_matches_configuration() -> None:
-    """The BALANCED profile should reflect the calibrated thresholds."""
+    assert profile.temporal.consensus_n == 2
+    assert profile.temporal.consensus_m == 4
+    assert profile.temporal.cooldown_s == pytest.approx(0.72)
+    assert profile.temporal.listen_window_s == pytest.approx(5.6)
+    assert profile.temporal.min_pos_stability_var == pytest.approx(10.0)
+    assert profile.temporal.activation_delay_s == pytest.approx(0.44)
 
-    balanced = server.SENSITIVITY_PROFILES["BALANCED"]
-
-    assert balanced.quality.blur_laplacian_min == pytest.approx(48.0)
-    assert balanced.quality.roi_min_coverage == pytest.approx(0.66)
-    assert balanced.quality.hand_range_px == pytest.approx((80.0, 520.0))
-
-    assert balanced.temporal.consensus_n == 2
-    assert balanced.temporal.consensus_m == 4
-    assert balanced.temporal.cooldown_s == pytest.approx(0.68)
-    assert balanced.temporal.listen_window_s == pytest.approx(5.5)
-    assert balanced.temporal.min_pos_stability_var == pytest.approx(18.0)
-    assert balanced.temporal.activation_delay_s == pytest.approx(0.45)
-
-    clima_profile = balanced.classes["Clima"]
-    assert clima_profile.score_min == pytest.approx(0.45)
-    assert clima_profile.angle_tol_deg == pytest.approx(30.0)
-    assert clima_profile.norm_dev_max == pytest.approx(0.30)
-    assert clima_profile.curvature_min == pytest.approx(0.26)
-    assert clima_profile.gap_ratio_range == pytest.approx((0.26, 0.58))
+    clima_profile = profile.classes["Clima"]
+    assert clima_profile.score_min == pytest.approx(0.369)
+    assert clima_profile.angle_tol_deg == pytest.approx(40.0)
+    assert clima_profile.norm_dev_max == pytest.approx(0.39)
+    assert clima_profile.curvature_min == pytest.approx(0.20)
+    assert clima_profile.gap_ratio_range == pytest.approx((0.20, 0.68))
     assert clima_profile.missing_distal_allowance == 2
-    assert clima_profile.missing_distal_strict_curvature == pytest.approx(0.30)
+    assert clima_profile.missing_distal_strict_curvature == pytest.approx(0.24)
     assert clima_profile.curvature_consistency_boost == pytest.approx(0.03)
     assert clima_profile.curvature_consistency_window == 3
     assert clima_profile.curvature_consistency_min_frames == 2
-    assert clima_profile.curvature_consistency_tolerance == pytest.approx(0.07)
-    assert clima_profile.curvature_consistency_min_curvature == pytest.approx(0.30)
+    assert clima_profile.curvature_consistency_tolerance == pytest.approx(0.08)
+    assert clima_profile.curvature_consistency_min_curvature == pytest.approx(0.26)
 
 
 def test_class_thresholds_apply_hysteresis() -> None:
     """Hysteresis offsets should be respected when computing runtime thresholds."""
 
-    balanced = server.SENSITIVITY_PROFILES["BALANCED"]
-    thresholds = server._class_thresholds_from_profile(balanced, server.HYSTERESIS_SETTINGS)
+    thresholds = server._class_thresholds_from_profile(server.SENSITIVITY_PROFILE, server.HYSTERESIS_SETTINGS)
 
     clima = thresholds["Clima"]
-    expected_enter = balanced.classes["Clima"].score_min + server.HYSTERESIS_SETTINGS.on_offset
+    expected_enter = server.SENSITIVITY_PROFILE.classes["Clima"].score_min + server.HYSTERESIS_SETTINGS.on_offset
     expected_release = max(0.0, expected_enter - server.HYSTERESIS_SETTINGS.off_delta)
 
     assert clima.enter == pytest.approx(expected_enter)
@@ -62,7 +52,7 @@ def test_class_thresholds_apply_hysteresis() -> None:
 
 
 def test_runtime_frameskip_adjusts_with_fps(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Balanced mode should toggle the frameskip based on measured FPS."""
+    """The runtime should drop to the minimal stride when the FPS drops below the target."""
 
     class DummyFeatureNormalizer:
         def __init__(self, dataset_path):
@@ -147,15 +137,14 @@ def test_runtime_frameskip_adjusts_with_fps(monkeypatch: pytest.MonkeyPatch) -> 
         fallback_to_synthetic=True,
         poll_interval_s=server.DEFAULT_POLL_INTERVAL_S,
         process_every_n=3,
-        sensitivity_mode="BALANCED",
     )
 
     runtime = server.HelenRuntime(config)
     try:
         high = runtime.update_frameskip(runtime.rate_limit_profile.fps_threshold + 5.0)
-        assert high == runtime.rate_limit_profile.frameskip_balanced
+        assert high == runtime.base_frameskip
 
         low = runtime.update_frameskip(runtime.rate_limit_profile.fps_threshold - 5.0)
-        assert low == 1
+        assert low == runtime.rate_limit_profile.min_frameskip
     finally:
         runtime.stop()
