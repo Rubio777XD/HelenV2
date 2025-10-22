@@ -1,0 +1,19 @@
+[Unit]
+Description=Chromium kiosk para la interfaz de HELEN
+After=graphical.target helen.service
+Requires=helen.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/pi/.Xauthority
+Environment=HOME=/home/pi
+ExecStartPre=/bin/sleep 5
+ExecStart=/usr/bin/chromium --noerrdialogs --disable-session-crashed-bubble --disable-infobars --kiosk --app=http://localhost:5000 --incognito --check-for-update-interval=31536000 --no-first-run --disable-pinch --overscroll-history-navigation=0 --autoplay-policy=no-user-gesture-required
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical.target

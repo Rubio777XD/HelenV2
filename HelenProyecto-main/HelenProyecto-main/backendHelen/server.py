@@ -159,6 +159,17 @@ DEFAULT_CLASS_THRESHOLDS: Dict[str, ClassThreshold] = {
 }
 
 GLOBAL_MIN_SCORE = 0.6
+DEFAULT_POLL_INTERVAL_S = 0.12
+
+
+@dataclass(frozen=True)
+class PiCameraProfile:
+    model: str
+    width: int
+    height: int
+    fps: int
+    poll_interval: float
+    process_every_n: int
 
 
 @dataclass(frozen=True)
@@ -1314,6 +1325,42 @@ IS_WINDOWS = PLATFORM.startswith("win")
 IS_LINUX = PLATFORM.startswith("linux")
 
 
+def _read_device_model() -> str:
+    if not IS_LINUX:
+        return ""
+
+    model_path = Path("/proc/device-tree/model")
+    with contextlib.suppress(OSError):
+        text = model_path.read_text(encoding="utf-8")
+        return text.replace("\x00", "").strip()
+    return ""
+
+
+def _detect_pi_camera_profile() -> Optional[PiCameraProfile]:
+    model = _read_device_model().lower()
+    if not model:
+        return None
+
+    if "raspberry pi 5" in model:
+        return PiCameraProfile("raspberry-pi-5", 1280, 720, 25, 0.04, 3)
+    if "raspberry pi 4" in model or "compute module 4" in model:
+        return PiCameraProfile("raspberry-pi-4", 640, 360, 24, 0.05, 4)
+    return None
+
+
+PI_CAMERA_PROFILE = _detect_pi_camera_profile()
+if PI_CAMERA_PROFILE:
+    LOGGER.info(
+        "Perfil Raspberry Pi detectado (%s): %sx%s @ %s FPS; poll_interval=%.3f; process_every_n=%s",
+        PI_CAMERA_PROFILE.model,
+        PI_CAMERA_PROFILE.width,
+        PI_CAMERA_PROFILE.height,
+        PI_CAMERA_PROFILE.fps,
+        PI_CAMERA_PROFILE.poll_interval,
+        PI_CAMERA_PROFILE.process_every_n,
+    )
+
+
 def _command_exists(command: str) -> bool:
     return bool(shutil.which(command))
 
@@ -1658,7 +1705,7 @@ class RuntimeConfig:
     camera_index: int = 0
     detection_confidence: float = 0.7
     tracking_confidence: float = 0.6
-    poll_interval_s: float = 0.12
+    poll_interval_s: float = DEFAULT_POLL_INTERVAL_S
     enable_camera: bool = True
     fallback_to_synthetic: bool = True
     model_path: Path = MODEL_PATH
@@ -1680,6 +1727,7 @@ class HealthSnapshot:
     avg_latency_ms: float
     camera_ok: bool
     camera_index: Optional[int]
+    camera_backend: Optional[str]
     camera_last_capture: Optional[str]
     camera_last_error: Optional[str]
     last_error: Optional[str] = None
@@ -1819,6 +1867,9 @@ class CameraGestureStream:
         self._cap: Optional[Any] = None
         self._hands: Optional[Any] = None
         self._opened = False
+        self._profile: Optional[PiCameraProfile] = PI_CAMERA_PROFILE
+        self._capture_backend: Optional[str] = None
+        self._gstreamer_pipeline: Optional[str] = None
 
         self._last_capture: Optional[float] = None
         self._last_error: Optional[str] = None
@@ -1831,14 +1882,115 @@ class CameraGestureStream:
         self._last_roi: Optional[Dict[str, Any]] = None
 
     # ------------------------------------------------------------------
+    def _configure_capture(self, cap: Any) -> None:
+        profile = self._profile
+        if not profile:
+            return
+
+        with contextlib.suppress(Exception):
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, profile.width)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, profile.height)
+            cap.set(cv2.CAP_PROP_FPS, profile.fps)
+
+    # ------------------------------------------------------------------
+    def _attempt_v4l2(self) -> Tuple[Optional[Any], Optional[str]]:
+        args: Tuple[Any, ...]
+        if IS_LINUX and hasattr(cv2, "CAP_V4L2"):
+            args = (self._camera_index, cv2.CAP_V4L2)
+        else:
+            args = (self._camera_index,)
+
+        cap = cv2.VideoCapture(*args)
+        if not cap or not cap.isOpened():
+            if cap:
+                with contextlib.suppress(Exception):
+                    cap.release()
+            return None, f"V4L2 no se pudo abrir en el índice {self._camera_index}"
+
+        self._configure_capture(cap)
+        actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+        actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+        actual_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+
+        LOGGER.info(
+            "Ruta de cámara inicializada: v4l2 (index=%s, %sx%s @ %.2f fps)",
+            self._camera_index,
+            actual_width,
+            actual_height,
+            actual_fps,
+        )
+        self._capture_backend = "v4l2"
+        self._gstreamer_pipeline = None
+        return cap, None
+
+    # ------------------------------------------------------------------
+    def _build_gstreamer_pipeline(self) -> str:
+        profile = self._profile
+        width = profile.width if profile else 1280
+        height = profile.height if profile else 720
+        fps = profile.fps if profile else 30
+        return (
+            "libcamerasrc ! video/x-raw,width="
+            f"{width},height={height},framerate={fps}/1,format=RGB ! "
+            "videoconvert ! video/x-raw,format=BGR ! appsink drop=1 max-buffers=2"
+        )
+
+    # ------------------------------------------------------------------
+    def _attempt_gstreamer(self) -> Tuple[Optional[Any], Optional[str]]:
+        pipeline = self._build_gstreamer_pipeline()
+        cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+        if not cap or not cap.isOpened():
+            if cap:
+                with contextlib.suppress(Exception):
+                    cap.release()
+            return None, "GStreamer/libcamerasrc no se pudo inicializar"
+
+        LOGGER.info("Ruta de cámara inicializada: gstreamer (pipeline=%s)", pipeline)
+        self._capture_backend = "gstreamer"
+        self._gstreamer_pipeline = pipeline
+        return cap, None
+
+    # ------------------------------------------------------------------
+    def _initialise_capture(self) -> Any:
+        errors: List[str] = []
+
+        cap, error = self._attempt_v4l2()
+        if cap is None:
+            if error:
+                errors.append(error)
+            cap, error = self._attempt_gstreamer()
+
+        if cap is None:
+            if error:
+                errors.append(error)
+            message = "; ".join(errors) if errors else f"No se pudo abrir la cámara {self._camera_index}"
+            self._last_error = message
+            raise RuntimeError(message)
+
+        return cap
+
+    # ------------------------------------------------------------------
+    def _switch_to_gstreamer(self) -> bool:
+        cap, error = self._attempt_gstreamer()
+        if cap is None:
+            if error:
+                LOGGER.error("No se pudo iniciar pipeline GStreamer tras un fallo de cámara: %s", error)
+            return False
+
+        if self._cap is not None:
+            with contextlib.suppress(Exception):
+                self._cap.release()
+
+        self._cap = cap
+        self._healthy = True
+        return True
+
+    # ------------------------------------------------------------------
     def open(self) -> None:
         if self._opened:
             return
 
-        cap = cv2.VideoCapture(self._camera_index)
-        if not cap or not cap.isOpened():
-            self._last_error = f"No se pudo abrir la cámara {self._camera_index}"
-            raise RuntimeError(self._last_error)
+        cap = self._initialise_capture()
 
         self._cap = cap
         self._hands = mp.solutions.hands.Hands(
@@ -1860,6 +2012,8 @@ class CameraGestureStream:
             with contextlib.suppress(Exception):
                 self._hands.close()
         self._opened = False
+        self._capture_backend = None
+        self._gstreamer_pipeline = None
 
     # ------------------------------------------------------------------
     def next(self, timeout: float = 2.0) -> Tuple[List[float], Optional[str]]:
@@ -1880,6 +2034,10 @@ class CameraGestureStream:
             if not ok or frame is None:
                 self._last_error = "No se pudo leer un frame de la cámara"
                 self._healthy = False
+                if self._capture_backend == "v4l2" and self._switch_to_gstreamer():
+                    LOGGER.warning("Lectura fallida con V4L2; cambiando a pipeline GStreamer")
+                    time.sleep(0.1)
+                    continue
                 time.sleep(0.05)
                 continue
 
@@ -1956,6 +2114,8 @@ class CameraGestureStream:
             "quality_rejections": dict(self._quality_rejections),
             "frame_shape": self._last_frame_shape,
             "roi_snapshot": self._last_roi,
+            "capture_backend": self._capture_backend,
+            "gstreamer_pipeline": self._gstreamer_pipeline,
         }
 
     # ------------------------------------------------------------------
@@ -2320,6 +2480,22 @@ class HelenRuntime:
 
     def __init__(self, config: Optional[RuntimeConfig] = None) -> None:
         self.config = config or RuntimeConfig()
+        if (
+            PI_CAMERA_PROFILE
+            and math.isclose(
+                float(self.config.poll_interval_s),
+                DEFAULT_POLL_INTERVAL_S,
+                rel_tol=1e-3,
+                abs_tol=1e-3,
+            )
+        ):
+            tuned_interval = PI_CAMERA_PROFILE.poll_interval
+            self.config.poll_interval_s = tuned_interval
+            LOGGER.info(
+                "Intervalo de inferencia ajustado automáticamente a %.3f s para %s",
+                tuned_interval,
+                PI_CAMERA_PROFILE.model,
+            )
         self.session_id = uuid.uuid4().hex
         self.started_at = time.time()
         self.event_stream = EventStream()
@@ -2585,6 +2761,7 @@ class HelenRuntime:
             avg_latency_ms=round(avg_latency, 3),
             camera_ok=camera_ok,
             camera_index=stream_status.get("camera_index"),
+            camera_backend=stream_status.get("capture_backend"),
             camera_last_capture=(
                 _iso_timestamp(stream_status["last_capture"])
                 if stream_status.get("last_capture")
