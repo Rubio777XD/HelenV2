@@ -1,8 +1,17 @@
 :root{
   --tutorial-shell-max: 1120px;
-  --tutorial-padding: clamp(28px, 5vw, 44px);
-  --tutorial-gap: clamp(24px, 4vw, 36px);
+  --tutorial-shell-height: min(860px, 92vh);
+  --tutorial-padding: clamp(18px, 3vw, 28px);
+  --tutorial-gap: clamp(14px, 2.6vh, 22px);
   --tutorial-card-gap: clamp(18px, 5vw, 28px);
+  --flow-panel-padding: clamp(16px, 3.2vw, 24px);
+  --step-circle-size: clamp(108px, 18vmin, 156px);
+}
+
+@supports(height: 100svh){
+  :root{
+    --tutorial-shell-height: min(860px, 92svh);
+  }
 }
 
 .tutorial-container{
@@ -11,23 +20,23 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: clamp(36px, 7vh, 72px) clamp(24px, 6vw, 48px);
+  padding: clamp(28px, 6vh, 60px) clamp(22px, 5vw, 44px);
   position: relative;
   z-index: 0;
 }
 
 @supports(padding:max(0px)){
   .tutorial-container{
-    padding-top: max(36px, env(safe-area-inset-top));
-    padding-bottom: max(36px, env(safe-area-inset-bottom));
-    padding-left: max(24px, env(safe-area-inset-left));
-    padding-right: max(24px, env(safe-area-inset-right));
+    padding-top: max(32px, env(safe-area-inset-top));
+    padding-bottom: max(32px, env(safe-area-inset-bottom));
+    padding-left: max(22px, env(safe-area-inset-left));
+    padding-right: max(22px, env(safe-area-inset-right));
   }
 }
 
 .tutorial-shell{
   width: min(var(--tutorial-shell-max), 100%);
-  max-height: min(860px, 82vh);
+  max-height: var(--tutorial-shell-height, min(860px, 92vh));
   display: flex;
   flex-direction: column;
   gap: var(--tutorial-gap);
@@ -35,7 +44,7 @@
   border-radius: var(--r-lg, 26px);
   background: linear-gradient(180deg, rgba(18,28,46,.94), rgba(12,21,36,.88));
   box-shadow: var(--shadow-card, 0 26px 60px rgba(0,0,0,.38));
-  overflow: hidden;
+  overflow: visible;
   position: relative;
   z-index: 1;
 }
@@ -77,7 +86,7 @@
 
 .tutorial-heading h1{
   margin: 0;
-  font-size: clamp(40px, 5.6vw, 52px);
+  font-size: clamp(36px, 4.8vw, 48px);
   font-weight: 700;
   letter-spacing: -.3px;
   color: var(--fg-strong, #fff);
@@ -86,7 +95,8 @@
 .tutorial-subtitle{
   margin: 6px 0 0;
   color: var(--fg-soft, rgba(220,235,255,.74));
-  font-size: clamp(15px, 2.5vw, 18px);
+  font-size: clamp(15px, 2.2vw, 18px);
+  line-height: 1.4;
   max-width: 640px;
 }
 
@@ -95,14 +105,16 @@
   width: 100%;
   display: flex;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
+  min-height: 0;
 }
 
 .tutorial-view{
   display: none;
   flex-direction: column;
-  gap: clamp(20px, 4vw, 28px);
+  gap: clamp(14px, 2.6vh, 22px);
   width: 100%;
+  min-height: 0;
 }
 
 .tutorial-view.is-active{
@@ -195,13 +207,19 @@
   color: rgba(95,225,255,.9);
 }
 
-.tutorial-flow{ min-height: clamp(480px, 70svh, 720px); }
+.tutorial-flow{
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
 
 .flow-panel{
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: clamp(20px, 4vw, 32px);
-  padding: clamp(24px, 6vw, 36px);
+  gap: clamp(12px, 2vh, 18px);
+  padding: var(--flow-panel-padding, clamp(16px, 3.2vw, 24px));
   border-radius: var(--r-lg, 26px);
   background: linear-gradient(180deg, var(--card-top, rgba(18,28,46,.92)), var(--card-bot, rgba(14,23,39,.88)));
   border: 1px solid var(--card-border, rgba(160,190,220,.14));
@@ -211,8 +229,9 @@
 .flow-header{
   display: flex;
   align-items: center;
-  gap: 18px;
   flex-wrap: wrap;
+  column-gap: clamp(12px, 2.5vw, 20px);
+  row-gap: clamp(8px, 2vh, 16px);
 }
 
 .flow-close{
@@ -245,6 +264,8 @@
   display: flex;
   align-items: center;
   gap: 18px;
+  flex: 1 1 240px;
+  min-width: 0;
 }
 
 .flow-heading__icon{
@@ -261,7 +282,7 @@
 
 .flow-heading__copy h2{
   margin: 0;
-  font-size: clamp(26px, 4vw, 32px);
+  font-size: clamp(24px, 3.6vw, 30px);
   font-weight: 600;
   color: var(--fg-strong, #fff);
 }
@@ -269,7 +290,7 @@
 .flow-heading__copy p{
   margin: 6px 0 0;
   color: var(--fg-soft, rgba(220,235,255,.74));
-  font-size: clamp(14px, 2.6vw, 17px);
+  font-size: clamp(14px, 2.4vw, 17px);
   max-width: 520px;
 }
 
@@ -278,13 +299,15 @@
   margin: 0;
   padding: 0;
   display: flex;
-  justify-content: center;
-  gap: 12px;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .step-dot{
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: rgba(255,255,255,.16);
   transition: transform var(--t-fast, .16s) ease, background var(--t-fast, .16s) ease, box-shadow var(--t-fast, .16s) ease;
@@ -299,35 +322,39 @@
 
 .flow-stage{
   flex: 1;
+  min-height: 0;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
+  padding-block: clamp(4px, 1vh, 10px);
 }
 
 .step-visual{
   width: 100%;
   max-width: 720px;
   margin: 0 auto;
-  min-height: clamp(320px, 58svh, 520px);
+  flex: 1;
+  min-height: clamp(200px, 34vh, 300px);
+  min-height: clamp(200px, 34svh, 300px);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: clamp(18px, 4vw, 32px);
+  gap: clamp(12px, 2.4vh, 22px);
   position: relative;
 }
 
 .step-number{
-  font-size: 15px;
+  font-size: clamp(14px, 1.6vw, 15px);
   letter-spacing: .3px;
   text-transform: uppercase;
   color: rgba(230,242,255,.7);
 }
 
 .step-ring{
-  width: clamp(136px, 24vw, 164px);
-  height: clamp(136px, 24vw, 164px);
+  width: min(var(--step-circle-size), 22vh);
+  height: min(var(--step-circle-size), 22vh);
   border-radius: 50%;
   border: 2px solid rgba(255,255,255,.12);
   display: grid;
@@ -337,7 +364,7 @@
 }
 
 .step-digit{
-  font-size: clamp(46px, 7vw, 58px);
+  font-size: clamp(40px, 6vw, 54px);
   font-weight: 600;
   color: rgba(230,242,255,.85);
   transition: opacity var(--t-med, .25s) ease, transform var(--t-med, .25s) ease;
@@ -349,7 +376,7 @@
   display: grid;
   place-items: center;
   color: #72f8ff;
-  font-size: clamp(48px, 8vw, 60px);
+  font-size: clamp(42px, 7vw, 56px);
   opacity: 0;
   transform: scale(.65);
   transition: opacity var(--t-med, .25s) ease, transform var(--t-med, .25s) ease;
@@ -357,8 +384,8 @@
 
 .step-text{
   margin: 0;
-  font-size: clamp(26px, 4.2vw, 34px);
-  line-height: 1.26;
+  font-size: clamp(22px, 3.4vw, 30px);
+  line-height: 1.24;
   font-weight: 600;
   color: var(--fg-strong, #fff);
   max-width: 720px;
@@ -366,7 +393,7 @@
 
 .step-status{
   margin: 0;
-  font-size: clamp(16px, 2.8vw, 18px);
+  font-size: clamp(15px, 2.2vw, 18px);
   color: rgba(220,236,255,.82);
   max-width: 600px;
 }
@@ -414,8 +441,8 @@
 .tutorial-button{
   border: none;
   border-radius: var(--r-md, 18px);
-  padding: 16px 32px;
-  font-size: 16px;
+  padding: clamp(14px, 2vh, 16px) clamp(24px, 4vw, 32px);
+  font-size: clamp(15px, 2.2vw, 16px);
   font-weight: 600;
   letter-spacing: .3px;
   color: #fff;
@@ -471,7 +498,7 @@
 
 .flow-return{
   align-self: center;
-  min-width: min(340px, 90%);
+  min-width: min(300px, 92%);
   max-height: 0;
   opacity: 0;
   pointer-events: none;
@@ -492,15 +519,15 @@
   margin: 0;
   text-align: center;
   color: rgba(220,236,255,.72);
-  font-size: 14px;
+  font-size: clamp(13px, 1.8vw, 14px);
   letter-spacing: .2px;
 }
 
 .flow-footnote.is-hidden{ display: none; }
 
 @media (max-width: 860px){
-  .tutorial-container{ padding: clamp(32px, 9vh, 64px) clamp(16px, 8vw, 32px); }
-  .flow-panel{ padding: clamp(24px, 8vw, 36px); }
+  .tutorial-container{ padding: clamp(24px, 8vh, 48px) clamp(16px, 7vw, 32px); }
+  .flow-panel{ padding: clamp(18px, 7vw, 26px); }
 }
 
 @media (max-width: 720px){
@@ -508,9 +535,10 @@
   .flow-heading{ align-items: flex-start; gap: 14px; }
   .flow-heading__icon{ width: 56px; height: 56px; font-size: 26px; }
   .tutorial-card{ padding: clamp(24px, 7vw, 32px); }
+  .step-dots{ width: 100%; justify-content: center; margin-left: 0; }
 }
 
 @media (max-width: 520px){
-  .tutorial-shell{ padding: clamp(24px, 9vw, 32px); }
-  .step-visual{ min-height: clamp(280px, 60svh, 460px); }
+  .tutorial-shell{ padding: clamp(22px, 9vw, 30px); }
+  .step-visual{ min-height: clamp(240px, 54svh, 380px); }
 }
