@@ -174,8 +174,8 @@ class PiCameraProfile:
 
 @dataclass(frozen=True)
 class ConsensusConfig:
-    window_size: int = 12
-    required_votes: int = 8
+    window_size: int = 5
+    required_votes: int = 3
 
 
 DEFAULT_CONSENSUS_CONFIG = ConsensusConfig()
@@ -1710,6 +1710,7 @@ class RuntimeConfig:
     fallback_to_synthetic: bool = True
     model_path: Path = MODEL_PATH
     dataset_path: Path = field(default_factory=_default_dataset_path)
+    process_every_n: int = 3
 
 
 @dataclass
@@ -2384,12 +2385,20 @@ class _SSEClient:
 class GesturePipeline:
     """Background thread that feeds predictions to the runtime."""
 
-    def __init__(self, runtime: "HelenRuntime", interval_s: float = 0.12) -> None:
+    def __init__(
+        self,
+        runtime: "HelenRuntime",
+        interval_s: float = 0.12,
+        *,
+        frame_stride: int = 1,
+    ) -> None:
         self._runtime = runtime
         self._interval = max(0.01, float(interval_s))
         self._thread: Optional[threading.Thread] = None
         self._running = threading.Event()
         self._sequence = 0
+        self._frame_stride = max(1, int(frame_stride))
+        self._stride_cursor = 0
 
     # ------------------------------------------------------------------
     def start(self) -> None:
@@ -2423,6 +2432,12 @@ class GesturePipeline:
                 self._runtime.report_error(f"stream_error: {error}")
                 time.sleep(0.5)
                 continue
+
+            if self._frame_stride > 1:
+                self._stride_cursor = (self._stride_cursor + 1) % self._frame_stride
+                if self._stride_cursor != 1:
+                    time.sleep(self._interval)
+                    continue
 
             try:
                 transformed = self._runtime.feature_normalizer.transform(features)
@@ -2496,6 +2511,10 @@ class HelenRuntime:
                 tuned_interval,
                 PI_CAMERA_PROFILE.model,
             )
+        stride = max(1, int(getattr(self.config, 'process_every_n', 3) or 3))
+        if PI_CAMERA_PROFILE and stride == 3:
+            stride = max(1, int(getattr(PI_CAMERA_PROFILE, 'process_every_n', stride) or stride))
+        self.config.process_every_n = stride
         self.session_id = uuid.uuid4().hex
         self.started_at = time.time()
         self.event_stream = EventStream()
@@ -2524,7 +2543,11 @@ class HelenRuntime:
         self.stream = stream
         self.stream_source = stream_meta["source"]
 
-        self.pipeline = GesturePipeline(self, interval_s=self.config.poll_interval_s)
+        self.pipeline = GesturePipeline(
+            self,
+            interval_s=self.config.poll_interval_s,
+            frame_stride=self.config.process_every_n,
+        )
         self.lock = threading.Lock()
         self.latency_history: Deque[float] = deque(maxlen=240)
         self.last_prediction: Optional[Dict[str, Any]] = None
@@ -2957,6 +2980,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--detection-confidence", type=float, default=0.7, help="Umbral de detección de MediaPipe")
     parser.add_argument("--tracking-confidence", type=float, default=0.6, help="Umbral de seguimiento de MediaPipe")
     parser.add_argument("--poll-interval", type=float, default=0.12, help="Intervalo entre inferencias en segundos")
+    parser.add_argument(
+        "--frame-stride",
+        type=int,
+        default=3,
+        help="Procesa un frame de cada N muestras para reducir carga (>=1)",
+    )
     parser.add_argument("--no-camera", action="store_true", help="Desactiva el uso de cámara física")
     parser.add_argument(
         "--no-synthetic-fallback",
@@ -2972,6 +3001,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         poll_interval_s=args.poll_interval,
         enable_camera=not args.no_camera,
         fallback_to_synthetic=not args.no_synthetic_fallback,
+        process_every_n=max(1, args.frame_stride),
     )
 
     run(args.host, args.port, config=config)

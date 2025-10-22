@@ -26,6 +26,103 @@
   };
   const PENDING_STORAGE_KEY = 'helen:timekeeper:pendingQueue:v1';
   const BODY_MODAL_CLASS = 'helen-global-modal-open';
+  const GLOBAL_EVENT_NAME = 'helen:timekeeper:fired';
+  const GLOBAL_BUS_VERSION = 1;
+
+  const dispatchWindowEvent = (name, detail) => {
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
+      return;
+    }
+    let event = null;
+    const CustomEventCtor = (typeof window.CustomEvent === 'function' && window.CustomEvent)
+      || (typeof CustomEvent === 'function' && CustomEvent);
+    if (CustomEventCtor) {
+      try {
+        event = new CustomEventCtor(name, { detail });
+      } catch (error) {
+        event = null;
+      }
+    }
+    if (!event && window.document && typeof window.document.createEvent === 'function') {
+      try {
+        event = window.document.createEvent('CustomEvent');
+        event.initCustomEvent(name, false, false, detail);
+      } catch (error) {
+        event = null;
+      }
+    }
+    if (!event) {
+      event = { type: name, detail };
+    }
+    try {
+      window.dispatchEvent(event);
+    } catch (error) {
+      // Ignorar errores silenciosos en ambientes de prueba.
+    }
+  };
+
+  const createGlobalBus = () => {
+    const listenersMap = new Map();
+    const bus = {
+      version: GLOBAL_BUS_VERSION,
+      on(eventName, handler) {
+        if (typeof handler !== 'function') {
+          return () => {};
+        }
+        if (!listenersMap.has(eventName)) {
+          listenersMap.set(eventName, new Set());
+        }
+        const set = listenersMap.get(eventName);
+        set.add(handler);
+        return () => bus.off(eventName, handler);
+      },
+      off(eventName, handler) {
+        const set = listenersMap.get(eventName);
+        if (!set) {
+          return;
+        }
+        if (handler) {
+          set.delete(handler);
+          if (set.size === 0) {
+            listenersMap.delete(eventName);
+          }
+        } else {
+          set.clear();
+          listenersMap.delete(eventName);
+        }
+      },
+      emit(eventName, detail) {
+        dispatchWindowEvent(eventName, detail);
+        const set = listenersMap.get(eventName);
+        if (!set) {
+          return;
+        }
+        set.forEach((callback) => {
+          try {
+            callback(detail);
+          } catch (error) {
+            console.error('[HelenScheduler] Error en listener global', error);
+          }
+        });
+      },
+    };
+    return bus;
+  };
+
+  const ensureGlobalBus = () => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    const existing = window.HelenTimekeeperBus;
+    if (existing && existing.version === GLOBAL_BUS_VERSION) {
+      return existing;
+    }
+    const bus = createGlobalBus();
+    window.HelenTimekeeperBus = bus;
+    return bus;
+  };
+
+  const globalBus = ensureGlobalBus();
 
   const listeners = {
     update: new Set(),
@@ -400,7 +497,7 @@
       tone: tone || (item.type === 'timer' ? 'timer' : 'alarm'),
       type: item.type,
       firedAt,
-      title: item.type === 'timer' ? 'Temporizador finalizado' : 'Alarma finalizada',
+      title: item.type === 'timer' ? 'Temporizador finalizado' : 'Alarma activada',
       label: baseLabel,
       detail,
       meta,
@@ -420,6 +517,7 @@
     root.className = 'helen-global-modal';
     root.setAttribute('data-helen-modal', 'timekeeper');
     root.setAttribute('aria-hidden', 'true');
+    root.setAttribute('aria-live', 'assertive');
 
     const card = document.createElement('div');
     card.className = 'helen-global-modal__card';
@@ -550,7 +648,7 @@
     const tone = entry && entry.tone === 'timer' ? 'timer' : 'alarm';
     const iconClass = tone === 'timer' ? 'bi-stopwatch-fill' : 'bi-bell-fill';
     elements.iconGlyph.className = `bi ${iconClass}`;
-    elements.title.textContent = entry && entry.title ? entry.title : (tone === 'timer' ? 'Temporizador finalizado' : 'Alarma finalizada');
+    elements.title.textContent = entry && entry.title ? entry.title : (tone === 'timer' ? 'Temporizador finalizado' : 'Alarma activada');
     elements.label.textContent = entry && entry.label ? entry.label : (tone === 'timer' ? 'Temporizador' : 'Alarma');
     elements.detail.textContent = entry && entry.detail ? entry.detail : 'Evento completado.';
     if (elements.meta) {
@@ -731,6 +829,13 @@
     pendingNotifications.push(snapshot);
     pendingNotifications.sort((a, b) => toNumber(a?.firedAt, 0) - toNumber(b?.firedAt, 0));
     persistPendingNotifications();
+    if (globalBus) {
+      try {
+        globalBus.emit(GLOBAL_EVENT_NAME, { ...snapshot });
+      } catch (error) {
+        console.error('[HelenScheduler] Error emitiendo evento global', error);
+      }
+    }
     onDomReady(() => {
       if (!currentNotification) {
         processNotificationQueue();
@@ -1076,11 +1181,12 @@
     if (triggered.length) {
       notifyUpdate();
       triggered.forEach(({ item, tone }) => {
+        const body = tone === 'alarm'
+          ? `${item.label ? `“${item.label}”` : 'La alarma'} se activó mientras estabas fuera.`
+          : `${item.label ? `“${item.label}”` : 'El temporizador'} finalizó mientras estabas fuera.`;
         pushToast({
-          title: tone === 'alarm' ? 'Alarma finalizada' : 'Temporizador finalizado',
-          body: tone === 'alarm'
-            ? `${item.label || 'Alarma'} terminó mientras estabas fuera.`
-            : `${item.label || 'Temporizador'} terminó mientras estabas fuera.`,
+          title: tone === 'alarm' ? 'Alarma activada' : 'Temporizador finalizado',
+          body,
           tone,
         });
       });
@@ -1097,9 +1203,10 @@
     item.metadata.lastTriggeredAt = firedAt;
     queueDueNotification(item, 'timer', firedAt);
     if (!silent) {
+      const bodyLabel = item.label ? `“${item.label}”` : 'El temporizador';
       pushToast({
-        title: item.label || 'Temporizador',
-        body: 'Tiempo finalizado.',
+        title: 'Temporizador finalizado',
+        body: `${bodyLabel} ha finalizado.`,
         tone: 'timer',
       });
     }
@@ -1122,9 +1229,10 @@
     }
     queueDueNotification(item, 'alarm', firedAt);
     if (!silent) {
+      const bodyLabel = item.label ? `“${item.label}”` : 'La alarma';
       pushToast({
-        title: item.label || 'Alarma',
-        body: '¡Despierta! La alarma se activó.',
+        title: 'Alarma activada',
+        body: `${bodyLabel} se activó.`,
         tone: 'alarm',
       });
     }
