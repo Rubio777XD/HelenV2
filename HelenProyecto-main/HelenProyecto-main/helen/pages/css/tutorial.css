@@ -1,612 +1,516 @@
-/* ===========================================================
-   HELEN – TUTORIAL (CSS robusto para el index que enviaste)
-   - Alineado a globals (colores, sombras, radios)
-   - Menú con 3 tarjetas (responsive 3→2→1)
-   - Pasos visuales con iconos grandes
-   - Back-button unificado
-   - Anti-desbordes, accesibilidad, motion-aware
-   =========================================================== */
+/* =====================================================
+   HELEN – Tutorial interactivo (2024)
+   - Layout centrado alineado con globals/settings
+   - Tarjetas principales estilo quick-nav
+   - Flujo paso a paso con confirmación visual simulada
+   ===================================================== */
 
-/* -------- Fallbacks por si algún token faltara en globals -------- */
 :root{
-  --card-top: rgba(18,28,46,.92);
-  --card-bot: rgba(14,23,39,.92);
-  --card-border: rgba(160,190,220,.14);
-  --fg: #e7f0ff;
-  --fg-soft: #a9b9cf;
-  --blue-a: #5fe1ff;
-  --blue-b: #2e6bff;
-  --r-lg: 26px;
-  --r-md: 18px;
-  --shadow-card: 0 26px 60px rgba(0,0,0,.38);
-  --shadow-tile: 0 22px 44px rgba(0,0,0,.34);
-  --t-fast: 160ms;
+  --tutorial-max: 1120px;
+  --tutorial-panel-padding: clamp(28px, 6vw, 48px);
+  --tutorial-card-gap: clamp(18px, 5vw, 28px);
 }
 
-/* ================== Layout general ================== */
-.tutorial-shell{
+/* ========================== Layout base ========================== */
+.main-container{
   width: 100%;
   min-height: 100svh;
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 36px 20px 28px;
-  overflow-x: hidden;            /* previene scroll lateral */
+  padding: clamp(36px, 7vh, 72px) clamp(20px, 6vw, 48px) clamp(32px, 6vh, 64px);
+  position: relative;
+  z-index: 0;
 }
 
-.tutorial-wrap{
-  width: min(1200px, 96vw);
-  display: flex;
-  flex-direction: column;
-  gap: clamp(24px, 4vw, 32px);
-  align-items: stretch;
-}
-
-/* Safe areas (iOS) */
-@supports (padding: max(0px)){
-  .tutorial-shell{
+@supports(padding:max(0px)){
+  .main-container{
     padding-left: max(20px, env(safe-area-inset-left));
     padding-right: max(20px, env(safe-area-inset-right));
     padding-top: max(36px, env(safe-area-inset-top));
-    padding-bottom: max(28px, env(safe-area-inset-bottom));
+    padding-bottom: max(32px, env(safe-area-inset-bottom));
   }
 }
 
-/* ================== Encabezado ================== */
-.tut-header{
-  width: 100%;
-  margin: 4px 0 6px;
+.screen-wrapper{
+  width: min(var(--tutorial-max), 100%);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(24px, 4vw, 36px);
+  position: relative;
+  z-index: 1;
+}
+
+.screen-header{
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   flex-wrap: wrap;
 }
 
-/* Back button (estándar del proyecto) */
 .back-button{
-  width: 46px; height: 46px;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,.12);
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.14);
   background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.10));
   color: #fff;
-  display: grid; place-items: center;
-  box-shadow: var(--shadow-tile);
+  display: grid;
+  place-items: center;
   cursor: pointer;
-  text-decoration: none;
-  transition: transform var(--t-fast) ease, border-color var(--t-fast) ease, box-shadow var(--t-fast) ease;
+  box-shadow: var(--shadow-tile, 0 22px 44px rgba(0,0,0,.34));
+  transition: transform var(--t-fast, .16s) ease, border-color var(--t-fast, .16s) ease, box-shadow var(--t-fast, .16s) ease;
+  -webkit-tap-highlight-color: transparent;
 }
+
+.back-button:focus-visible{
+  outline: 2px solid rgba(95,225,255,.8);
+  outline-offset: 3px;
+}
+
 @media (hover:hover){
   .back-button:hover{
     transform: translateY(-2px);
-    border-color: rgba(190,210,230,.22);
+    border-color: rgba(190,210,230,.24);
     box-shadow: 0 18px 36px rgba(0,0,0,.28);
   }
 }
 
-.title-col h1{
+.screen-title h1{
   margin: 0;
-  font-size: 48px;
+  font-size: clamp(40px, 6vw, 52px);
   font-weight: 700;
   letter-spacing: -.3px;
   color: var(--fg-strong, #fff);
 }
-.title-col{ flex: 1 1 auto; min-width: 220px; }
-.subtitle{
-  margin: 2px 0 0 0;
-  color: var(--fg-soft);
-  font-size: clamp(14px, 2.2vw, 18px);
-  margin-bottom: 10px;
+
+.screen-description{
+  margin: 6px 0 0;
+  color: var(--fg-soft, rgba(220,235,255,.74));
+  font-size: clamp(14px, 2.4vw, 18px);
+  max-width: 640px;
 }
 
-/* ================== Vistas (hash) ================== */
-.tut-view{ display: none; }
-.tut-view.is-active{ display: block; }
+.view-stack{ width: 100%; position: relative; }
 
-/* ================== Menú (3 tarjetas) ================== */
-.tut-grid{
-  width: 100%;
-  margin: 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0,1fr));
-  gap: 24px;
-}
-@media (max-width: 1020px){
-  .tut-grid{ grid-template-columns: repeat(2, minmax(0,1fr)); gap: 20px; }
-}
-@media (max-width: 640px){
-  .tut-grid{ grid-template-columns: 1fr; gap: 16px; }
+.tutorial-view{
+  display: none;
+  flex-direction: column;
+  gap: clamp(20px, 4vw, 28px);
 }
 
-.qcard{
-  display: grid; place-items: center; gap: 8px;
-  text-align: center; text-decoration: none;
-  padding: 28px 16px; min-height: 200px;
-  background: linear-gradient(180deg, var(--card-top), var(--card-bot));
-  border: 1px solid var(--card-border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-card);
-  color: #fff;
-  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
-}
-.qcard:hover{ transform: translateY(-4px); border-color: rgba(190,210,230,.22); }
-
-.qcard__icon{
-  width: 84px; height: 84px; border-radius: 22px;
-  display: grid; place-items: center;
-  background: radial-gradient(60% 60% at 30% 30%, var(--blue-a), var(--blue-b));
-  box-shadow: 0 18px 36px rgba(46,107,255,.35), 0 0 0 12px rgba(46,107,255,.14) inset;
-}
-.qcard__icon i{ color: #ecf6ff; font-size: 34px; }
-.qcard__title{ font-size: clamp(18px, 2.6vw, 22px); font-weight: 700; letter-spacing: .2px; }
-.qcard__subtitle{ color: rgba(240,247,255,.86); font-size: 13.5px; letter-spacing: .15px; }
-
-/* ================== Panel contenedor ================== */
-.panel{
-  width: 100%;
-  margin: 8px 0 16px;
-  padding: clamp(18px, 3.2vw, 28px);
-  background: linear-gradient(180deg, var(--card-top), var(--card-bot));
-  border: 1px solid var(--card-border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-card);
-  overflow: clip; /* evita que algo se salga del borde redondo */
+.tutorial-view.is-active{
+  display: flex;
+  animation: tutorialFade .45s ease;
 }
 
-/* ================== Pasos visuales (Clima/Hora) ================== */
-.steps-grid{
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0,1fr));
-  gap: 14px;
-}
-@media (max-width: 1020px){
-  .steps-grid{ grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
-}
-@media (max-width: 640px){
-  .steps-grid{ grid-template-columns: 1fr; gap: 10px; }
-}
-
-.step-card{
-  background: rgba(15,26,43,.60);
-  border: 1px solid var(--card-border);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-tile);
-  padding: 14px;
-  display: grid; gap: 8px; place-items: center;
-  text-align: center;
-}
-.step-icon{
-  width: 56px; height: 56px; border-radius: 16px;
-  display: grid; place-items: center;
-  background: radial-gradient(60% 60% at 30% 30%, var(--blue-a), var(--blue-b));
-  box-shadow: 0 12px 26px rgba(46,107,255,.35);
-  color: #fff; font-size: 26px; font-weight: 700;
-}
-.step-icon.mark{ font-size: 20px; }
-.step-card p{ margin: 0; color: var(--fg); font-size: 14px; }
-
-/* Notas rápidas bajo pasos */
-.notes-row{
-  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
-  margin-top: 14px;
-}
-@media (max-width: 640px){
-  .notes-row{ grid-template-columns: 1fr; }
-}
-.note{
-  display: flex; gap: 10px; align-items: center;
-  background: rgba(255,255,255,.06);
-  border: 1px solid var(--card-border);
-  border-radius: var(--r-md);
-  padding: 10px 12px;
-  color: #ecf6ff;
-}
-.note i{ font-size: 18px; }
-
-/* ================== Toggle de movimiento ================== */
-.motion-toggle{
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,.18);
-  background: linear-gradient(120deg, rgba(18,28,46,.92), rgba(10,18,34,.82));
-  color: #f3f7ff;
-  font-size: 13px;
-  letter-spacing: .18px;
-  cursor: pointer;
-  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
-  margin-left: auto;
-}
-.motion-toggle i{ font-size: 18px; }
-.motion-toggle__label{ font-weight: 600; }
-.motion-toggle__state{ font-size: 11px; text-transform: uppercase; letter-spacing: .24px; opacity: .76; }
-.motion-toggle[aria-pressed="true"]{
-  border-color: rgba(255,184,0,.42);
-  box-shadow: 0 18px 40px rgba(255,184,0,.18);
-  background: linear-gradient(120deg, rgba(32,26,48,.9), rgba(42,24,34,.78));
-}
-@media (hover:hover){
-  .motion-toggle:hover{ transform: translateY(-2px); border-color: rgba(120,180,255,.32); }
-}
-
-/* ================== Práctica interactiva ================== */
-.panel--trainer{ padding: clamp(24px, 3.2vw, 36px); }
-
-.trainer-layout{
-  display: grid;
-  gap: clamp(22px, 3.2vw, 32px);
-  grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr);
-  align-items: stretch;
-}
-@media (max-width: 1080px){
-  .trainer-layout{ grid-template-columns: 1fr; }
-}
-
-.gesture-trainer{
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-  gap: clamp(18px, 3vw, 28px);
-  background: rgba(12,20,36,.78);
-  border: 1px solid var(--card-border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-card);
-  padding: clamp(18px, 3vw, 28px);
-  position: relative;
-  overflow: hidden;
-}
-@media (max-width: 860px){
-  .gesture-trainer{ grid-template-columns: 1fr; }
-}
-
-.gesture-trainer.is-active{
-  border-color: rgba(95,225,255,.32);
-  box-shadow: 0 30px 70px rgba(0,225,255,.18);
-}
-
-.gesture-trainer.is-complete{
-  border-color: rgba(95,225,255,.4);
-  box-shadow: 0 36px 80px rgba(0,225,255,.26);
-}
-
-.gesture-trainer__visual{ position: relative; }
-
-.gesture-visual{
-  position: relative;
-  background: linear-gradient(150deg, rgba(24,38,64,.92), rgba(16,28,48,.78));
-  border: 1px solid rgba(120,160,210,.16);
-  border-radius: 28px;
-  padding: clamp(20px, 3vw, 32px);
-  display: grid;
-  gap: clamp(16px, 2.4vw, 22px);
-  justify-items: center;
-  text-align: center;
-  overflow: hidden;
-}
-
-.gesture-visual__media{
-  width: min(280px, 78%);
-  max-width: 100%;
-  filter: drop-shadow(0 30px 46px rgba(0,0,0,.45));
-}
-
-.gesture-visual__glow{
-  position: absolute;
-  inset: 6%;
-  border-radius: 32px;
-  background: radial-gradient(circle at 50% 85%, rgba(0,225,255,.38), rgba(0,225,255,0));
-  opacity: 0;
-  transition: opacity .5s ease, transform .6s ease;
-  pointer-events: none;
-}
-
-.gesture-trainer.is-active .gesture-visual__glow{ opacity: .3; }
-.gesture-trainer.is-complete .gesture-visual__glow{ opacity: .85; transform: scale(1.05); }
-
-.gesture-visual__practice{
-  position: absolute;
-  bottom: clamp(18px, 3vw, 26px);
-  right: clamp(18px, 3vw, 26px);
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 18px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,.18);
-  background: linear-gradient(135deg, rgba(18,30,52,.9), rgba(10,18,34,.78));
-  color: #f4f8ff;
-  font-weight: 600;
-  letter-spacing: .18px;
-  cursor: pointer;
-  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
-}
-.gesture-visual__practice i{ font-size: 16px; }
-@media (hover:hover){
-  .gesture-visual__practice:hover{ transform: translateY(-2px); box-shadow: 0 22px 40px rgba(0,0,0,.35); border-color: rgba(120,180,255,.32); }
-}
-
-.practice-label--restart{ display: none; }
-.gesture-trainer.is-active .practice-label--start,
-.gesture-trainer.is-complete .practice-label--start{ display: none; }
-.gesture-trainer.is-active .practice-label--restart,
-.gesture-trainer.is-complete .practice-label--restart{ display: inline-flex; }
-
-.gesture-visual__status{
-  width: 100%;
-  padding: 10px 16px;
-  border-radius: 16px;
-  background: rgba(0,0,0,.28);
-  border: 1px solid rgba(160,190,220,.18);
-  color: rgba(240,247,255,.82);
-  font-size: 14px;
-  letter-spacing: .12px;
-}
-.gesture-visual__status.is-positive{
-  background: rgba(0,180,155,.22);
-  border-color: rgba(0,225,200,.32);
-  color: #d6fff7;
-  box-shadow: 0 20px 42px rgba(0,225,200,.28);
-}
-
-/* Vista previa interactiva del módulo */
-.module-preview{
-  position: relative;
-  width: min(320px, 92%);
-  margin-top: clamp(18px, 3vw, 26px);
-  padding: clamp(18px, 2.6vw, 24px);
-  border-radius: 22px;
-  border: 1px solid rgba(120,160,210,.18);
-  background: linear-gradient(162deg, rgba(18,28,46,.9), rgba(10,18,34,.82));
-  box-shadow: 0 22px 44px rgba(0,0,0,.48);
-  display: grid;
-  gap: 12px;
-  justify-items: center;
-  text-align: center;
-  overflow: hidden;
-  z-index: 0;
-  transition: transform .3s ease, box-shadow .3s ease, border-color .3s ease, background .3s ease;
-}
-
-.module-preview__halo{
-  position: absolute;
-  inset: -20px;
-  border-radius: inherit;
-  background: radial-gradient(circle at 50% 120%, rgba(95,225,255,.35), rgba(95,225,255,0));
-  opacity: 0;
-  transition: opacity .4s ease;
-  z-index: -1;
-  pointer-events: none;
-}
-
-.module-preview__icon{
-  width: 64px;
-  height: 64px;
-  border-radius: 20px;
-  display: grid;
-  place-items: center;
-  font-size: 28px;
-  color: #ecf6ff;
-  background: radial-gradient(60% 60% at 30% 30%, var(--blue-a), var(--blue-b));
-  box-shadow: 0 18px 36px rgba(46,107,255,.35);
-}
-
-.module-preview__title{
-  font-size: 18px;
-  font-weight: 700;
-  color: #f8fbff;
-  letter-spacing: .2px;
-}
-
-.module-preview__status{
-  font-size: 14px;
-  line-height: 1.5;
-  color: rgba(240,247,255,.82);
-}
-
-.module-preview.is-primed{
-  border-color: rgba(95,225,255,.32);
-  box-shadow: 0 26px 58px rgba(0,225,255,.22);
-}
-
-.module-preview.is-triggered{
-  border-color: rgba(95,225,255,.45);
-  background: linear-gradient(162deg, rgba(18,30,52,.92), rgba(15,25,42,.86));
-  transform: translateY(-4px);
-  box-shadow: 0 32px 70px rgba(0,225,255,.25);
-}
-
-.module-preview.is-triggered .module-preview__halo{ opacity: .64; }
-
-.module-preview.is-complete{
-  border-color: rgba(0,225,200,.4);
-  box-shadow: 0 32px 70px rgba(0,225,200,.25);
-}
-
-.module-preview.is-reset{
-  border-color: rgba(255,255,255,.14);
-  box-shadow: 0 18px 36px rgba(0,0,0,.42);
-}
-
-.module-preview.is-animate{ animation: modulePreviewPop .32s ease-out; }
-
-@keyframes modulePreviewPop{
-  0%{ transform: translateY(8px) scale(.96); opacity: .82; }
-  55%{ transform: translateY(-6px) scale(1.02); opacity: 1; }
-  100%{ transform: translateY(0) scale(1); opacity: 1; }
-}
-
-.gesture-trainer__steps{ align-self: center; }
-.gesture-steps{ list-style: none; margin: 0; padding: 0; display: grid; gap: clamp(12px, 2.4vw, 18px); }
-
-.gesture-step{
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  border: 1px solid rgba(255,255,255,.12);
-  background: rgba(255,255,255,.05);
-  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
-}
-.gesture-step__icon{
-  width: 48px;
-  height: 48px;
-  border-radius: 16px;
-  display: grid;
-  place-items: center;
-  background: radial-gradient(65% 65% at 30% 30%, var(--blue-a), var(--blue-b));
-  box-shadow: 0 16px 30px rgba(46,107,255,.28);
-  color: #fff;
-  font-weight: 700;
-  font-size: 22px;
-}
-.gesture-step__icon i{ font-size: 22px; color: currentColor; }
-.gesture-step__body{ display: grid; gap: 4px; }
-.gesture-step__title{ font-weight: 600; color: #f3f7ff; letter-spacing: .18px; }
-.gesture-step__hint{ font-size: 12px; color: rgba(240,247,255,.74); letter-spacing: .22px; }
-.gesture-step__status{
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  border: 1px solid rgba(255,255,255,.18);
-  display: grid;
-  place-items: center;
-  color: rgba(240,247,255,.7);
-  font-size: 16px;
-}
-.gesture-step.is-current{
-  border-color: rgba(95,225,255,.38);
-  box-shadow: 0 20px 44px rgba(0,225,255,.18);
-  transform: translateY(-2px);
-}
-.gesture-step.is-current .gesture-step__status{
-  border-color: rgba(95,225,255,.5);
-  color: rgba(95,225,255,.9);
-}
-.gesture-step.is-completed{
-  border-color: rgba(0,225,200,.36);
-  background: rgba(0,225,200,.16);
-  box-shadow: 0 18px 38px rgba(0,225,200,.24);
-}
-.gesture-step.is-completed .gesture-step__status{
-  background: linear-gradient(135deg, #00E1FF, #6A5CFF);
-  border-color: transparent;
-  box-shadow: 0 14px 32px rgba(0,225,255,.3);
-  color: #fff;
-}
-.gesture-step.is-completed .gesture-step__status::before{ content: '✓'; font-weight: 700; }
-
-.trainer-notes{
-  background: rgba(255,255,255,.05);
-  border: 1px solid var(--card-border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-tile);
-  padding: clamp(18px, 3vw, 26px);
-  display: grid;
-  gap: 14px;
-}
-.trainer-notes h2{ margin: 0; font-size: clamp(18px, 2.4vw, 22px); color: #f2f6ff; }
-.trainer-notes ul{ margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
-.trainer-notes li{ display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; color: rgba(240,247,255,.86); line-height: 1.42; }
-.trainer-notes li i{ color: var(--blue-a); font-size: 18px; margin-top: 2px; }
-
-@media (max-width: 640px){
-  .motion-toggle{ width: 100%; justify-content: center; margin-left: 0; }
-  .gesture-visual__practice{ position: static; margin-top: 6px; }
-  .gesture-visual{ padding-bottom: clamp(26px, 5vw, 36px); }
-  .module-preview{ width: 100%; }
-  .tutorial-shell{ padding: 28px 16px 24px; }
-}
-
-/* ================== Guía rápida (Instrucciones) ================== */
-.guide-steps{ display: grid; gap: 12px; }
-.gstep{
-  display: grid; grid-template-columns: 52px 1fr; gap: 12px;
-  background: rgba(15,26,43,.60);
-  border: 1px solid var(--card-border);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-tile);
-  padding: 14px;
-}
-.gicon{
-  width: 52px; height: 52px; border-radius: 14px;
-  display: grid; place-items: center;
-  background: radial-gradient(60% 60% at 30% 30%, var(--blue-a), var(--blue-b));
-  color: #fff; font-weight: 800;
-  box-shadow: 0 12px 26px rgba(46,107,255,.35);
-}
-.gicon.mark{ font-size: 18px; }
-.gbody h4{ margin: 0 0 4px 0; color:#fff; font-size: 16px; }
-.gbody p{ margin: 0; color: var(--fg); }
-.panel-note{
-  display: grid; grid-template-columns: 28px 1fr; gap: 10px;
-  background: linear-gradient(180deg, rgba(46,107,255,.18), rgba(46,107,255,.08));
-  border: 1px solid rgba(46,107,255,.28);
-  border-radius: var(--r-md);
-  padding: 12px 14px; margin-top: 8px;
-  color: #ecf6ff;
-}
-.panel-note i{ font-size: 20px; align-self: start; }
-.panel-note h5{ margin: 0 0 4px 0; color: #fff; }
-.bullet{ margin: 0; padding-left: 1.2em; }
-.bullet li{ margin: 4px 0; }
-
-/* Mantén contenidos al 100% del panel (anti-desborde) */
-.panel > :is(.steps-grid, .notes-row, .guide-steps){
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-}
-
-/* ================== Accesibilidad & motion ================== */
-.qcard, .step-card, .note, .gstep, .back-button{ outline: none; }
-:focus-visible{ outline: 2px solid rgba(95,225,255,.9); outline-offset: 2px; }
-.qcard:focus-visible, .step-card:focus-visible,
-.note:focus-visible, .gstep:focus-visible, .back-button:focus-visible{
-  box-shadow: 0 0 0 3px rgba(95,225,255,.25), var(--shadow-card);
-  border-color: rgba(95,225,255,.55);
-}
-.qcard:active, .step-card:active, .note:active, .gstep:active, .back-button:active{
-  transform: translateY(1px) scale(.995);
+@keyframes tutorialFade{
+  from{ opacity: 0; transform: translateY(18px); }
+  to{ opacity: 1; transform: translateY(0); }
 }
 
 @media (prefers-reduced-motion: reduce){
-  *{ animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  .tutorial-view.is-active{ animation: none; }
 }
-@media (prefers-reduced-motion: no-preference){
-  .qcard, .step-card, .note, .gstep, .back-button{
-    transition: transform var(--t-fast) ease, border-color var(--t-fast) ease, box-shadow var(--t-fast) ease;
+
+/* ========================== Tarjetas menú ========================== */
+.menu-intro p{
+  margin: 0;
+  color: var(--fg-soft, rgba(220,235,255,.74));
+  font-size: clamp(15px, 2.6vw, 18px);
+  max-width: 640px;
+}
+
+.card-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--tutorial-card-gap);
+}
+
+.tutorial-card{
+  border-radius: var(--r-lg, 26px);
+  border: 1px solid var(--card-border, rgba(160,190,220,.14));
+  background: linear-gradient(180deg, rgba(18,28,46,.92), rgba(14,23,39,.88));
+  box-shadow: var(--shadow-card, 0 26px 60px rgba(0,0,0,.38));
+  padding: clamp(28px, 5vw, 36px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+  text-align: left;
+  color: #fff;
+  cursor: pointer;
+  transition: transform var(--t-fast, .16s) ease, box-shadow var(--t-fast, .16s) ease, border-color var(--t-fast, .16s) ease, background var(--t-fast, .16s) ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tutorial-card:focus-visible{
+  outline: 2px solid rgba(95,225,255,.8);
+  outline-offset: 3px;
+}
+
+@media (hover:hover){
+  .tutorial-card:hover{
+    transform: translateY(-6px);
+    border-color: rgba(190,210,230,.26);
+    box-shadow: 0 32px 72px rgba(0,0,0,.42);
   }
 }
 
-/* ================== Extra responsive tuning ================== */
-@media (min-width: 1280px){
-  .qcard__icon{ width: 92px; height: 92px; }
-  .qcard__icon i{ font-size: 36px; }
-  .step-icon{ width: 60px; height: 60px; font-size: 28px; }
-}
-@media (max-width: 640px){
-  .tut-header{ width: 100%; }
-  .qcard{ padding: 22px 14px; min-height: 180px; }
-  .panel{ padding: 18px; }
-  .step-card{ padding: 12px; }
+.tutorial-card__icon{
+  width: 86px;
+  height: 86px;
+  border-radius: 24px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 12px;
+  background: radial-gradient(60% 60% at 30% 30%, var(--blue-a, #5fe1ff), var(--blue-b, #2e6bff));
+  box-shadow: 0 18px 38px rgba(46,107,255,.35), 0 0 0 10px rgba(46,107,255,.12) inset;
 }
 
-/* ================== Scrollbar sutil (opcional) ================== */
-*::-webkit-scrollbar{ width:10px; height:10px; }
-*::-webkit-scrollbar-track{ background: rgba(255,255,255,.06); }
-*::-webkit-scrollbar-thumb{
-  background: linear-gradient(180deg, var(--blue-a), var(--blue-b));
-  border-radius: 12px;
-  border: 2px solid rgba(0,0,0,.25);
+.tutorial-card__icon i{ font-size: 34px; color: #ecf6ff; }
+
+.tutorial-card__title{
+  font-size: clamp(20px, 2.8vw, 24px);
+  font-weight: 700;
+  letter-spacing: .2px;
 }
 
-/* ================== Print ================== */
-@media print{
-  .back-button, .qcard__icon, .panel-note i{ display: none !important; }
-  .tutorial-wrap{ padding: 0; }
-  .panel{ box-shadow: none; border-color: #999; }
-  .qcard, .step-card, .gstep{ break-inside: avoid; }
+.tutorial-card__subtitle{
+  color: rgba(240,247,255,.86);
+  font-size: 15px;
+  line-height: 1.45;
 }
 
+.tutorial-card__cta{
+  margin-top: auto;
+  font-size: 14px;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  color: rgba(95,225,255,.9);
+}
+
+/* ========================== Flujo interactivo ========================== */
+.tutorial-flow{ min-height: clamp(480px, 70svh, 720px); }
+
+.flow-panel{
+  display: flex;
+  flex-direction: column;
+  gap: clamp(20px, 4vw, 32px);
+  padding: var(--tutorial-panel-padding);
+  border-radius: var(--r-lg, 26px);
+  background: linear-gradient(180deg, var(--card-top, rgba(18,28,46,.92)), var(--card-bot, rgba(14,23,39,.88)));
+  border: 1px solid var(--card-border, rgba(160,190,220,.14));
+  box-shadow: var(--shadow-card, 0 26px 60px rgba(0,0,0,.38));
+}
+
+.flow-header{
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.flow-close{
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.08);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: transform var(--t-fast, .16s) ease, border-color var(--t-fast, .16s) ease, box-shadow var(--t-fast, .16s) ease;
+}
+
+.flow-close:focus-visible{
+  outline: 2px solid rgba(95,225,255,.8);
+  outline-offset: 3px;
+}
+
+@media (hover:hover){
+  .flow-close:hover{
+    transform: translateY(-2px);
+    border-color: rgba(190,210,230,.26);
+    box-shadow: 0 18px 36px rgba(0,0,0,.28);
+  }
+}
+
+.flow-heading{
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.flow-heading__icon{
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  font-size: 30px;
+  color: #fff;
+  background: radial-gradient(60% 60% at 30% 30%, var(--blue-a, #5fe1ff), var(--blue-b, #2e6bff));
+  box-shadow: 0 14px 32px rgba(46,107,255,.32);
+}
+
+.flow-heading__copy h2{
+  margin: 0;
+  font-size: clamp(26px, 4vw, 32px);
+  font-weight: 600;
+  color: var(--fg-strong, #fff);
+}
+
+.flow-heading__copy p{
+  margin: 6px 0 0;
+  color: var(--fg-soft, rgba(220,235,255,.74));
+  font-size: clamp(14px, 2.6vw, 17px);
+  max-width: 520px;
+}
+
+.step-dots{
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.step-dot{
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.16);
+  transition: transform var(--t-fast, .16s) ease, background var(--t-fast, .16s) ease, box-shadow var(--t-fast, .16s) ease;
+}
+
+.step-dot.is-active{ background: rgba(95,225,255,.7); }
+
+.step-dot.is-current{
+  transform: scale(1.25);
+  box-shadow: 0 0 18px rgba(95,225,255,.45);
+}
+
+.flow-stage{
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-visual{
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  min-height: clamp(320px, 60svh, 520px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: clamp(18px, 4vw, 32px);
+  position: relative;
+}
+
+.step-number{
+  font-size: 15px;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  color: rgba(230,242,255,.7);
+}
+
+.step-ring{
+  width: clamp(136px, 24vw, 164px);
+  height: clamp(136px, 24vw, 164px);
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.12);
+  display: grid;
+  place-items: center;
+  position: relative;
+  transition: border-color var(--t-med, .25s) ease, box-shadow var(--t-med, .25s) ease, transform var(--t-med, .25s) ease;
+}
+
+.step-digit{
+  font-size: clamp(46px, 7vw, 58px);
+  font-weight: 600;
+  color: rgba(230,242,255,.85);
+  transition: opacity var(--t-med, .25s) ease, transform var(--t-med, .25s) ease;
+}
+
+.step-check{
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #72f8ff;
+  font-size: clamp(48px, 8vw, 60px);
+  opacity: 0;
+  transform: scale(.65);
+  transition: opacity var(--t-med, .25s) ease, transform var(--t-med, .25s) ease;
+}
+
+.step-text{
+  margin: 0;
+  font-size: clamp(26px, 4.2vw, 34px);
+  line-height: 1.26;
+  font-weight: 600;
+  color: var(--fg-strong, #fff);
+  max-width: 720px;
+}
+
+.step-status{
+  margin: 0;
+  font-size: clamp(16px, 2.8vw, 18px);
+  color: rgba(220,236,255,.82);
+  max-width: 600px;
+}
+
+.step-text.is-appear,
+.step-status.is-appear{
+  animation: stepFadeUp .45s ease both;
+}
+
+@keyframes stepFadeUp{
+  from{ opacity: 0; transform: translateY(18px); }
+  to{ opacity: 1; transform: translateY(0); }
+}
+
+.step-visual.is-complete .step-ring{
+  border-color: rgba(95,225,255,.72);
+  box-shadow: 0 0 0 14px rgba(95,225,255,.10), 0 24px 46px rgba(0,0,0,.36);
+  transform: scale(1.03);
+}
+
+.step-visual.is-complete .step-digit{
+  opacity: 0;
+  transform: scale(.7);
+}
+
+.step-visual.is-complete .step-check{
+  opacity: 1;
+  transform: scale(1);
+}
+
+.step-visual.is-complete .step-text{ opacity: .88; }
+
+/* ========================== Botones flujo ========================== */
+.flow-controls{
+  display: flex;
+  justify-content: center;
+  max-height: 120px;
+  transition: max-height var(--t-med, .25s) ease, opacity var(--t-med, .25s) ease, transform var(--t-med, .25s) ease;
+}
+
+.flow-controls.is-hidden{
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(16px);
+}
+
+.tutorial-button{
+  border: none;
+  border-radius: var(--r-md, 18px);
+  padding: 16px 32px;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: .3px;
+  color: #fff;
+  background: linear-gradient(145deg, rgba(95,225,255,.76), rgba(46,107,255,.92));
+  box-shadow: 0 22px 48px rgba(0,0,0,.34);
+  cursor: pointer;
+  transition: transform var(--t-fast, .16s) ease, box-shadow var(--t-fast, .16s) ease, opacity var(--t-fast, .16s) ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tutorial-button:focus-visible{
+  outline: 2px solid rgba(95,225,255,.8);
+  outline-offset: 3px;
+}
+
+.tutorial-button:disabled{
+  opacity: .45;
+  cursor: default;
+  box-shadow: none;
+  transform: none;
+}
+
+@media (hover:hover){
+  .tutorial-button:not(:disabled):hover{
+    transform: translateY(-2px);
+    box-shadow: 0 26px 60px rgba(0,0,0,.4);
+  }
+}
+
+.flow-next{
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(14px);
+  transition: opacity var(--t-med, .25s) ease, transform var(--t-med, .25s) ease;
+}
+
+.flow-next.is-visible{
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.tutorial-button--secondary{
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.18);
+  color: var(--fg, #dde8f6);
+  box-shadow: none;
+}
+
+@media (hover:hover){
+  .tutorial-button--secondary:hover{ background: rgba(255,255,255,.14); }
+}
+
+.flow-return{
+  align-self: center;
+  min-width: min(340px, 90%);
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(16px);
+  transition: opacity var(--t-med, .25s) ease, transform var(--t-med, .25s) ease, max-height var(--t-med, .25s) ease, margin-top var(--t-med, .25s) ease;
+  margin-top: 0;
+}
+
+.flow-return.is-visible{
+  max-height: 120px;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  margin-top: 12px;
+}
+
+.flow-footnote{
+  margin: 0;
+  text-align: center;
+  color: rgba(220,236,255,.72);
+  font-size: 14px;
+  letter-spacing: .2px;
+}
+
+.flow-footnote.is-hidden{ display: none; }
+
+/* ========================== Responsivo ========================== */
+@media (max-width: 860px){
+  .main-container{ padding: clamp(32px, 9vh, 64px) clamp(16px, 8vw, 32px); }
+  .flow-panel{ padding: clamp(24px, 8vw, 36px); }
+}
+
+@media (max-width: 720px){
+  .screen-header{ gap: 12px; }
+  .flow-heading{ align-items: flex-start; gap: 14px; }
+  .flow-heading__icon{ width: 56px; height: 56px; font-size: 26px; }
+}
+
+@media (max-width: 520px){
+  .tutorial-card{ padding: 26px; }
+  .flow-panel{ padding: clamp(22px, 10vw, 32px); }
+  .step-visual{ min-height: clamp(280px, 60svh, 460px); }
+}
