@@ -12,6 +12,17 @@ from PyInstaller.utils.hooks import (
     collect_dynamic_libs,   # <- para DLLs nativas
 )
 
+# ``collect_submodules`` lanza ImportError si el paquete no está instalado.
+# Durante verificaciones locales preferimos mostrar una advertencia en lugar
+# de abortar para poder detectar dependencias faltantes en la sección de
+# ``REQUIRED_MODULES``.
+def safe_collect_submodules(package: str) -> list[str]:
+    try:  # pragma: no cover - se ejecuta al congelar
+        return collect_submodules(package)
+    except Exception as exc:  # pragma: no cover - solo aviso de build
+        print(f"[WARN] No se pudieron resolver los submódulos de {package}: {exc}", flush=True)
+        return []
+
 # --- Rutas robustas (soporta entornos donde __file__ no existe) ---
 try:
     SPEC_DIR = pathlib.Path(__file__).resolve().parent
@@ -60,14 +71,23 @@ MAIN_SCRIPT = (SPEC_DIR / "run_backend.py").resolve()
 
 # --- Dependencias implícitas ---
 hiddenimports = []
-hiddenimports += collect_submodules("mediapipe")
-hiddenimports += collect_submodules("sklearn")
-hiddenimports += collect_submodules("xgboost")
-hiddenimports += collect_submodules("backendHelen")
+hiddenimports += safe_collect_submodules("mediapipe")
+hiddenimports += safe_collect_submodules("sklearn")
+hiddenimports += safe_collect_submodules("xgboost")
+hiddenimports += safe_collect_submodules("backendHelen")
+hiddenimports += safe_collect_submodules("Hellen_model_RN")
+hiddenimports += safe_collect_submodules("flask_socketio")
+hiddenimports += safe_collect_submodules("socketio")
+hiddenimports += safe_collect_submodules("engineio")
+hiddenimports += safe_collect_submodules("eventlet")
+hiddenimports += safe_collect_submodules("werkzeug")
+hiddenimports += safe_collect_submodules("simple_websocket")
+hiddenimports += safe_collect_submodules("wsproto")
+hiddenimports += safe_collect_submodules("bidict")
 
 # Forzar submódulos que el pickle del modelo puede requerir:
-hiddenimports += collect_submodules("scipy")
-hiddenimports += collect_submodules("scipy._lib")
+hiddenimports += safe_collect_submodules("scipy")
+hiddenimports += safe_collect_submodules("scipy._lib")
 hiddenimports += [
     "scipy._lib.array_api_compat",
     "scipy._lib.array_api_compat.numpy",
@@ -99,6 +119,17 @@ elif not primary_dataset.exists():  # pragma: no cover - aviso en build
 
 # Assets de MediaPipe (modelos .tflite, configs, etc.)
 _datas += collect_data_files("mediapipe")
+
+# Configuración y metadatos de runtime (solo si existen)
+_config_targets = [
+    (PROJECT_ROOT / "config.json", "."),
+    (BACKEND_DIR / "config.json", BACKEND_PACKAGE),
+    (SPEC_DIR / "requirements-win.txt", "config"),
+]
+
+for config_path, destination in _config_targets:
+    if config_path.exists():
+        _datas.append((str(config_path), destination))
 # (Opcional) Archivos de cv2 si los hooks no los copian: descomenta si hiciera falta
 # _datas += collect_data_files("cv2")
 
