@@ -3,54 +3,54 @@
   "modes": {
     "STRICT": {
       "global": {
-        "quality": { "blur_laplacian_min": 70, "roi_min_coverage": 0.78, "hand_range_px": [95, 460] },
-        "temporal": { "consensus_N": 2, "consensus_M": 4, "cooldown_s": 0.75, "listen_window_s": 4.5, "min_pos_stability_var": 14.0, "activation_delay_s": 0.45 }
+        "quality": { "blur_laplacian_min": 60, "roi_min_coverage": 0.7, "hand_range_px": [80, 520] },
+        "temporal": { "consensus_N": 2, "consensus_M": 4, "cooldown_s": 0.72, "listen_window_s": 5.2, "min_pos_stability_var": 13.0, "activation_delay_s": 0.44 }
       },
       "classes": {
-        "H": { "score_min": 0.58, "angle_tol_deg": 16, "norm_dev_max": 0.20 },
-        "C": { "score_min": 0.56, "angle_tol_deg": 20, "norm_dev_max": 0.24, "curvature_min": 0.32, "gap_ratio_range": [0.28, 0.52], "missing_distal_allowance": 1 },
-        "R": { "score_min": 0.56, "angle_tol_deg": 18, "norm_dev_max": 0.22 },
-        "I": { "score_min": 0.56, "angle_tol_deg": 18, "norm_dev_max": 0.22 }
+        "H": { "score_min": 0.53, "angle_tol_deg": 20, "norm_dev_max": 0.24 },
+        "C": { "score_min": 0.50, "angle_tol_deg": 24, "norm_dev_max": 0.28, "curvature_min": 0.28, "gap_ratio_range": [0.26, 0.56], "missing_distal_allowance": 1 },
+        "R": { "score_min": 0.52, "angle_tol_deg": 22, "norm_dev_max": 0.26 },
+        "I": { "score_min": 0.52, "angle_tol_deg": 22, "norm_dev_max": 0.26 }
       }
     },
     "BALANCED": {
       "global": {
-        "quality": { "blur_laplacian_min": 48, "roi_min_coverage": 0.66, "hand_range_px": [80, 520] },
-        "temporal": { "consensus_N": 2, "consensus_M": 4, "cooldown_s": 0.68, "listen_window_s": 5.5, "min_pos_stability_var": 18.0, "activation_delay_s": 0.45 }
+        "quality": { "blur_laplacian_min": 36, "roi_min_coverage": 0.6, "hand_range_px": [70, 560] },
+        "temporal": { "consensus_N": 2, "consensus_M": 4, "cooldown_s": 0.7, "listen_window_s": 5.8, "min_pos_stability_var": 12.0, "activation_delay_s": 0.42 }
       },
       "classes": {
-        "H": { "score_min": 0.50, "angle_tol_deg": 20, "norm_dev_max": 0.26 },
+        "H": { "score_min": 0.45, "angle_tol_deg": 26, "norm_dev_max": 0.32 },
         "C": {
-          "score_min": 0.45,
-          "angle_tol_deg": 30,
-          "norm_dev_max": 0.30,
-          "curvature_min": 0.26,
-          "gap_ratio_range": [0.26, 0.58],
+          "score_min": 0.41,
+          "angle_tol_deg": 34,
+          "norm_dev_max": 0.34,
+          "curvature_min": 0.24,
+          "gap_ratio_range": [0.24, 0.62],
           "missing_distal_allowance": 2,
-          "missing_distal_strict_curvature": 0.30,
+          "missing_distal_strict_curvature": 0.28,
           "curvature_consistency_boost": 0.03,
           "curvature_consistency_window": 3,
           "curvature_consistency_min_frames": 2,
           "curvature_consistency_tolerance": 0.07,
-          "curvature_consistency_min_curvature": 0.30
+          "curvature_consistency_min_curvature": 0.28
         },
-        "R": { "score_min": 0.48, "angle_tol_deg": 24, "norm_dev_max": 0.26 },
-        "I": { "score_min": 0.48, "angle_tol_deg": 24, "norm_dev_max": 0.26 }
+        "R": { "score_min": 0.43, "angle_tol_deg": 28, "norm_dev_max": 0.3 },
+        "I": { "score_min": 0.43, "angle_tol_deg": 28, "norm_dev_max": 0.3 }
       }
     },
     "RELAXED": {
       "global": {
-        "quality": { "blur_laplacian_min": 44, "roi_min_coverage": 0.62, "hand_range_px": [70, 560] },
-        "temporal": { "consensus_N": 2, "consensus_M": 3, "cooldown_s": 0.6, "listen_window_s": 6.0, "min_pos_stability_var": 20.0, "activation_delay_s": 0.4 }
+        "quality": { "blur_laplacian_min": 32, "roi_min_coverage": 0.58, "hand_range_px": [65, 600] },
+        "temporal": { "consensus_N": 2, "consensus_M": 4, "cooldown_s": 0.62, "listen_window_s": 6.2, "min_pos_stability_var": 11.0, "activation_delay_s": 0.4 }
       },
       "classes": {
-        "H": { "score_min": 0.46, "angle_tol_deg": 26, "norm_dev_max": 0.30 },
-        "C": { "score_min": 0.42, "angle_tol_deg": 34, "norm_dev_max": 0.34, "curvature_min": 0.24, "gap_ratio_range": [0.24, 0.62], "missing_distal_allowance": 2 },
-        "R": { "score_min": 0.44, "angle_tol_deg": 26, "norm_dev_max": 0.30 },
-        "I": { "score_min": 0.44, "angle_tol_deg": 26, "norm_dev_max": 0.30 }
+        "H": { "score_min": 0.42, "angle_tol_deg": 30, "norm_dev_max": 0.34 },
+        "C": { "score_min": 0.38, "angle_tol_deg": 36, "norm_dev_max": 0.36, "curvature_min": 0.22, "gap_ratio_range": [0.22, 0.66], "missing_distal_allowance": 2 },
+        "R": { "score_min": 0.40, "angle_tol_deg": 30, "norm_dev_max": 0.34 },
+        "I": { "score_min": 0.40, "angle_tol_deg": 30, "norm_dev_max": 0.34 }
       }
     }
   },
-  "hysteresis": { "on_offset": 0.0, "off_delta": 0.10 },
+  "hysteresis": { "on_offset": 0.0, "off_delta": 0.12 },
   "rate_limit": { "frameskip_balanced": 2, "frameskip_relaxed": 2, "frameskip_strict": 3, "fps_threshold": 24 }
 }
