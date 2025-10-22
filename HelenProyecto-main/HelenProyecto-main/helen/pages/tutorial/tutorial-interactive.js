@@ -5,6 +5,7 @@
   const DEFAULT_STEP_TIMEOUT_MS = 12000;
   const PROGRESS_MESSAGE_TEMPLATE = ({ confirmations, required }) =>
     `Confirmación ${Math.min(confirmations, required)} de ${required}. Mantén la posición.`;
+  const DEFAULT_COMPLETION_MESSAGE = 'Ya dominaste esta guía. Puedes repetirla o volver al menú.';
 
   const NOOP = () => {};
 
@@ -89,7 +90,7 @@
       title: 'Clima',
       subtitle: 'Secuencia guiada para consultar el clima.',
       icon: 'bi-cloud-sun',
-      footnote: 'Secuencia oficial: H → C → H + I.',
+      footnote: 'Secuencia de práctica: H → C → Salir.',
       steps: [
         {
           id: 'activate',
@@ -109,11 +110,11 @@
         },
         {
           id: 'return-home',
-          text: 'HELEN te mostrará el clima actual. Para volver, haz H + I.',
-          hint: 'Recuerda cerrar la sesión con la seña de Inicio.',
-          retry: 'Cierra la mano en forma de I para finalizar.',
+          text: 'Para salir, practica la seña de cierre (H + I) o confirma el paso para continuar.',
+          hint: 'Simula la seña de salir para finalizar la sesión de práctica.',
+          retry: 'Haz la seña de salir o presiona “Confirmar paso” para avanzar.',
           complete: 'Tutorial de clima completado.',
-          expected: ['inicio', 'i'],
+          expected: ['inicio', 'i', 'salir', 'salida'],
         },
       ],
     },
@@ -122,7 +123,7 @@
       title: 'Hora',
       subtitle: 'Aprende a pedir la hora con confirmaciones guiadas.',
       icon: 'bi-clock-history',
-      footnote: 'Secuencia oficial: H → R → H + I.',
+      footnote: 'Secuencia de práctica: H → R → Salir.',
       steps: [
         {
           id: 'activate',
@@ -142,11 +143,11 @@
         },
         {
           id: 'return-home',
-          text: 'HELEN te dirá la hora actual. Para terminar, realiza H + I.',
-          hint: 'Finaliza con Inicio para volver al panel principal.',
-          retry: 'Realiza la seña de Inicio para cerrar.',
+          text: 'Para terminar la guía, practica la seña de salir (H + I) o confirma manualmente el paso.',
+          hint: 'Cierra con la seña de salir para volver a la pantalla principal.',
+          retry: 'Realiza la seña de salir o utiliza el botón “Confirmar paso”.',
           complete: 'Tutorial de hora completado.',
-          expected: ['inicio', 'i'],
+          expected: ['inicio', 'i', 'salir', 'salida'],
         },
       ],
     },
@@ -155,7 +156,7 @@
       title: 'Dispositivos',
       subtitle: 'Simula cómo encender o apagar dispositivos conectados.',
       icon: 'bi-lightbulb',
-      footnote: 'Secuencia oficial: H → Seña del dispositivo → H + I.',
+      footnote: 'Secuencia de práctica: H → Dispositivo → Salir.',
       steps: [
         {
           id: 'activate',
@@ -175,11 +176,11 @@
         },
         {
           id: 'return-home',
-          text: 'HELEN mostrará el estado ON/OFF. Para salir, haz H + I.',
-          hint: 'Cierra con Inicio para regresar al menú principal.',
-          retry: 'Finaliza con la seña de Inicio para terminar la práctica.',
+          text: 'Para salir del tutorial, realiza la seña de salir (H + I) o confirma el paso de manera manual.',
+          hint: 'Cierra la sesión con la seña de salir para volver al menú principal.',
+          retry: 'Completa la seña de salir o utiliza el botón “Confirmar paso”.',
           complete: 'Tutorial de dispositivos completado.',
-          expected: ['inicio', 'i'],
+          expected: ['inicio', 'i', 'salir', 'salida'],
         },
       ],
     },
@@ -335,6 +336,25 @@
       return true;
     }
 
+    simulateStep(payload) {
+      if (this.index < 0 || this.index >= this.steps.length) {
+        return false;
+      }
+      const step = this._currentStep();
+      if (!step) {
+        return false;
+      }
+      if (this.state === 'passed' || this.state === 'completed') {
+        return false;
+      }
+
+      this.logger('step-simulated', { stepId: step.id, index: this.index });
+      const basePayload = payload && typeof payload === 'object' ? payload : {};
+      this.confirmations = this._requiredConfirmations(step);
+      this._completeStep(step, { ...basePayload, simulated: true });
+      return true;
+    }
+
     _completeStep(step, payload) {
       const isLast = this.index >= this.steps.length - 1;
       this._clearTimeout();
@@ -419,6 +439,7 @@
       };
       this.machine = null;
       this.activeKey = null;
+      this.activeModuleTitle = '';
       this.moduleGestures = new Set();
       this.socketHandler = (event) => this._handleSocketEvent(event);
       this.socketAttached = false;
@@ -445,6 +466,9 @@
       this.nextButton = this.flowView.querySelector('[data-action="next-step"]');
       this.closeButton = this.flowView.querySelector('[data-action="close-flow"]');
       this.returnButton = this.flowView.querySelector('[data-action="return-menu"]');
+      this.successBanner = this.flowView.querySelector('[data-flow-success]');
+      this.successTitle = this.flowView.querySelector('[data-success-title]');
+      this.successDetail = this.flowView.querySelector('[data-success-detail]');
       this.reducedMotionQuery = this.global.matchMedia ? this.global.matchMedia('(prefers-reduced-motion: reduce)') : null;
       this.progress = [];
 
@@ -562,11 +586,18 @@
       if (!this.machine) {
         return;
       }
-      if (!this.machine.advance()) {
-        if (this.machine.state === 'completed') {
+      if (this.machine.state === 'passed') {
+        const advanced = this.machine.advance();
+        if (!advanced && this.machine.state === 'completed') {
           this._showCompletion();
         }
+        return;
       }
+      if (this.machine.state === 'completed') {
+        this._showCompletion();
+        return;
+      }
+      this.machine.simulateStep({ source: 'manual' });
     }
 
     configure(options = {}) {
@@ -590,6 +621,7 @@
       }
       this.exitFlow(true);
       this.activeKey = key;
+      this.activeModuleTitle = module.title || '';
       this.progress = module.steps.map(() => 'pending');
       this.moduleGestures = new Set();
       module.steps.forEach((step, index) => {
@@ -625,7 +657,9 @@
           this.progress[index] = 'waiting_retry';
           this.hooks.stepTimeout({ module: key, step, index, required });
           if (this.stepStatus) {
-            const retryText = step.retry || step.hint || 'No detectamos la seña, intenta nuevamente.';
+            const retryText = step.retry
+              || step.hint
+              || 'No detectamos la seña. Intenta nuevamente o utiliza “Confirmar paso”.';
             this.stepStatus.textContent = retryText;
           }
           if (this.stepVisual) {
@@ -658,7 +692,9 @@
       this.activeKey = null;
       this.progress = [];
       this.moduleGestures.clear();
+      this.activeModuleTitle = '';
       this._toggleFootnote('');
+      this._toggleSuccess(false);
       if (!skipMenu) {
         this._setView('menu');
       }
@@ -671,6 +707,7 @@
       if (this.nextButton) {
         this.nextButton.disabled = true;
         this.nextButton.classList.remove('is-visible');
+        this.nextButton.setAttribute('aria-hidden', 'true');
       }
       if (this.returnButton) {
         this.returnButton.classList.remove('is-visible');
@@ -714,6 +751,9 @@
       if (this.flowSubtitle) {
         this.flowSubtitle.textContent = module.subtitle;
       }
+      if (this.successTitle) {
+        this.successTitle.textContent = `¡${module.title} completado!`;
+      }
     }
 
     _toggleFootnote(text) {
@@ -726,6 +766,26 @@
       } else {
         this.footnote.textContent = '';
         this.footnote.classList.add('is-hidden');
+      }
+    }
+
+    _toggleSuccess(show, { title, detail } = {}) {
+      if (!this.successBanner) {
+        return;
+      }
+      const isVisible = Boolean(show);
+      this.successBanner.classList.toggle('is-visible', isVisible);
+      this.successBanner.setAttribute('aria-hidden', isVisible ? 'false' : 'true');
+      if (!isVisible) {
+        return;
+      }
+      if (this.successTitle && typeof title === 'string') {
+        this.successTitle.textContent = title;
+      }
+      if (this.successDetail) {
+        this.successDetail.textContent = typeof detail === 'string' && detail.trim()
+          ? detail
+          : DEFAULT_COMPLETION_MESSAGE;
       }
     }
 
@@ -760,6 +820,7 @@
       if (!step) {
         return;
       }
+      this._toggleSuccess(false);
       if (this.stepVisual) {
         this.stepVisual.classList.remove('is-complete');
       }
@@ -774,12 +835,21 @@
         this._animateCopy(this.stepText);
       }
       if (this.stepStatus) {
-        this.stepStatus.textContent = step.hint || 'Cuando HELEN confirme la seña verás esta marca verde.';
+        const fallbackHint = 'Cuando HELEN confirme la seña o presiones “Confirmar paso”, verás esta marca verde.';
+        let hintText = fallbackHint;
+        if (step.hint) {
+          const trimmedHint = String(step.hint).trim();
+          const needsPeriod = trimmedHint && !/[.!?¡¿]$/.test(trimmedHint);
+          hintText = `${trimmedHint}${needsPeriod ? '.' : ''} También puedes usar “Confirmar paso”.`;
+        }
+        this.stepStatus.textContent = hintText;
         this._animateCopy(this.stepStatus);
       }
       if (this.nextButton) {
-        this.nextButton.disabled = true;
-        this.nextButton.classList.remove('is-visible');
+        this.nextButton.disabled = false;
+        this.nextButton.textContent = 'Confirmar paso';
+        this.nextButton.classList.add('is-visible');
+        this.nextButton.setAttribute('aria-hidden', 'false');
       }
       if (this.returnButton) {
         this.returnButton.classList.remove('is-visible');
@@ -802,6 +872,12 @@
         if (this.flowControls) {
           this.flowControls.classList.add('is-hidden');
         }
+        if (this.nextButton) {
+          this.nextButton.classList.remove('is-visible');
+          this.nextButton.setAttribute('aria-hidden', 'true');
+        }
+        const successTitle = this.activeModuleTitle ? `¡${this.activeModuleTitle} completado!` : undefined;
+        this._toggleSuccess(true, { title: successTitle, detail: step.complete });
         if (this.returnButton) {
           this.returnButton.classList.add('is-visible');
           this.returnButton.setAttribute('aria-hidden', 'false');
@@ -811,19 +887,30 @@
             this.returnButton.focus();
           }
         }
-      } else if (this.nextButton) {
-        this.nextButton.disabled = false;
-        this.nextButton.classList.add('is-visible');
-        try {
-          this.nextButton.focus({ preventScroll: true });
-        } catch (error) {
-          this.nextButton.focus();
+      } else {
+        if (this.flowControls) {
+          this.flowControls.classList.remove('is-hidden');
+        }
+        if (this.nextButton) {
+          this.nextButton.disabled = false;
+          this.nextButton.textContent = 'Siguiente paso';
+          this.nextButton.classList.add('is-visible');
+          this.nextButton.setAttribute('aria-hidden', 'false');
+          try {
+            this.nextButton.focus({ preventScroll: true });
+          } catch (error) {
+            this.nextButton.focus();
+          }
         }
       }
       this._updateDots(index);
     }
 
     _showCompletion() {
+      if (this.successBanner && !this.successBanner.classList.contains('is-visible')) {
+        const successTitle = this.activeModuleTitle ? `¡${this.activeModuleTitle} completado!` : undefined;
+        this._toggleSuccess(true, { title: successTitle });
+      }
       if (this.returnButton) {
         this.returnButton.classList.add('is-visible');
         this.returnButton.setAttribute('aria-hidden', 'false');
