@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 
 const SCHEDULER_PATH = path.resolve(__dirname, '../../helen/pages/jsFrontend/alarm-core.js');
+const NOTIFICATIONS_PATH = path.resolve(__dirname, '../../helen/ui/notifications/notifications.js');
 const PENDING_KEY = 'helen:timekeeper:pendingQueue:v1';
 
 const createTimerControls = () => {
@@ -411,6 +412,7 @@ const createMockDom = () => {
 
 const setupEnvironment = async () => {
   delete require.cache[SCHEDULER_PATH];
+  delete require.cache[NOTIFICATIONS_PATH];
 
   const timerControls = createTimerControls();
   const { window, document, localStorage } = createMockDom();
@@ -484,6 +486,7 @@ const setupEnvironment = async () => {
   window.AudioContext = undefined;
   window.webkitAudioContext = undefined;
 
+  require(NOTIFICATIONS_PATH);
   require(SCHEDULER_PATH);
 
   const scheduler = window.HelenScheduler;
@@ -494,6 +497,7 @@ const setupEnvironment = async () => {
     timerControls.clearAll();
     timerControls.restore();
     delete require.cache[SCHEDULER_PATH];
+    delete require.cache[NOTIFICATIONS_PATH];
     global.window = original.window;
     global.document = original.document;
     global.navigator = original.navigator;
@@ -534,18 +538,16 @@ test('due timer displays modal with accessible controls', async () => {
     const label = modal.querySelector('.helen-global-modal__label');
     assert.equal(label.textContent, 'Focus 25');
 
-    const stopBtn = modal.querySelector('[data-action="stop-sound"]');
-    assert.equal(window.document.activeElement, stopBtn, 'stop button receives focus');
+    const actionBtn = modal.querySelector('.helen-global-modal__primary');
+    assert.ok(actionBtn, 'primary button should exist');
+    assert.equal(actionBtn.textContent, 'Detener');
+    assert.equal(window.document.activeElement, actionBtn, 'primary button receives focus');
 
-    stopBtn.click();
-    await flush();
-    assert.equal(stopBtn.disabled, true, 'stop button disables after click');
+    const status = modal.querySelector('.helen-global-modal__status');
+    assert.ok(status, 'status element should exist');
+    assert.equal(status.hidden, true, 'status hidden by default');
 
-    const note = modal.querySelector('.helen-global-modal__note');
-    assert.equal(note.hidden, false, 'note becomes visible when sound stopped');
-
-    const dismissBtn = modal.querySelector('[data-action="dismiss"]');
-    dismissBtn.click();
+    actionBtn.click();
     await flush();
 
     assert.equal(modal.classList.contains('is-visible'), false);
@@ -572,13 +574,20 @@ test('notifications queue next item after dismiss and persist state', async () =
     const label = modal.querySelector('.helen-global-modal__label');
     assert.equal(label.textContent, 'Tarea Uno');
 
-    const dismissBtn = modal.querySelector('[data-action="dismiss"]');
-    dismissBtn.click();
+    const actionBtn = modal.querySelector('.helen-global-modal__primary');
+    assert.ok(actionBtn, 'primary button available');
+
+    const badge = modal.querySelector('.helen-global-modal__badge');
+    assert.equal(badge.hidden, false, 'badge visible while there are pending notifications');
+    assert.equal(badge.textContent, '+1');
+
+    actionBtn.click();
     await flush();
 
     assert.equal(label.textContent, 'Tarea Dos');
+    assert.equal(badge.hidden, true, 'badge hidden when queue is empty');
 
-    dismissBtn.click();
+    actionBtn.click();
     await flush();
 
     assert.equal(modal.classList.contains('is-visible'), false);

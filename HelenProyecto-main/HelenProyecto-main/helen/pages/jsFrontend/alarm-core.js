@@ -25,7 +25,6 @@
     autoStopAfterMs: 2 * ONE_MINUTE,
   };
   const PENDING_STORAGE_KEY = 'helen:timekeeper:pendingQueue:v1';
-  const BODY_MODAL_CLASS = 'helen-global-modal-open';
   const GLOBAL_EVENT_NAME = 'helen:timekeeper:fired';
   const GLOBAL_BUS_VERSION = 1;
 
@@ -140,12 +139,11 @@
   let fallbackAudio = null;
   let toastContainer = null;
   let reconciled = false;
-  let modalElements = null;
+  let modalController = null;
   let pendingNotifications = [];
   let currentNotification = null;
   let modalSoundNeedsUnlock = false;
   let soundAutoStopTimer = null;
-  let lastFocusedElement = null;
   let pendingSoundPromise = null;
   let fallbackLoopInterval = null;
   let htmlAudioElement = null;
@@ -505,163 +503,88 @@
     };
   };
 
-  const ensureModalElements = () => {
-    if (!document || !document.body) {
+  const ensureModalController = () => {
+    if (typeof window === 'undefined') {
       return null;
     }
-    if (modalElements && modalElements.root && document.body.contains(modalElements.root)) {
-      return modalElements;
+    if (modalController && typeof modalController.show === 'function') {
+      return modalController;
     }
-
-    const root = document.createElement('div');
-    root.className = 'helen-global-modal';
-    root.setAttribute('data-helen-modal', 'timekeeper');
-    root.setAttribute('aria-hidden', 'true');
-    root.setAttribute('aria-live', 'assertive');
-
-    const card = document.createElement('div');
-    card.className = 'helen-global-modal__card';
-    card.setAttribute('role', 'alertdialog');
-    card.setAttribute('aria-modal', 'true');
-    card.setAttribute('aria-labelledby', 'helenGlobalModalTitle');
-    card.setAttribute('aria-describedby', 'helenGlobalModalDescription');
-
-    const icon = document.createElement('div');
-    icon.className = 'helen-global-modal__icon';
-    const iconGlyph = document.createElement('i');
-    iconGlyph.className = 'bi bi-bell-fill';
-    iconGlyph.setAttribute('aria-hidden', 'true');
-    icon.appendChild(iconGlyph);
-
-    const content = document.createElement('div');
-    content.className = 'helen-global-modal__content';
-
-    const title = document.createElement('h2');
-    title.className = 'helen-global-modal__title';
-    title.id = 'helenGlobalModalTitle';
-
-    const label = document.createElement('p');
-    label.className = 'helen-global-modal__label';
-
-    const detail = document.createElement('p');
-    detail.className = 'helen-global-modal__detail';
-    detail.id = 'helenGlobalModalDescription';
-
-    const meta = document.createElement('p');
-    meta.className = 'helen-global-modal__meta';
-
-    const note = document.createElement('p');
-    note.className = 'helen-global-modal__note';
-    note.hidden = true;
-
-    content.append(title, label, detail, meta, note);
-
-    const actions = document.createElement('div');
-    actions.className = 'helen-global-modal__actions';
-
-    const stopBtn = document.createElement('button');
-    stopBtn.type = 'button';
-    stopBtn.className = 'helen-global-modal__btn helen-global-modal__btn--primary';
-    stopBtn.dataset.action = 'stop-sound';
-    stopBtn.textContent = 'Detener sonido';
-
-    const dismissBtn = document.createElement('button');
-    dismissBtn.type = 'button';
-    dismissBtn.className = 'helen-global-modal__btn helen-global-modal__btn--ghost';
-    dismissBtn.dataset.action = 'dismiss';
-    dismissBtn.textContent = 'Descartar';
-
-    actions.append(stopBtn, dismissBtn);
-
-    card.append(icon, content, actions);
-    root.appendChild(card);
-    document.body.appendChild(root);
-
-    const handleKeydown = (event) => {
-      if (!currentNotification) return;
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        acknowledgeCurrentNotification('escape');
-        return;
-      }
-      if (event.key !== 'Tab') {
-        return;
-      }
-      const focusables = [stopBtn, dismissBtn].filter((el) => el && !el.disabled);
-      if (!focusables.length) {
-        event.preventDefault();
-        return;
-      }
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      const active = document.activeElement;
-      if (event.shiftKey) {
-        if (active === first || !card.contains(active)) {
-          event.preventDefault();
-          last.focus();
-        }
-      } else if (active === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    stopBtn.addEventListener('click', () => {
-      handleStopSound();
-    });
-    dismissBtn.addEventListener('click', () => {
-      acknowledgeCurrentNotification('dismiss');
-    });
-    card.addEventListener('keydown', handleKeydown);
-
-    modalElements = {
-      root,
-      card,
-      iconGlyph,
-      title,
-      label,
-      detail,
-      meta,
-      note,
-      stopBtn,
-      dismissBtn,
-    };
-
-    return modalElements;
+    const api = window.HelenNotifications;
+    if (!api) {
+      return null;
+    }
+    try {
+      modalController = typeof api.ensure === 'function' ? api.ensure() : api;
+    } catch (error) {
+      modalController = null;
+    }
+    return modalController;
   };
 
-  const setModalNote = (message, visible = true) => {
-    const elements = ensureModalElements();
-    if (!elements) return;
-    if (!message) {
-      elements.note.textContent = '';
-      elements.note.hidden = true;
+  const setModalStatus = (message, visible = true) => {
+    const controller = ensureModalController();
+    if (!controller || typeof controller.setStatus !== 'function') {
       return;
     }
-    elements.note.textContent = message;
-    elements.note.hidden = !visible;
+    if (!message) {
+      controller.setStatus('', false);
+      return;
+    }
+    controller.setStatus(message, visible);
+  };
+
+  const setPrimaryDisabled = (disabled) => {
+    const controller = ensureModalController();
+    if (!controller || typeof controller.setPrimaryDisabled !== 'function') {
+      return;
+    }
+    controller.setPrimaryDisabled(Boolean(disabled));
   };
 
   const updateModalContent = (entry) => {
-    const elements = ensureModalElements();
-    if (!elements) return;
-    const tone = entry && entry.tone === 'timer' ? 'timer' : 'alarm';
-    const iconClass = tone === 'timer' ? 'bi-stopwatch-fill' : 'bi-bell-fill';
-    elements.iconGlyph.className = `bi ${iconClass}`;
-    elements.title.textContent = entry && entry.title ? entry.title : (tone === 'timer' ? 'Temporizador finalizado' : 'Alarma activada');
-    elements.label.textContent = entry && entry.label ? entry.label : (tone === 'timer' ? 'Temporizador' : 'Alarma');
-    elements.detail.textContent = entry && entry.detail ? entry.detail : 'Evento completado.';
-    if (elements.meta) {
-      const hasMeta = entry && entry.meta;
-      elements.meta.textContent = hasMeta ? entry.meta : '';
-      elements.meta.hidden = !hasMeta;
+    const controller = ensureModalController();
+    if (!controller) {
+      return;
     }
-    elements.stopBtn.disabled = false;
-    elements.stopBtn.textContent = 'Detener sonido';
-    elements.dismissBtn.textContent = entry && entry.secondaryLabel ? entry.secondaryLabel : 'Descartar';
-    if (elements.root) {
-      elements.root.setAttribute('data-tone', tone);
+    if (typeof controller.update === 'function') {
+      controller.update(entry);
     }
+  };
+
+  const updatePendingIndicator = () => {
+    const controller = ensureModalController();
+    if (!controller || typeof controller.setPending !== 'function') {
+      return;
+    }
+    const count = Math.max(0, pendingNotifications.length - (currentNotification ? 1 : 0));
+    controller.setPending(count);
+  };
+
+  const showModalEntry = (entry) => {
+    const controller = ensureModalController();
+    currentNotification = entry;
+    pendingSoundPromise = null;
+    modalSoundNeedsUnlock = false;
+    updateModalContent(entry);
+    if (controller && typeof controller.show === 'function') {
+      controller.show(entry, {
+        pendingCount: Math.max(0, pendingNotifications.length - 1),
+        onPrimary: (source) => acknowledgeCurrentNotification(source || 'primary'),
+      });
+      setModalStatus('', false);
+      setPrimaryDisabled(false);
+    }
+    updatePendingIndicator();
+    tryEnsureSoundPlayback();
+  };
+
+  const hideModal = (reason) => {
+    const controller = ensureModalController();
+    if (!controller || typeof controller.hide !== 'function') {
+      return;
+    }
+    controller.hide(reason);
   };
 
   const clearSoundAutoStop = () => {
@@ -684,18 +607,15 @@
     soundAutoStopTimer = window.setTimeout(() => {
       audioEngine.stop();
       soundAutoStopTimer = null;
-      const elements = ensureModalElements();
-      if (elements && elements.stopBtn) {
-        elements.stopBtn.disabled = true;
-      }
-      setModalNote('Sonido detenido automáticamente.', true);
+      setModalStatus('Sonido detenido automáticamente.', true);
+      setPrimaryDisabled(false);
     }, SOUND_CONFIG.autoStopAfterMs);
   };
 
   const tryEnsureSoundPlayback = () => {
     if (!currentNotification) return;
-    const elements = ensureModalElements();
-    if (!elements) return;
+    const controller = ensureModalController();
+    if (!controller) return;
     if (pendingSoundPromise) {
       return;
     }
@@ -708,73 +628,23 @@
         }
         if (result && result.ok) {
           modalSoundNeedsUnlock = false;
-          setModalNote('', false);
+          setModalStatus('', false);
+          setPrimaryDisabled(false);
           scheduleSoundAutoStop();
-          elements.stopBtn.disabled = false;
         } else {
           modalSoundNeedsUnlock = true;
           stopActiveSound();
-          elements.stopBtn.disabled = false;
-          setModalNote('Activa el sonido tocando la pantalla.', true);
+          setPrimaryDisabled(false);
+          setModalStatus('Activa el sonido tocando la pantalla.', true);
         }
       })
       .catch(() => {
         pendingSoundPromise = null;
         modalSoundNeedsUnlock = true;
         stopActiveSound();
-        setModalNote('No se pudo reproducir el sonido.', true);
+        setModalStatus('No se pudo reproducir el sonido.', true);
+        setPrimaryDisabled(false);
       });
-  };
-
-  const showModalEntry = (entry) => {
-    const elements = ensureModalElements();
-    if (!elements) return;
-    currentNotification = entry;
-    pendingSoundPromise = null;
-    modalSoundNeedsUnlock = false;
-    updateModalContent(entry);
-    setModalNote('', false);
-    if (document && document.body) {
-      document.body.classList.add(BODY_MODAL_CLASS);
-    }
-    elements.root.classList.add('is-visible');
-    elements.root.setAttribute('aria-hidden', 'false');
-    lastFocusedElement = document && document.activeElement && typeof document.activeElement.focus === 'function'
-      ? document.activeElement
-      : null;
-    if (typeof requestAnimationFrame === 'function') {
-      requestAnimationFrame(() => {
-        try {
-          elements.stopBtn.focus();
-        } catch (error) {}
-      });
-    } else {
-      try {
-        elements.stopBtn.focus();
-      } catch (error) {}
-    }
-    tryEnsureSoundPlayback();
-  };
-
-  const hideModal = () => {
-    const elements = ensureModalElements();
-    if (!elements) return;
-    elements.root.classList.remove('is-visible');
-    elements.root.setAttribute('aria-hidden', 'true');
-    if (document && document.body) {
-      document.body.classList.remove(BODY_MODAL_CLASS);
-    }
-    setModalNote('', false);
-    if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
-      try {
-        if (!document || document.contains(lastFocusedElement)) {
-          lastFocusedElement.focus();
-        }
-      } catch (error) {
-        // ignore
-      }
-    }
-    lastFocusedElement = null;
   };
 
   const removeNotificationByEventId = (eventId) => {
@@ -784,29 +654,27 @@
       pendingNotifications.splice(index, 1);
       persistPendingNotifications();
     }
+    updatePendingIndicator();
   };
 
-  const handleStopSound = () => {
-    const elements = ensureModalElements();
-    if (!elements) return;
+  const acknowledgeCurrentNotification = (reason = 'acknowledge') => {
+    if (!currentNotification) {
+      hideModal(reason);
+      return;
+    }
+    const snapshot = currentNotification;
     stopActiveSound();
     modalSoundNeedsUnlock = false;
-    elements.stopBtn.disabled = true;
-    setModalNote('Sonido detenido.', true);
-    if (elements.dismissBtn) {
-      try {
-        elements.dismissBtn.focus();
-      } catch (error) {}
-    }
-  };
-
-  const acknowledgeCurrentNotification = () => {
-    if (!currentNotification) return;
-    const eventId = currentNotification.eventId;
-    stopActiveSound();
     currentNotification = null;
-    removeNotificationByEventId(eventId);
-    hideModal();
+    removeNotificationByEventId(snapshot.eventId);
+    hideModal(reason);
+    if (snapshot.type === 'timer' && window.HelenScheduler && typeof window.HelenScheduler.cancelTimer === 'function') {
+      try {
+        window.HelenScheduler.cancelTimer(snapshot.id);
+      } catch (error) {
+        console.warn('[HelenScheduler] No se pudo cancelar temporizador finalizado', error);
+      }
+    }
     processNotificationQueue();
   };
 
@@ -814,7 +682,8 @@
     if (currentNotification) return;
     if (!pendingNotifications.length) {
       stopActiveSound();
-      hideModal();
+      hideModal('queue-empty');
+      updatePendingIndicator();
       return;
     }
     const next = pendingNotifications[0];
@@ -829,12 +698,19 @@
     pendingNotifications.push(snapshot);
     pendingNotifications.sort((a, b) => toNumber(a?.firedAt, 0) - toNumber(b?.firedAt, 0));
     persistPendingNotifications();
+    updatePendingIndicator();
+    const payload = { ...snapshot };
+    const channel = snapshot.type === 'timer' ? 'timer:finished' : 'alarm:triggered';
     if (globalBus) {
       try {
-        globalBus.emit(GLOBAL_EVENT_NAME, { ...snapshot });
+        globalBus.emit(GLOBAL_EVENT_NAME, payload);
+        globalBus.emit(channel, payload);
       } catch (error) {
         console.error('[HelenScheduler] Error emitiendo evento global', error);
       }
+    } else {
+      dispatchWindowEvent(GLOBAL_EVENT_NAME, payload);
+      dispatchWindowEvent(channel, payload);
     }
     onDomReady(() => {
       if (!currentNotification) {
@@ -850,7 +726,7 @@
   };
 
   onDomReady(() => {
-    ensureModalElements();
+    ensureModalController();
     if (pendingNotifications.length && !currentNotification) {
       processNotificationQueue();
     }
@@ -1568,10 +1444,11 @@
     }
     if (event.key === PENDING_STORAGE_KEY) {
       updatePendingNotificationsFromStorage(event.newValue);
+      updatePendingIndicator();
       onDomReady(() => {
         if (!pendingNotifications.length) {
           if (!currentNotification) {
-            hideModal();
+            hideModal('storage-sync');
           }
           return;
         }

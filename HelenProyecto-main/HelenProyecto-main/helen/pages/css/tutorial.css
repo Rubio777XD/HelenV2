@@ -1,11 +1,10 @@
 :root{
-  --tutorial-max-width: 1240px;
-  --tutorial-card-width: clamp(260px, 26vw, 320px);
-  --tutorial-card-height: clamp(200px, 24vw, 240px);
-  --tutorial-card-gap: clamp(18px, 2.8vw, 28px);
-  --tutorial-stage-max: clamp(380px, 48vh, 640px);
-  --tutorial-ring-size: clamp(96px, 16vmin, 132px);
-  --tutorial-icon-size: clamp(70px, 8vw, 84px);
+  --tutorial-max-width: var(--content-max, 1240px);
+  --tutorial-card-width: clamp(280px, 24vw, 340px);
+  --tutorial-card-gap: clamp(22px, 4vw, 32px);
+  --tutorial-flow-max: clamp(520px, 56vw, 720px);
+  --tutorial-stage-max: clamp(420px, 62vh, 560px);
+  --tutorial-ring-size: clamp(96px, 14vmin, 132px);
 }
 
 .container{
@@ -13,62 +12,59 @@
   min-height: 100svh;
   display: flex;
   justify-content: center;
-  align-items: flex-start;
-  padding: clamp(32px, 6vh, 40px) clamp(20px, 4vw, 32px) clamp(28px, 5vh, 36px);
+  align-items: center;
+  padding: 36px 20px 28px;
 }
 
 .right-panel{
   width: min(96%, var(--tutorial-max-width));
   margin: 0 auto;
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
 }
 
 .tutorial-content{
-  display: grid;
-  grid-auto-rows: min-content;
-  gap: clamp(24px, 3.6vh, 28px);
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(36px, 5vh, 48px);
+  align-items: center;
 }
 
 .tutorial-view{
   display: none;
+  width: 100%;
   flex-direction: column;
-  gap: clamp(20px, 3.2vh, 26px);
-  min-height: 0;
-}
-
-.tutorial-view.is-active{
-  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(24px, 4vh, 32px);
+  min-height: clamp(520px, 70vh, 640px);
   animation: tutorialFade .32s ease;
 }
 
+.tutorial-view.is-active{ display: flex; }
+
 @keyframes tutorialFade{
-  from{ opacity: 0; transform: translateY(14px); }
+  from{ opacity: 0; transform: translateY(18px); }
   to{ opacity: 1; transform: translateY(0); }
 }
 
 .tutorial-header{
+  width: 100%;
   display: flex;
   align-items: center;
-  gap: clamp(12px, 2vw, 18px);
-  margin: 0 0 clamp(14px, 2.6vh, 20px);
+  gap: clamp(14px, 2.6vw, 18px);
+  margin: 0;
 }
+
+.tutorial-menu .tutorial-header,
+.tutorial-flow .tutorial-header{ align-self: flex-start; }
 
 .tutorial-title{
   margin: 0;
-  font-size: clamp(36px, 4.2vw, 48px);
+  font-size: clamp(36px, 4vw, 48px);
   font-weight: 700;
   letter-spacing: -.3px;
   color: var(--fg-strong, #fff);
-  line-height: 1.04;
-}
-
-.tutorial-subtitle{
-  margin: clamp(6px, 1vh, 10px) 0 0;
-  color: var(--fg-soft);
-  font-size: clamp(14px, 2vw, 18px);
+  line-height: 1.05;
 }
 
 .back-button{
@@ -76,7 +72,7 @@
   width: 46px;
   height: 46px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, .12);
+  border: 1px solid rgba(255,255,255,.12);
   background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.10));
   color: #fff;
   display: grid;
@@ -99,6 +95,11 @@
   }
 }
 
+.tutorial-menu{
+  text-align: center;
+  gap: clamp(32px, 5vh, 48px);
+}
+
 .tutorial-menu__cards{
   width: 100%;
   max-width: calc(3 * var(--tutorial-card-width) + 2 * var(--tutorial-card-gap));
@@ -106,12 +107,12 @@
   grid-template-columns: repeat(3, minmax(0, var(--tutorial-card-width)));
   justify-content: center;
   gap: var(--tutorial-card-gap);
-  margin: clamp(12px, 2.6vh, 22px) auto 0;
+  margin: clamp(12px, 2vh, 18px) auto 0;
 }
 
 .tutorial-card{
   width: 100%;
-  min-height: var(--tutorial-card-height);
+  min-height: clamp(220px, 26vh, 260px);
   border-radius: var(--r-lg);
   background: linear-gradient(180deg, var(--card-top), var(--card-bot));
   border: 1px solid var(--card-border);
@@ -120,12 +121,12 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: clamp(12px, 2vw, 18px);
+  padding: clamp(24px, 3.4vw, 30px);
   text-align: center;
   color: var(--fg);
   cursor: pointer;
-  padding: clamp(20px, 3.4vw, 26px);
-  gap: clamp(10px, 1.6vw, 14px);
-  transition: transform var(--t-fast) ease, border-color var(--t-fast) ease, box-shadow var(--t-fast) ease, background-color var(--t-fast) ease;
+  transition: transform var(--t-fast) ease, border-color var(--t-fast) ease, box-shadow var(--t-fast) ease;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -134,7 +135,7 @@
   outline-offset: 3px;
   transform: translateY(-3px);
   border-color: rgba(190,210,230,.22);
-  box-shadow: 0 26px 60px rgba(0,0,0,.38);
+  box-shadow: 0 28px 64px rgba(0,0,0,.38);
 }
 
 @media (hover:hover){
@@ -143,29 +144,18 @@
     border-color: rgba(190,210,230,.22);
     box-shadow: 0 28px 64px rgba(0,0,0,.38);
   }
-
-  .tutorial-card:hover .tutorial-card__cta{
-    color: rgba(150,240,255,.95);
-  }
 }
 
-.tutorial-card .qcard__icon,
-.tutorial-card__icon{
-  width: var(--tutorial-icon-size);
-  height: var(--tutorial-icon-size);
+.tutorial-card .qcard__icon{
+  width: clamp(74px, 8vw, 90px);
+  height: clamp(74px, 8vw, 90px);
   border-radius: 20px;
   display: grid;
   place-items: center;
   background: radial-gradient(60% 60% at 30% 30%, var(--blue-a), var(--blue-b));
-  box-shadow: 0 16px 34px rgba(46,107,255,.35);
-  margin-bottom: 6px;
+  box-shadow: 0 18px 36px rgba(46,107,255,.35);
   color: #ecf6ff;
-  font-size: clamp(26px, 4.2vw, 34px);
-}
-
-.tutorial-card .qcard__icon i,
-.tutorial-card__icon i{
-  font-size: inherit;
+  font-size: clamp(28px, 4vw, 34px);
 }
 
 .tutorial-card__title{
@@ -179,96 +169,60 @@
 .tutorial-card__subtitle{
   margin: 0;
   color: rgba(240,247,255,.82);
-  font-size: clamp(13px, 1.8vw, 15px);
+  font-size: clamp(14px, 2vw, 16px);
   line-height: 1.4;
 }
 
 .tutorial-card__cta{
   margin-top: auto;
   font-size: 13px;
-  letter-spacing: .3px;
   text-transform: uppercase;
+  letter-spacing: .3px;
   color: rgba(95,225,255,.9);
-  transition: color var(--t-fast) ease;
 }
 
 .tutorial-flow{
-  width: 100%;
-  gap: clamp(18px, 3.4vh, 26px);
+  align-items: stretch;
+  max-width: var(--tutorial-flow-max);
+  margin: 0 auto;
+  text-align: center;
+}
+
+.flow-header{
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 2.6vw, 18px);
 }
 
 .flow-subtitle{
-  max-width: clamp(320px, 60vw, 520px);
-}
-
-
-.flow-context{
   margin: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(12px, 2vw, 18px);
-  flex-wrap: wrap;
-  row-gap: 10px;
+  color: var(--fg-soft);
+  font-size: clamp(16px, 2.2vw, 18px);
+  text-align: left;
 }
 
-.flow-heading__icon{
-  width: var(--tutorial-icon-size);
-  height: var(--tutorial-icon-size);
-  border-radius: var(--r-md);
-  display: grid;
-  place-items: center;
-  font-size: clamp(26px, 4vw, 32px);
-  color: #fff;
-  background: radial-gradient(60% 60% at 30% 30%, var(--blue-a, #5fe1ff), var(--blue-b, #2e6bff));
-  box-shadow: 0 14px 32px rgba(46,107,255,.32);
-}
+.flow-context{ display: none !important; }
 
-.step-dots{
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  gap: 8px;
-}
-
-.step-dot{
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: rgba(255,255,255,.16);
-  transition: transform var(--t-fast) ease, background var(--t-fast) ease, box-shadow var(--t-fast) ease;
-}
-
-.step-dot.is-active{ background: rgba(95,225,255,.7); }
-
-.step-dot.is-current{
-  transform: scale(1.25);
-  box-shadow: 0 0 18px rgba(95,225,255,.45);
-}
-
+.step-dots{ display: none !important; }
 
 .flow-stage{
+  width: 100%;
   display: flex;
   justify-content: center;
-  padding-block: clamp(6px, 1.8vh, 12px);
-  margin: clamp(16px, 3vh, 24px) auto 0;
-  width: min(100%, var(--tutorial-stage-max));
+  padding-block: clamp(12px, 2vh, 18px);
 }
 
 .step-visual{
-  width: 100%;
+  width: min(100%, var(--tutorial-stage-max));
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  gap: clamp(16px, 3vh, 24px);
   text-align: center;
-  gap: clamp(12px, 2.4vh, 20px);
-  position: relative;
 }
 
 .step-number{
-  font-size: clamp(14px, 1.6vw, 15px);
+  font-size: clamp(14px, 1.8vw, 15px);
   letter-spacing: .3px;
   text-transform: uppercase;
   color: rgba(230,242,255,.7);
@@ -282,14 +236,12 @@
   display: grid;
   place-items: center;
   position: relative;
-  transition: border-color var(--t-med, .25s) ease, box-shadow var(--t-med, .25s) ease, transform var(--t-med, .25s) ease;
 }
 
 .step-digit{
-  font-size: clamp(38px, 6vw, 52px);
+  font-size: clamp(40px, 6vw, 54px);
   font-weight: 600;
   color: rgba(230,242,255,.85);
-  transition: opacity var(--t-med, .25s) ease, transform var(--t-med, .25s) ease;
 }
 
 .step-check{
@@ -304,56 +256,32 @@
   transition: opacity var(--t-med, .25s) ease, transform var(--t-med, .25s) ease;
 }
 
-
-.step-text{
-  margin: 0;
-  font-size: clamp(20px, 3vw, 26px);
-  line-height: 1.24;
-  font-weight: 600;
-  color: var(--fg-strong, #fff);
-  max-width: var(--tutorial-stage-max);
-}
-
-
-.step-status{
-  margin: 0;
-  font-size: clamp(14px, 2.1vw, 16px);
-  color: rgba(220,236,255,.82);
-  max-width: calc(var(--tutorial-stage-max) - 48px);
-}
-
-.step-text.is-appear,
-.step-status.is-appear{
-  animation: stepFadeUp .4s ease both;
-}
-
-@keyframes stepFadeUp{
-  from{ opacity: 0; transform: translateY(14px); }
-  to{ opacity: 1; transform: translateY(0); }
-}
-
 .step-visual.is-complete .step-ring{
   border-color: rgba(95,225,255,.72);
   box-shadow: 0 0 0 12px rgba(95,225,255,.10), 0 20px 42px rgba(0,0,0,.34);
-  transform: scale(1.03);
 }
 
-.step-visual.is-complete .step-digit{
-  opacity: 0;
-  transform: scale(.7);
+.step-visual.is-complete .step-digit{ opacity: 0; }
+.step-visual.is-complete .step-check{ opacity: 1; transform: scale(1); }
+
+.step-text{
+  margin: 0;
+  font-size: clamp(22px, 3.2vw, 26px);
+  line-height: 1.28;
+  font-weight: 600;
+  color: var(--fg-strong, #fff);
 }
 
-.step-visual.is-complete .step-check{
-  opacity: 1;
-  transform: scale(1);
+.step-status{
+  margin: 0;
+  font-size: clamp(14px, 2vw, 16px);
+  color: rgba(220,236,255,.82);
 }
-
 
 .flow-controls{
   display: flex;
   justify-content: center;
-  transition: max-height var(--t-med, .25s) ease, opacity var(--t-med, .25s) ease, transform var(--t-med, .25s) ease;
-  margin-top: clamp(6px, 1.6vh, 14px);
+  margin-top: clamp(8px, 1.8vh, 14px);
 }
 
 .flow-controls.is-hidden{
@@ -363,11 +291,10 @@
   transform: translateY(14px);
 }
 
-
 .tutorial-button{
   border: none;
   border-radius: var(--r-md);
-  padding: clamp(12px, 2vh, 16px) clamp(24px, 5vw, 32px);
+  padding: clamp(12px, 2vh, 16px) clamp(28px, 5vw, 34px);
   font-size: clamp(15px, 2.2vw, 16px);
   font-weight: 600;
   letter-spacing: .3px;
@@ -376,7 +303,6 @@
   box-shadow: 0 22px 48px rgba(0,0,0,.34);
   cursor: pointer;
   transition: transform var(--t-fast) ease, box-shadow var(--t-fast) ease, opacity var(--t-fast) ease;
-  -webkit-tap-highlight-color: transparent;
 }
 
 .tutorial-button:focus-visible{
@@ -398,60 +324,28 @@
   }
 }
 
-.flow-next{
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(14px);
-  transition: opacity var(--t-med, .25s) ease, transform var(--t-med, .25s) ease;
-  min-width: min(220px, 100%);
-}
-
-.flow-next.is-visible{
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0);
-}
-
-.tutorial-button--secondary{
-  background: rgba(255,255,255,.08);
-  border: 1px solid rgba(255,255,255,.18);
-  color: var(--fg, #dde8f6);
-  box-shadow: none;
-}
-
-@media (hover:hover){
-  .tutorial-button--secondary:hover{
-    background: rgba(255,255,255,.14);
-  }
-}
-
-
 .flow-return{
   align-self: center;
-  min-width: min(300px, 92%);
-  max-height: 0;
+  min-width: min(320px, 92%);
   opacity: 0;
   pointer-events: none;
   transform: translateY(16px);
-  transition: opacity var(--t-med, .25s) ease, transform var(--t-med, .25s) ease, max-height var(--t-med, .25s) ease, margin-top var(--t-med, .25s) ease;
-  margin-top: 0;
+  transition: opacity var(--t-med) ease, transform var(--t-med) ease, margin-top var(--t-med) ease;
 }
 
 .flow-return.is-visible{
-  max-height: 120px;
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
-  margin-top: 12px;
+  margin-top: clamp(8px, 1.8vh, 14px);
 }
-
 
 .flow-complete{
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  padding: 18px 22px;
+  gap: 14px;
+  padding: clamp(16px, 2.6vh, 22px) clamp(18px, 4vw, 28px);
   border-radius: var(--r-md);
   background: rgba(46,107,255,.16);
   border: 1px solid rgba(95,225,255,.32);
@@ -460,7 +354,6 @@
   transform: translateY(16px);
   pointer-events: none;
   transition: opacity var(--t-med, .25s) ease, transform var(--t-med, .25s) ease;
-  margin-top: clamp(10px, 2vh, 16px);
 }
 
 .flow-complete.is-visible{
@@ -469,42 +362,7 @@
   pointer-events: auto;
 }
 
-.flow-complete__icon{
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: rgba(95,225,255,.22);
-  color: #72f8ff;
-  font-size: clamp(24px, 4vw, 28px);
-  box-shadow: 0 12px 26px rgba(0,0,0,.24);
-}
-
-.flow-complete__title{
-  margin: 0;
-  color: #fff;
-  font-weight: 700;
-  font-size: clamp(18px, 2.6vw, 22px);
-}
-
-.flow-complete__detail{
-  margin: 6px 0 0;
-  color: rgba(220,236,255,.85);
-  font-size: clamp(14px, 2.2vw, 16px);
-  max-width: 520px;
-}
-
-
-.flow-footnote{
-  margin: 0;
-  text-align: center;
-  color: rgba(220,236,255,.72);
-  font-size: clamp(13px, 1.8vw, 14px);
-  letter-spacing: .2px;
-}
-
-.flow-footnote.is-hidden{ display: none; }
+.flow-footnote{ display: none; }
 
 @media (max-width: 1180px){
   .tutorial-menu__cards{
@@ -519,15 +377,12 @@
     max-width: 520px;
   }
 
-  .tutorial-card{ min-height: auto; }
-
   .tutorial-header{ justify-content: center; }
-
-  .tutorial-subtitle{ text-align: center; }
+  .tutorial-menu .tutorial-header{ align-self: center; }
+  .tutorial-title{ text-align: center; }
 }
 
-@media (max-width: 560px){
-  .flow-context{ justify-content: center; }
-
-  .step-dots{ margin: 0 auto; }
+@media (max-width: 640px){
+  .tutorial-content{ gap: clamp(24px, 5vh, 32px); }
+  .tutorial-view{ min-height: auto; }
 }
