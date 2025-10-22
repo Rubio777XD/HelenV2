@@ -153,10 +153,10 @@ class ClassThreshold:
 
 
 DEFAULT_CLASS_THRESHOLDS: Dict[str, ClassThreshold] = {
-    "Start": ClassThreshold(enter=0.75, release=0.65),
-    "Clima": ClassThreshold(enter=0.8, release=0.7),
-    "Reloj": ClassThreshold(enter=0.78, release=0.68),
-    "Inicio": ClassThreshold(enter=0.76, release=0.66),
+    "Start": ClassThreshold(enter=0.68, release=0.58),
+    "Clima": ClassThreshold(enter=0.72, release=0.62),
+    "Reloj": ClassThreshold(enter=0.7, release=0.6),
+    "Inicio": ClassThreshold(enter=0.69, release=0.59),
 }
 
 
@@ -174,6 +174,7 @@ class TemporalProfile:
     cooldown_s: float
     listen_window_s: float
     min_pos_stability_var: float
+    activation_delay_s: float = 0.45
 
 
 @dataclass(frozen=True)
@@ -220,16 +221,16 @@ SENSITIVITY_MODES = {"STRICT", "BALANCED", "RELAXED"}
 
 @dataclass(frozen=True)
 class ConsensusConfig:
-    window_size: int = 5
-    required_votes: int = 3
+    window_size: int = 4
+    required_votes: int = 2
 
 
 DEFAULT_CONSENSUS_CONFIG = ConsensusConfig()
 
-ACTIVATION_DELAY = 0.8
+ACTIVATION_DELAY = 0.45
 SMOOTHING_WINDOW_SIZE = 4
-COOLDOWN_SECONDS = ACTIVATION_DELAY
-LISTENING_WINDOW_SECONDS = 4.0
+COOLDOWN_SECONDS = 0.65
+LISTENING_WINDOW_SECONDS = 5.5
 COMMAND_DEBOUNCE_SECONDS = 0.75
 
 
@@ -237,13 +238,14 @@ QUALITY_BLUR_THRESHOLD = 35.0
 
 
 def _default_sensitivity() -> Tuple[Dict[str, SensitivityProfile], HysteresisProfile, RateLimitProfile, int]:
-    quality = QualityProfile(blur_laplacian_min=QUALITY_BLUR_THRESHOLD, roi_min_coverage=0.75, hand_range_px=(100, 420))
+    quality = QualityProfile(blur_laplacian_min=QUALITY_BLUR_THRESHOLD, roi_min_coverage=0.7, hand_range_px=(90, 500))
     temporal = TemporalProfile(
         consensus_n=DEFAULT_CONSENSUS_CONFIG.required_votes,
         consensus_m=DEFAULT_CONSENSUS_CONFIG.window_size,
         cooldown_s=COOLDOWN_SECONDS,
         listen_window_s=LISTENING_WINDOW_SECONDS,
-        min_pos_stability_var=12.0,
+        min_pos_stability_var=16.0,
+        activation_delay_s=ACTIVATION_DELAY,
     )
     classes: Dict[str, ClassProfile] = {}
     for canonical, threshold in DEFAULT_CLASS_THRESHOLDS.items():
@@ -253,7 +255,7 @@ def _default_sensitivity() -> Tuple[Dict[str, SensitivityProfile], HysteresisPro
         for mode in SENSITIVITY_MODES
     }
     hysteresis = HysteresisProfile(on_offset=0.0, off_delta=0.08)
-    rate_limit = RateLimitProfile(frameskip_strict=4, frameskip_balanced=3, frameskip_relaxed=3, fps_threshold=25.0)
+    rate_limit = RateLimitProfile(frameskip_strict=4, frameskip_balanced=2, frameskip_relaxed=2, fps_threshold=25.0)
     return profiles, hysteresis, rate_limit, 0
 
 
@@ -312,7 +314,8 @@ def _load_sensitivity_profiles() -> Tuple[Dict[str, SensitivityProfile], Hystere
             consensus_m=int(temporal_data.get("consensus_M", DEFAULT_CONSENSUS_CONFIG.window_size) or 1),
             cooldown_s=float(temporal_data.get("cooldown_s", COOLDOWN_SECONDS)),
             listen_window_s=float(temporal_data.get("listen_window_s", LISTENING_WINDOW_SECONDS)),
-            min_pos_stability_var=float(temporal_data.get("min_pos_stability_var", 12.0)),
+            min_pos_stability_var=float(temporal_data.get("min_pos_stability_var", 16.0)),
+            activation_delay_s=float(temporal_data.get("activation_delay_s", ACTIVATION_DELAY)),
         )
 
         class_profiles: Dict[str, ClassProfile] = {}
@@ -395,8 +398,15 @@ def _class_thresholds_from_profile(profile: SensitivityProfile, hysteresis: Hyst
         thresholds[canonical] = ClassThreshold(enter=enter, release=release)
     return thresholds
 
-GLOBAL_MIN_SCORE = 0.6
+GLOBAL_MIN_SCORE = 0.5
 DEFAULT_POLL_INTERVAL_S = 0.12
+
+AUTO_THRESHOLD_WINDOW_S = 60.0
+AUTO_THRESHOLD_STEP = 0.02
+AUTO_THRESHOLD_MAX_DELTA = 0.08
+AUTO_THRESHOLD_NEAR_MARGIN = 0.06
+AUTO_THRESHOLD_MIN_RATIO = 0.7
+REARM_START_MIN_DELAY = 1.2
 
 
 @dataclass(frozen=True)
@@ -831,6 +841,30 @@ class GestureMetrics:
         }
 
     # ------------------------------------------------------------------
+    def summary(self) -> Dict[str, Any]:
+        with self._lock:
+            total_samples = len(self._samples)
+            accepted = sum(1 for record in self._samples if record.accepted)
+            quality_checks = self._quality_checks
+            quality_rejections = dict(self._quality_rejections)
+            reason_counts = dict(self._reason_counts)
+
+        rejected = total_samples - accepted
+        rejection_rate = (
+            sum(quality_rejections.values()) / quality_checks if quality_checks else 0.0
+        )
+
+        return {
+            "samples": total_samples,
+            "accepted": accepted,
+            "rejected": rejected,
+            "quality_checks": quality_checks,
+            "quality_rejections": quality_rejections,
+            "quality_rejection_rate": rejection_rate,
+            "reason_counts": reason_counts,
+        }
+
+    # ------------------------------------------------------------------
     def generate_report(
         self,
         *,
@@ -1233,7 +1267,7 @@ class LandmarkGeometryVerifier:
 
         if canonical == "Start":
             if is_extended("index") and is_extended("middle") and is_folded("ring") and is_folded("pinky"):
-                if index_middle_distance >= 0.035:
+                if index_middle_distance >= 0.032:
                     return True, None
                 return False, "geometry_start_spacing"
             return False, "geometry_start_pattern"
@@ -1244,6 +1278,7 @@ class LandmarkGeometryVerifier:
                 gap_ratio = self._gap_ratio(points)
                 missing_distal = sum(1 for idx in (8, 12, 16, 20) if self._is_missing(points[idx]))
                 allowance = max(0, int(getattr(class_profile, "missing_distal_allowance", 0)))
+                effective_allowance = max(allowance, 2)
                 strict_curvature = getattr(class_profile, "missing_distal_strict_curvature", None)
 
                 def reject(reason: str) -> Tuple[bool, str]:
@@ -1252,17 +1287,22 @@ class LandmarkGeometryVerifier:
                         curvature_min=class_profile.curvature_min,
                         strict_curvature=strict_curvature,
                         missing_distal=missing_distal,
-                        allowance=allowance,
+                        allowance=effective_allowance,
                         accepted=False,
                         reason=reason,
                     )
                     return False, reason
 
-                if class_profile.curvature_min is not None and avg_curvature < class_profile.curvature_min:
+                curvature_floor = None
+                if class_profile.curvature_min is not None:
+                    curvature_floor = class_profile.curvature_min * 0.9
+                if curvature_floor is not None and avg_curvature < curvature_floor:
                     return reject("geometry_clima_curvature")
 
                 if class_profile.gap_ratio_range:
                     low, high = class_profile.gap_ratio_range
+                    low *= 0.9
+                    high *= 1.1
                     if not (low <= gap_ratio <= high):
                         return reject("geometry_clima_gap")
 
@@ -1280,49 +1320,53 @@ class LandmarkGeometryVerifier:
                 if angles and class_profile.angle_tol_deg:
                     avg_angle = sum(angles) / len(angles)
                     max_delta = max(abs(angle - avg_angle) for angle in angles)
-                    if max_delta > class_profile.angle_tol_deg:
+                    allowed_delta = class_profile.angle_tol_deg * 1.2
+                    if max_delta > allowed_delta:
                         return reject("geometry_clima_angle")
 
                 if lengths and class_profile.norm_dev_max:
                     max_length = max(lengths) or 1.0
                     normalised = [length / max_length for length in lengths]
                     deviation = statistics.pstdev(normalised) if len(normalised) > 1 else 0.0
-                    if deviation > class_profile.norm_dev_max:
+                    allowed_deviation = class_profile.norm_dev_max * 1.15
+                    if deviation > allowed_deviation:
                         return reject("geometry_clima_norm")
 
                 if missing_distal > 0:
-                    if missing_distal > allowance:
+                    if missing_distal > effective_allowance:
                         return reject("geometry_clima_missing_distal")
-                    if strict_curvature is not None and avg_curvature < strict_curvature:
-                        return reject("geometry_clima_missing_curvature")
+                    if strict_curvature is not None:
+                        strict_threshold = strict_curvature * 0.92
+                        if avg_curvature < strict_threshold:
+                            return reject("geometry_clima_missing_curvature")
 
                 self._record_clima_metrics(
                     avg_curvature=avg_curvature,
                     curvature_min=class_profile.curvature_min,
                     strict_curvature=strict_curvature,
                     missing_distal=missing_distal,
-                    allowance=allowance,
+                    allowance=effective_allowance,
                     accepted=True,
                     reason=None,
                 )
                 return True, None
 
             extended_count = sum(1 for finger in ("index", "middle", "ring", "pinky") if is_extended(finger, 0.9))
-            if extended_count >= 3 and thumb_index_distance >= 0.05 and palm_spread >= 0.18:
+            if extended_count >= 3 and thumb_index_distance >= 0.045 and palm_spread >= 0.16:
                 return True, None
             return False, "geometry_clima_pattern"
 
         if canonical == "Reloj":
             if is_extended("index") and is_extended("middle") and is_folded("ring") and is_folded("pinky"):
-                vertical_alignment = abs(index_tip[1] - middle_tip[1]) <= 0.05
-                if index_middle_distance <= 0.07 and vertical_alignment:
+                vertical_alignment = abs(index_tip[1] - middle_tip[1]) <= 0.06
+                if index_middle_distance <= 0.075 and vertical_alignment:
                     return True, None
                 return False, "geometry_reloj_spacing"
             return False, "geometry_reloj_pattern"
 
         if canonical == "Inicio":
             if is_extended("pinky") and is_folded("index") and is_folded("middle") and is_folded("ring"):
-                if thumb_index_distance <= 0.09:
+                if thumb_index_distance <= 0.095:
                     return True, None
                 return False, "geometry_inicio_thumb"
             return False, "geometry_inicio_pattern"
@@ -1344,12 +1388,14 @@ class GestureDecisionEngine:
         temporal_profile: Optional[TemporalProfile] = None,
         sensitivity_mode: str = DEFAULT_SENS_MODE,
         profile_version: int = SENSITIVITY_PROFILE_VERSION,
+        session_started_at: Optional[float] = None,
     ) -> None:
         self._metrics = metrics
         base_thresholds = dict(DEFAULT_CLASS_THRESHOLDS)
         if thresholds:
             base_thresholds.update(thresholds)
         self._thresholds = base_thresholds
+        self._baseline_thresholds = {label: ClassThreshold(value.enter, value.release) for label, value in base_thresholds.items()}
         self._consensus_config = consensus
         self._consensus = ConsensusTracker(consensus)
         self._global_min_score = float(global_min_score)
@@ -1357,6 +1403,14 @@ class GestureDecisionEngine:
         self._temporal_profile = temporal_profile
         self._mode = sensitivity_mode
         self._profile_version = profile_version
+        self._session_started_at = float(session_started_at or time.time())
+        self._activation_delay = (
+            float(temporal_profile.activation_delay_s)
+            if temporal_profile and getattr(temporal_profile, "activation_delay_s", None) is not None
+            else ACTIVATION_DELAY
+        )
+        self._threshold_adjustments: Dict[str, float] = defaultdict(float)
+        self._recent_rejections: Dict[str, Deque[Tuple[float, float]]] = defaultdict(lambda: deque(maxlen=12))
 
         self._state = "idle"
         self._cooldown_until = 0.0
@@ -1372,14 +1426,33 @@ class GestureDecisionEngine:
         self._dominant_label: Optional[str] = None
         self._last_state_change = time.time()
         self._last_activation_at = 0.0
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._position_history: Deque[Tuple[float, float]] = deque(maxlen=max(5, consensus.window_size * 2))
+        self._rearm_block_until = 0.0
 
     # ------------------------------------------------------------------
     def _reset_consensus(self) -> None:
         self._consensus.reset()
         self._dominant_label = None
         self._position_history.clear()
+
+    # ------------------------------------------------------------------
+    def _set_rearm_block(self, target: float) -> None:
+        if target <= 0.0:
+            return
+        self._rearm_block_until = max(self._rearm_block_until, target)
+
+    # ------------------------------------------------------------------
+    def defer_rearm(self, *, duration: float = 0.0, until: Optional[float] = None) -> None:
+        if until is None:
+            if duration <= 0.0:
+                return
+            target = time.time() + float(duration)
+        else:
+            target = float(until)
+
+        with self._lock:
+            self._set_rearm_block(target)
 
     # ------------------------------------------------------------------
     def _update_state(self, timestamp: float) -> None:
@@ -1539,6 +1612,65 @@ class GestureDecisionEngine:
         return boosted, boosted - score
 
     # ------------------------------------------------------------------
+    def _consider_auto_adjust(
+        self,
+        label: str,
+        score: float,
+        threshold: ClassThreshold,
+        timestamp: float,
+    ) -> ClassThreshold:
+        if (timestamp - self._session_started_at) > AUTO_THRESHOLD_WINDOW_S:
+            return threshold
+
+        history = self._recent_rejections[label]
+        history.append((timestamp, score))
+        near_threshold = [value for _, value in history if value >= threshold.enter - AUTO_THRESHOLD_NEAR_MARGIN]
+
+        if len(history) < max(4, self._consensus_config.window_size):
+            return threshold
+        if not near_threshold or (len(near_threshold) / len(history)) < AUTO_THRESHOLD_MIN_RATIO:
+            return threshold
+
+        applied = self._threshold_adjustments[label]
+        if applied >= AUTO_THRESHOLD_MAX_DELTA:
+            return threshold
+
+        new_enter = max(0.4, threshold.enter - AUTO_THRESHOLD_STEP)
+        if new_enter >= threshold.enter:
+            return threshold
+
+        release_gap = max(0.01, threshold.enter - threshold.release)
+        new_release = max(0.0, new_enter - release_gap)
+        self._thresholds[label] = ClassThreshold(enter=new_enter, release=new_release)
+        self._threshold_adjustments[label] = applied + (threshold.enter - new_enter)
+        history.clear()
+
+        LOGGER.info(
+            "auto_threshold_adjust label=%s enter=%.3f->%.3f release=%.3f->%.3f delta=%.3f",
+            label,
+            threshold.enter,
+            new_enter,
+            threshold.release,
+            new_release,
+            threshold.enter - new_enter,
+        )
+        return self._thresholds[label]
+
+    # ------------------------------------------------------------------
+    def baseline_thresholds(self) -> Dict[str, ClassThreshold]:
+        return dict(self._baseline_thresholds)
+
+    # ------------------------------------------------------------------
+    def threshold_adjustments(self) -> Dict[str, float]:
+        adjustments: Dict[str, float] = {}
+        for label, base in self._baseline_thresholds.items():
+            current = self._thresholds.get(label, base)
+            delta = current.enter - base.enter
+            if not math.isclose(delta, 0.0, abs_tol=1e-6):
+                adjustments[label] = delta
+        return adjustments
+
+    # ------------------------------------------------------------------
     def process(
         self,
         prediction: Prediction,
@@ -1693,6 +1825,39 @@ class GestureDecisionEngine:
                 payload["decision_reason"] = reason
                 return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
 
+            if (
+                state == "listening"
+                and canonical_label in {"Clima", "Reloj", "Inicio"}
+                and self._last_activation_at > 0.0
+                and (timestamp - self._last_activation_at) < self._activation_delay
+            ):
+                reason = "activation_delay_active"
+                remaining = max(0.0, self._activation_delay - (timestamp - self._last_activation_at))
+                self._record(
+                    label=canonical_label,
+                    score=score,
+                    accepted=False,
+                    reason=reason,
+                    state=state,
+                    hint_label=canonical_hint,
+                    support=support,
+                    window_ms=window_ms,
+                    timestamp=timestamp,
+                )
+                payload["decision_reason"] = reason
+                payload["activation_delay_remaining_ms"] = round(remaining * 1000.0, 3)
+                return DecisionOutcome(
+                    False,
+                    canonical_label,
+                    score,
+                    payload,
+                    reason,
+                    state,
+                    canonical_hint,
+                    support,
+                    window_ms,
+                )
+
             if score < self._global_min_score:
                 reason = "score_below_global"
                 self._record(
@@ -1774,20 +1939,52 @@ class GestureDecisionEngine:
                 return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
 
             if state == "listening" and canonical_label == "Start":
-                reason = "awaiting_command"
-                self._record(
-                    label=canonical_label,
-                    score=score,
-                    accepted=False,
-                    reason=reason,
-                    state=state,
-                    hint_label=canonical_hint,
-                    support=support,
-                    window_ms=window_ms,
-                    timestamp=timestamp,
-                )
-                payload["decision_reason"] = reason
-                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+                rearm_threshold = max(REARM_START_MIN_DELAY, self._activation_delay + (self._cooldown_duration * 0.5))
+                min_ready_at = 0.0
+                if self._last_activation_at > 0.0:
+                    min_ready_at = self._last_activation_at + rearm_threshold
+
+                block_until = max(min_ready_at, self._rearm_block_until)
+                if block_until > 0.0 and timestamp < block_until:
+                    if timestamp < self._rearm_block_until:
+                        reason = "start_rearm_deferred"
+                        remaining = max(0.0, self._rearm_block_until - timestamp)
+                        payload["rearm_block_remaining_ms"] = round(remaining * 1000.0, 3)
+                    else:
+                        reason = "awaiting_command"
+                        remaining = max(0.0, min_ready_at - timestamp)
+                        payload["rearm_min_remaining_ms"] = round(remaining * 1000.0, 3)
+
+                    self._record(
+                        label=canonical_label,
+                        score=score,
+                        accepted=False,
+                        reason=reason,
+                        state=state,
+                        hint_label=canonical_hint,
+                        support=support,
+                        window_ms=window_ms,
+                        timestamp=timestamp,
+                    )
+                    payload["decision_reason"] = reason
+                    return DecisionOutcome(
+                        False,
+                        canonical_label,
+                        score,
+                        payload,
+                        reason,
+                        state,
+                        canonical_hint,
+                        support,
+                        window_ms,
+                    )
+
+                self._state = "idle"
+                state = self._state
+                payload["state"] = state
+                self._reset_consensus()
+                self._last_activation_at = 0.0
+                self._rearm_block_until = 0.0
 
             if state == "listening" and canonical_label not in {"Clima", "Reloj", "Inicio"}:
                 reason = "unsupported_command"
@@ -1819,6 +2016,11 @@ class GestureDecisionEngine:
                     timestamp=timestamp,
                 )
                 payload["threshold_enter"] = thresholds.enter
+                updated_threshold = self._consider_auto_adjust(canonical_label, score, thresholds, timestamp)
+                if updated_threshold.enter != thresholds.enter:
+                    payload["threshold_enter_new"] = updated_threshold.enter
+                    payload["threshold_release_new"] = updated_threshold.release
+                    payload.setdefault("auto_threshold_adjusted", True)
                 payload["decision_reason"] = reason
                 return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
 
@@ -1866,6 +2068,11 @@ class GestureDecisionEngine:
                 self._state = "cooldown"
                 self._cooldown_until = timestamp + self._cooldown_duration
                 self._last_activation_at = timestamp
+                rearm_ready = max(
+                    REARM_START_MIN_DELAY,
+                    self._activation_delay + (self._cooldown_duration * 0.5),
+                )
+                self._set_rearm_block(timestamp + rearm_ready)
                 payload["next_state"] = "cooldown"
                 self._reset_consensus()
             else:
@@ -2318,6 +2525,23 @@ class HealthSnapshot:
     camera_backend: Optional[str]
     camera_last_capture: Optional[str]
     camera_last_error: Optional[str]
+    latency_p95_ms: float = 0.0
+    latency_max_ms: float = 0.0
+    latency_count: int = 0
+    frames_total: int = 0
+    frames_with_hand: int = 0
+    frames_valid: int = 0
+    frames_returned: int = 0
+    fps: float = 0.0
+    quality_rejections: Dict[str, int] = field(default_factory=dict)
+    reason_counts: Dict[str, int] = field(default_factory=dict)
+    thresholds: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    threshold_adjustments: Dict[str, float] = field(default_factory=dict)
+    model_path: str = ""
+    engine_mode: str = ""
+    sensitivity_version: int = 0
+    last_quality_reason: Optional[str] = None
+    dataset_info: Dict[str, Any] = field(default_factory=dict)
     last_error: Optional[str] = None
 
 
@@ -2485,6 +2709,10 @@ class CameraGestureStream:
         self._last_quality_reason: Optional[str] = None
         self._last_frame_ts: Optional[float] = None
         self._fps_history: Deque[float] = deque(maxlen=90)
+        self._frames_total = 0
+        self._frames_with_hand = 0
+        self._frames_valid = 0
+        self._frames_returned = 0
 
     # ------------------------------------------------------------------
     def _configure_capture(self, cap: Any) -> None:
@@ -2646,6 +2874,8 @@ class CameraGestureStream:
                 time.sleep(0.05)
                 continue
 
+            self._frames_total += 1
+
             now_ts = time.time()
             if self._last_frame_ts:
                 delta = now_ts - self._last_frame_ts
@@ -2684,6 +2914,7 @@ class CameraGestureStream:
 
             self._frames_without_hand = 0
             landmarks = results.multi_hand_landmarks[0]
+            self._frames_with_hand += 1
             if not self._validate_landmarks(frame, results, landmarks, width, height):
                 self._last_landmarks = None
                 self._last_roi = None
@@ -2715,6 +2946,8 @@ class CameraGestureStream:
             self._last_capture = time.time()
             self._last_error = None
             self._healthy = True
+            self._frames_valid += 1
+            self._frames_returned += 1
             return features, None
 
     # ------------------------------------------------------------------
@@ -2725,12 +2958,17 @@ class CameraGestureStream:
             "last_capture": self._last_capture,
             "last_error": self._last_error,
             "frames_without_hand": self._frames_without_hand,
+            "frames_total": self._frames_total,
+            "frames_with_hand": self._frames_with_hand,
+            "frames_valid": self._frames_valid,
+            "frames_returned": self._frames_returned,
             "quality_rejections": dict(self._quality_rejections),
             "frame_shape": self._last_frame_shape,
             "roi_snapshot": self._last_roi,
             "capture_backend": self._capture_backend,
             "gstreamer_pipeline": self._gstreamer_pipeline,
             "measured_fps": round(self.measured_fps(), 2),
+            "last_quality_reason": self._last_quality_reason,
         }
 
     # ------------------------------------------------------------------
@@ -3280,6 +3518,7 @@ class HelenRuntime:
                 "consensus_n": self.sensitivity_profile.temporal.consensus_n,
                 "consensus_m": self.sensitivity_profile.temporal.consensus_m,
                 "min_pos_stability_var": self.sensitivity_profile.temporal.min_pos_stability_var,
+                "activation_delay_s": self.sensitivity_profile.temporal.activation_delay_s,
             },
             "frameskip_base": self.base_frameskip,
         }
@@ -3332,6 +3571,7 @@ class HelenRuntime:
             temporal_profile=self.sensitivity_profile.temporal,
             sensitivity_mode=self.sensitivity_mode,
             profile_version=SENSITIVITY_PROFILE_VERSION,
+            session_started_at=self.started_at,
         )
         self.lock = threading.Lock()
         self.latency_history: Deque[float] = deque(maxlen=240)
@@ -3426,6 +3666,7 @@ class HelenRuntime:
         if callable(close_stream):
             close_stream()
         self._export_session_report()
+        self._export_tuning_summary()
 
     # ------------------------------------------------------------------
     def update_frameskip(self, measured_fps: float) -> int:
@@ -3565,6 +3806,15 @@ class HelenRuntime:
             dataset_info = dict(self.dataset_info)
             dataset_info["normalizer"] = self.feature_normalizer.snapshot()
             dataset_info["frameskip_used"] = int(self.active_frameskip)
+            dataset_info["baseline_thresholds"] = {
+                label: {"enter": value.enter, "release": value.release}
+                for label, value in self.decision_engine.baseline_thresholds().items()
+            }
+            dataset_info["current_thresholds"] = {
+                label: {"enter": value.enter, "release": value.release}
+                for label, value in self.decision_engine.thresholds().items()
+            }
+            dataset_info["threshold_adjustments"] = self.decision_engine.threshold_adjustments()
             report_path = REPO_ROOT / "reports" / "gesture_session_report.md"
             report = self.metrics.generate_report(
                 thresholds=self.decision_engine.thresholds(),
@@ -3585,27 +3835,113 @@ class HelenRuntime:
             LOGGER.warning("No se pudo escribir el reporte de métricas: %s", error)
 
     # ------------------------------------------------------------------
+    def _export_tuning_summary(self) -> None:
+        try:
+            before = self.decision_engine.baseline_thresholds()
+            after = self.decision_engine.thresholds()
+            adjustments = self.decision_engine.threshold_adjustments()
+            consensus = self.decision_engine.consensus_config
+            temporal = self.sensitivity_profile.temporal
+
+            lines = [
+                "# Ajustes de umbrales",
+                "",
+                f"- Sesión: {self.session_id}",
+                f"- Modo: {self.sensitivity_mode} (perfil v{SENSITIVITY_PROFILE_VERSION})",
+                f"- Modelo: {self.model_source} ({self.config.model_path})",
+                "- Consenso requerido: "
+                f"{consensus.required_votes}/{consensus.window_size}",
+                f"- Ventana de comandos: {temporal.listen_window_s:.2f} s",
+                f"- Cooldown tras H: {temporal.cooldown_s:.2f} s",
+                f"- Retardo de activación: {temporal.activation_delay_s:.2f} s",
+                "",
+                "| Gesto | Enter inicial | Enter final | Δ | Release final |",
+                "|-------|--------------:|------------:|----:|--------------:|",
+            ]
+
+            for label in sorted(set(before) | set(after)):
+                base = before.get(label)
+                current = after.get(label, base)
+                if base is None or current is None:
+                    continue
+                delta = current.enter - base.enter
+                lines.append(
+                    "| {label} | {enter_before:.3f} | {enter_after:.3f} | {delta:+.3f} | {release_after:.3f} |".format(
+                        label=label,
+                        enter_before=base.enter,
+                        enter_after=current.enter,
+                        delta=delta,
+                        release_after=current.release,
+                    )
+                )
+
+            lines.append("")
+            if adjustments:
+                lines.append("## Ajustes aplicados")
+                for label, delta in sorted(adjustments.items()):
+                    lines.append(f"- {label}: {delta:+.3f}")
+            else:
+                lines.append("No se aplicaron ajustes automáticos de umbral.")
+
+            summary_path = REPO_ROOT / "reports" / "tuning_summary.md"
+            summary_path.parent.mkdir(parents=True, exist_ok=True)
+            summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+            health_snapshot = self.health()
+            thresholds_log = ", ".join(
+                f"{label}={values['enter']:.2f}/{values['release']:.2f}"
+                for label, values in health_snapshot.thresholds.items()
+            )
+            LOGGER.info(
+                "diagnostic session=%s mode=%s model=%s frames_total=%d frames_valid=%d fps=%.2f latency_avg=%.2fms "
+                "latency_p95=%.2fms thresholds={%s} reasons=%s",
+                self.session_id,
+                self.sensitivity_mode,
+                health_snapshot.model_path,
+                health_snapshot.frames_total,
+                health_snapshot.frames_valid,
+                health_snapshot.fps,
+                health_snapshot.avg_latency_ms,
+                health_snapshot.latency_p95_ms,
+                thresholds_log,
+                health_snapshot.reason_counts,
+            )
+        except Exception as error:  # pragma: no cover - escritura opcional
+            LOGGER.warning("No se pudo generar el resumen de ajustes: %s", error)
+
+    # ------------------------------------------------------------------
     def health(self) -> HealthSnapshot:
         with self.lock:
             last_prediction = self.last_prediction
             last_prediction_at = self.last_prediction_at
-            avg_latency = (
-                sum(self.latency_history) / len(self.latency_history)
-                if self.latency_history
-                else 0.0
-            )
             last_error = self.last_error
             heartbeat_age = time.time() - self.last_heartbeat if self.last_heartbeat else None
 
+        latency_stats = self._latency_snapshot()
         pipeline_running = self.pipeline.is_running()
         stream_status = getattr(self.stream, "status", lambda: {})()
         camera_ok = bool(stream_status.get("healthy")) if self.stream_source == "camera" else True
+
+        metrics_summary = self.metrics.summary()
+        thresholds_dict = {
+            label: {"enter": value.enter, "release": value.release}
+            for label, value in self.decision_engine.thresholds().items()
+        }
+        threshold_adjustments = self.decision_engine.threshold_adjustments()
+
+        dataset_snapshot = {
+            **self.dataset_info,
+            "temporal": dict(self.dataset_info.get("temporal", {})),
+            "metrics_summary": metrics_summary,
+        }
 
         status = "HEALTHY"
         if last_error:
             status = "ERROR"
         elif not pipeline_running or (heartbeat_age is not None and heartbeat_age > 5.0) or not camera_ok or not self.model_loaded:
             status = "DEGRADED"
+
+        fps_value = float(stream_status.get("measured_fps", 0.0) or 0.0)
 
         return HealthSnapshot(
             status=status,
@@ -3618,7 +3954,10 @@ class HelenRuntime:
             uptime_s=time.time() - self.started_at,
             last_prediction=last_prediction,
             last_prediction_at=_iso_timestamp(last_prediction_at) if last_prediction_at else None,
-            avg_latency_ms=round(avg_latency, 3),
+            avg_latency_ms=round(latency_stats.get("avg_ms", 0.0), 3),
+            latency_p95_ms=round(latency_stats.get("p95_ms", 0.0), 3),
+            latency_max_ms=round(latency_stats.get("max_ms", 0.0), 3),
+            latency_count=int(latency_stats.get("count", 0)),
             camera_ok=camera_ok,
             camera_index=stream_status.get("camera_index"),
             camera_backend=stream_status.get("capture_backend"),
@@ -3628,6 +3967,20 @@ class HelenRuntime:
                 else None
             ),
             camera_last_error=stream_status.get("last_error"),
+            frames_total=int(stream_status.get("frames_total") or 0),
+            frames_with_hand=int(stream_status.get("frames_with_hand") or 0),
+            frames_valid=int(stream_status.get("frames_valid") or 0),
+            frames_returned=int(stream_status.get("frames_returned") or 0),
+            fps=round(fps_value, 2),
+            quality_rejections=metrics_summary.get("quality_rejections", {}),
+            reason_counts=metrics_summary.get("reason_counts", {}),
+            thresholds=thresholds_dict,
+            threshold_adjustments=threshold_adjustments,
+            model_path=str(self.config.model_path),
+            engine_mode=self.sensitivity_mode,
+            sensitivity_version=SENSITIVITY_PROFILE_VERSION,
+            last_quality_reason=stream_status.get("last_quality_reason"),
+            dataset_info=dataset_snapshot,
             last_error=last_error,
         )
 
@@ -3767,6 +4120,10 @@ class HelenRequestHandler(SimpleHTTPRequestHandler):
         self.end_headers()
 
         client_id = self.runtime.event_stream.register(self)
+
+        decision_engine = getattr(self.runtime, "decision_engine", None)
+        if decision_engine is not None:
+            decision_engine.defer_rearm(duration=REARM_START_MIN_DELAY)
 
         warmup = {
             "session_id": self.runtime.session_id,

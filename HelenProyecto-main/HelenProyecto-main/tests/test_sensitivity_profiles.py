@@ -21,29 +21,30 @@ def test_balanced_profile_matches_configuration() -> None:
 
     balanced = server.SENSITIVITY_PROFILES["BALANCED"]
 
-    assert balanced.quality.blur_laplacian_min == pytest.approx(60.0)
-    assert balanced.quality.roi_min_coverage == pytest.approx(0.72)
-    assert balanced.quality.hand_range_px == pytest.approx((90.0, 480.0))
+    assert balanced.quality.blur_laplacian_min == pytest.approx(48.0)
+    assert balanced.quality.roi_min_coverage == pytest.approx(0.66)
+    assert balanced.quality.hand_range_px == pytest.approx((80.0, 520.0))
 
     assert balanced.temporal.consensus_n == 2
     assert balanced.temporal.consensus_m == 4
-    assert balanced.temporal.cooldown_s == pytest.approx(0.65)
-    assert balanced.temporal.listen_window_s == pytest.approx(4.0)
-    assert balanced.temporal.min_pos_stability_var == pytest.approx(14.0)
+    assert balanced.temporal.cooldown_s == pytest.approx(0.68)
+    assert balanced.temporal.listen_window_s == pytest.approx(5.5)
+    assert balanced.temporal.min_pos_stability_var == pytest.approx(18.0)
+    assert balanced.temporal.activation_delay_s == pytest.approx(0.45)
 
     clima_profile = balanced.classes["Clima"]
-    assert clima_profile.score_min == pytest.approx(0.48)
-    assert clima_profile.angle_tol_deg == pytest.approx(26.0)
-    assert clima_profile.norm_dev_max == pytest.approx(0.28)
-    assert clima_profile.curvature_min == pytest.approx(0.288)
-    assert clima_profile.gap_ratio_range == pytest.approx((0.28, 0.55))
-    assert clima_profile.missing_distal_allowance == 1
-    assert clima_profile.missing_distal_strict_curvature == pytest.approx(0.32)
+    assert clima_profile.score_min == pytest.approx(0.45)
+    assert clima_profile.angle_tol_deg == pytest.approx(30.0)
+    assert clima_profile.norm_dev_max == pytest.approx(0.30)
+    assert clima_profile.curvature_min == pytest.approx(0.26)
+    assert clima_profile.gap_ratio_range == pytest.approx((0.26, 0.58))
+    assert clima_profile.missing_distal_allowance == 2
+    assert clima_profile.missing_distal_strict_curvature == pytest.approx(0.30)
     assert clima_profile.curvature_consistency_boost == pytest.approx(0.03)
     assert clima_profile.curvature_consistency_window == 3
     assert clima_profile.curvature_consistency_min_frames == 2
-    assert clima_profile.curvature_consistency_tolerance == pytest.approx(0.05)
-    assert clima_profile.curvature_consistency_min_curvature == pytest.approx(0.32)
+    assert clima_profile.curvature_consistency_tolerance == pytest.approx(0.07)
+    assert clima_profile.curvature_consistency_min_curvature == pytest.approx(0.30)
 
 
 def test_class_thresholds_apply_hysteresis() -> None:

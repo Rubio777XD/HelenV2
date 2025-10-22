@@ -181,6 +181,7 @@ def test_command_debounce_prevents_spam():
     engine = GestureDecisionEngine(
         metrics=metrics,
         consensus=ConsensusConfig(window_size=3, required_votes=1),
+        session_started_at=0.0,
     )
 
     timestamp = 0.0
