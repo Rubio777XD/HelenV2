@@ -1,11 +1,11 @@
 :root{
-  --tutorial-content-max: 1240px;
-  --tutorial-card-width: 360px;
-  --tutorial-card-height: 270px;
-  --tutorial-cards-gap: 28px;
+  --tutorial-max-width: 1240px;
+  --tutorial-card-width: clamp(260px, 25vw, 320px);
+  --tutorial-card-height: clamp(220px, 26vw, 260px);
+  --tutorial-card-gap: clamp(18px, 3vw, 28px);
   --tutorial-stage-max: 720px;
-  --tutorial-ring-size: clamp(104px, 18vmin, 148px);
-  --tutorial-spacing: clamp(24px, 5vh, 32px);
+  --tutorial-ring-size: clamp(104px, 17vmin, 140px);
+  --tutorial-icon-size: clamp(64px, 8vw, 72px);
 }
 
 .container{
@@ -14,37 +14,36 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 36px 20px 28px;
+  padding: clamp(28px, 6vh, 36px) clamp(16px, 4vw, 28px);
 }
 
 .right-panel{
-  width: min(96%, var(--tutorial-content-max));
+  width: min(96%, var(--tutorial-max-width));
   margin: 0 auto;
   position: relative;
   z-index: 1;
 }
 
 .tutorial-content{
-  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: var(--tutorial-spacing);
+  gap: clamp(24px, 4vh, 32px);
 }
 
 .tutorial-view{
   display: none;
   flex-direction: column;
-  gap: var(--tutorial-spacing);
+  gap: clamp(24px, 4vh, 32px);
   min-height: 0;
 }
 
 .tutorial-view.is-active{
   display: flex;
-  animation: tutorialFade .45s ease;
+  animation: tutorialFade .32s ease;
 }
 
 @keyframes tutorialFade{
-  from{ opacity: 0; transform: translateY(18px); }
+  from{ opacity: 0; transform: translateY(14px); }
   to{ opacity: 1; transform: translateY(0); }
 }
 
@@ -52,30 +51,22 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 24px 0 6px;
+  margin: 12px 0 4px;
 }
 
 .tutorial-title{
   margin: 0;
-  font-size: 48px;
+  font-size: clamp(34px, 4.6vw, 48px);
   font-weight: 700;
   letter-spacing: -.3px;
   color: var(--fg-strong, #fff);
+  line-height: 1.08;
 }
 
 .tutorial-subtitle{
-  margin: 9px 0 0;
-  margin-left: 69px;
+  margin: clamp(6px, 1.2vh, 10px) 0 0;
   color: var(--fg-soft);
-  font-size: clamp(14px, 2.2vw, 18px);
-}
-
-.tutorial-intro{
-  margin: clamp(22px, 4vh, 28px) 0 0;
-  margin-left: 69px;
-  color: var(--fg-soft, rgba(220,235,255,.78));
-  font-size: clamp(15px, 2.4vw, 18px);
-  max-width: 720px;
+  font-size: clamp(14px, 2vw, 18px);
 }
 
 .back-button{
@@ -90,7 +81,7 @@
   place-items: center;
   cursor: pointer;
   box-shadow: var(--shadow-tile);
-  transition: transform var(--t-fast, .16s) ease, box-shadow var(--t-fast, .16s) ease, border-color var(--t-fast, .16s) ease;
+  transition: transform var(--t-fast) ease, box-shadow var(--t-fast) ease, border-color var(--t-fast) ease;
 }
 
 .back-button:focus-visible{
@@ -108,16 +99,17 @@
 
 .tutorial-menu__cards{
   width: 100%;
+  max-width: calc(3 * var(--tutorial-card-width) + 2 * var(--tutorial-card-gap));
   display: grid;
-  grid-template-columns: repeat(3, var(--tutorial-card-width));
+  grid-template-columns: repeat(3, minmax(0, var(--tutorial-card-width)));
   justify-content: space-between;
-  gap: var(--tutorial-cards-gap);
-  margin: clamp(32px, 6vh, 42px) auto 0;
+  gap: var(--tutorial-card-gap);
+  margin: clamp(16px, 3vh, 24px) auto 0;
 }
 
 .tutorial-card{
-  width: var(--tutorial-card-width);
-  height: var(--tutorial-card-height);
+  width: 100%;
+  min-height: var(--tutorial-card-height);
   border-radius: var(--r-lg);
   background: linear-gradient(180deg, var(--card-top), var(--card-bot));
   border: 1px solid var(--card-border);
@@ -129,9 +121,9 @@
   text-align: center;
   color: var(--fg);
   cursor: pointer;
-  padding: 20px 24px;
-  gap: 14px;
-  transition: transform var(--t-fast, .16s) ease, border-color var(--t-fast, .16s) ease, box-shadow var(--t-fast, .16s) ease, background-color var(--t-fast, .16s) ease;
+  padding: clamp(20px, 4vw, 24px);
+  gap: 12px;
+  transition: transform var(--t-fast) ease, border-color var(--t-fast) ease, box-shadow var(--t-fast) ease, background-color var(--t-fast) ease;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -156,65 +148,47 @@
 }
 
 .tutorial-card .qcard__icon{
-  width: 84px;
-  height: 84px;
-  border-radius: 20px;
-  display: grid;
-  place-items: center;
-  background: radial-gradient(60% 60% at 30% 30%, var(--blue-a), var(--blue-b));
-  box-shadow: 0 12px 26px rgba(46,107,255,.35);
-  color: #ecf6ff;
-  font-size: 34px;
-  margin-bottom: 14px;
-}
-
-.tutorial-card .qcard__title{
-  color: #fff;
-  font-weight: 700;
-  letter-spacing: .2px;
-  font-size: clamp(18px, 2.6vw, 22px);
-}
-
-.tutorial-card .qcard__subtitle{
-  color: rgba(240,247,255,.86);
-  font-size: 13.5px;
+  width: var(--tutorial-icon-size);
+  height: var(--tutorial-icon-size);
+  border-radius: var(--r-md);
+  margin-bottom: 8px;
 }
 
 .tutorial-card__cta{
   margin-top: auto;
-  font-size: 14px;
-  letter-spacing: .4px;
+  font-size: 13px;
+  letter-spacing: .3px;
   text-transform: uppercase;
   color: rgba(95,225,255,.9);
-  transition: color var(--t-fast, .16s) ease;
+  transition: color var(--t-fast) ease;
 }
 
 .tutorial-flow{
   width: 100%;
-  gap: clamp(20px, 5vh, 28px);
+  gap: clamp(20px, 4vh, 28px);
 }
 
 .flow-subtitle{
-  margin-top: 6px;
+  max-width: clamp(320px, 60vw, 520px);
 }
 
 .flow-context{
-  margin: clamp(18px, 4vh, 26px) 0 0;
-  margin-left: 69px;
+  margin: 0;
   display: flex;
   align-items: center;
-  gap: 18px;
+  justify-content: center;
+  gap: clamp(14px, 2.4vw, 20px);
   flex-wrap: wrap;
-  row-gap: 12px;
+  row-gap: 10px;
 }
 
 .flow-heading__icon{
-  width: 64px;
-  height: 64px;
-  border-radius: 18px;
+  width: var(--tutorial-icon-size);
+  height: var(--tutorial-icon-size);
+  border-radius: var(--r-md);
   display: grid;
   place-items: center;
-  font-size: 30px;
+  font-size: clamp(26px, 4vw, 32px);
   color: #fff;
   background: radial-gradient(60% 60% at 30% 30%, var(--blue-a, #5fe1ff), var(--blue-b, #2e6bff));
   box-shadow: 0 14px 32px rgba(46,107,255,.32);
@@ -222,10 +196,10 @@
 
 .step-dots{
   list-style: none;
-  margin: 0 0 0 auto;
+  margin: 0;
   padding: 0;
   display: flex;
-  gap: 10px;
+  gap: 8px;
 }
 
 .step-dot{
@@ -233,12 +207,10 @@
   height: 10px;
   border-radius: 50%;
   background: rgba(255,255,255,.16);
-  transition: transform var(--t-fast, .16s) ease, background var(--t-fast, .16s) ease, box-shadow var(--t-fast, .16s) ease;
+  transition: transform var(--t-fast) ease, background var(--t-fast) ease, box-shadow var(--t-fast) ease;
 }
 
-.step-dot.is-active{
-  background: rgba(95,225,255,.7);
-}
+.step-dot.is-active{ background: rgba(95,225,255,.7); }
 
 .step-dot.is-current{
   transform: scale(1.25);
@@ -248,8 +220,8 @@
 .flow-stage{
   display: flex;
   justify-content: center;
-  padding-block: clamp(8px, 2vh, 16px);
-  margin: clamp(26px, 6vh, 36px) auto 0;
+  padding-block: clamp(8px, 2vh, 14px);
+  margin: clamp(20px, 4vh, 28px) auto 0;
   width: min(100%, var(--tutorial-stage-max));
 }
 
@@ -260,7 +232,7 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: clamp(12px, 2.4vh, 22px);
+  gap: clamp(12px, 2.4vh, 20px);
   position: relative;
 }
 
@@ -283,7 +255,7 @@
 }
 
 .step-digit{
-  font-size: clamp(40px, 6vw, 54px);
+  font-size: clamp(38px, 6vw, 52px);
   font-weight: 600;
   color: rgba(230,242,255,.85);
   transition: opacity var(--t-med, .25s) ease, transform var(--t-med, .25s) ease;
@@ -303,7 +275,7 @@
 
 .step-text{
   margin: 0;
-  font-size: clamp(22px, 3.4vw, 30px);
+  font-size: clamp(20px, 3.2vw, 28px);
   line-height: 1.24;
   font-weight: 600;
   color: var(--fg-strong, #fff);
@@ -312,24 +284,24 @@
 
 .step-status{
   margin: 0;
-  font-size: clamp(15px, 2.2vw, 18px);
+  font-size: clamp(14px, 2.2vw, 17px);
   color: rgba(220,236,255,.82);
-  max-width: calc(var(--tutorial-stage-max) - 60px);
+  max-width: calc(var(--tutorial-stage-max) - 48px);
 }
 
 .step-text.is-appear,
 .step-status.is-appear{
-  animation: stepFadeUp .45s ease both;
+  animation: stepFadeUp .4s ease both;
 }
 
 @keyframes stepFadeUp{
-  from{ opacity: 0; transform: translateY(18px); }
+  from{ opacity: 0; transform: translateY(14px); }
   to{ opacity: 1; transform: translateY(0); }
 }
 
 .step-visual.is-complete .step-ring{
   border-color: rgba(95,225,255,.72);
-  box-shadow: 0 0 0 14px rgba(95,225,255,.10), 0 24px 46px rgba(0,0,0,.36);
+  box-shadow: 0 0 0 12px rgba(95,225,255,.10), 0 20px 42px rgba(0,0,0,.34);
   transform: scale(1.03);
 }
 
@@ -353,13 +325,13 @@
   max-height: 0;
   opacity: 0;
   pointer-events: none;
-  transform: translateY(16px);
+  transform: translateY(14px);
 }
 
 .tutorial-button{
   border: none;
-  border-radius: var(--r-md, 18px);
-  padding: clamp(14px, 2vh, 16px) clamp(24px, 4vw, 32px);
+  border-radius: var(--r-md);
+  padding: clamp(12px, 2vh, 16px) clamp(22px, 5vw, 32px);
   font-size: clamp(15px, 2.2vw, 16px);
   font-weight: 600;
   letter-spacing: .3px;
@@ -367,7 +339,7 @@
   background: linear-gradient(145deg, rgba(95,225,255,.76), rgba(46,107,255,.92));
   box-shadow: 0 22px 48px rgba(0,0,0,.34);
   cursor: pointer;
-  transition: transform var(--t-fast, .16s) ease, box-shadow var(--t-fast, .16s) ease, opacity var(--t-fast, .16s) ease;
+  transition: transform var(--t-fast) ease, box-shadow var(--t-fast) ease, opacity var(--t-fast) ease;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -442,12 +414,12 @@
   justify-content: center;
   gap: 16px;
   padding: 18px 22px;
-  border-radius: var(--r-md, 18px);
+  border-radius: var(--r-md);
   background: rgba(46,107,255,.16);
   border: 1px solid rgba(95,225,255,.32);
   color: var(--fg, #e9f4ff);
   opacity: 0;
-  transform: translateY(18px);
+  transform: translateY(16px);
   pointer-events: none;
   transition: opacity var(--t-med, .25s) ease, transform var(--t-med, .25s) ease;
 }
@@ -466,7 +438,7 @@
   place-items: center;
   background: rgba(95,225,255,.22);
   color: #72f8ff;
-  font-size: 28px;
+  font-size: clamp(24px, 4vw, 28px);
   box-shadow: 0 12px 26px rgba(0,0,0,.24);
 }
 
@@ -492,60 +464,31 @@
   letter-spacing: .2px;
 }
 
-.flow-footnote.is-hidden{
-  display: none;
-}
+.flow-footnote.is-hidden{ display: none; }
 
 @media (max-width: 1240px){
-  .tutorial-menu__cards{
-    justify-content: space-around;
-  }
+  .tutorial-menu__cards{ justify-content: space-around; }
 }
 
-@media (max-width: 1100px){
+@media (max-width: 1120px){
   .tutorial-menu__cards{
-    grid-template-columns: repeat(2, minmax(280px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, var(--tutorial-card-width)));
     justify-content: center;
-  }
-
-  .tutorial-card{
-    width: 100%;
   }
 }
 
 @media (max-width: 760px){
-  .tutorial-menu__cards{
-    grid-template-columns: minmax(0, 1fr);
-  }
+  .tutorial-menu__cards{ grid-template-columns: minmax(0, 1fr); }
 
-  .tutorial-card{
-    width: 100%;
-    height: auto;
-  }
+  .tutorial-card{ min-height: auto; }
 
-  .tutorial-subtitle,
-  .tutorial-intro{
-    margin-left: 0;
-    text-align: center;
-  }
+  .tutorial-header{ justify-content: center; }
 
-  .flow-context{
-    margin-left: 0;
-    justify-content: center;
-  }
-
-  .step-dots{
-    margin: 0 auto;
-  }
+  .tutorial-subtitle{ text-align: center; }
 }
 
 @media (max-width: 560px){
-  .tutorial-header{
-    justify-content: center;
-  }
+  .flow-context{ justify-content: center; }
 
-  .tutorial-subtitle,
-  .tutorial-intro{
-    margin-left: 0;
-  }
+  .step-dots{ margin: 0 auto; }
 }
