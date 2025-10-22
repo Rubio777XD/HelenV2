@@ -22,7 +22,10 @@
   const SOUND_CONFIG = {
     url: 'https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg',
     fallbackInterval: 2600,
-    autoStopAfterMs: 2 * ONE_MINUTE,
+    autoStopAfterMs: null,
+    gain: 0.9,
+    chimeGain: 0.6,
+    elementVolume: 1,
   };
   const PENDING_STORAGE_KEY = 'helen:timekeeper:pendingQueue:v1';
   const GLOBAL_EVENT_NAME = 'helen:timekeeper:fired';
@@ -604,12 +607,16 @@
     if (typeof window === 'undefined') {
       return;
     }
+    const limit = Number(SOUND_CONFIG.autoStopAfterMs);
+    if (!Number.isFinite(limit) || limit <= 0) {
+      return;
+    }
     soundAutoStopTimer = window.setTimeout(() => {
       audioEngine.stop();
       soundAutoStopTimer = null;
       setModalStatus('Sonido detenido automáticamente.', true);
       setPrimaryDisabled(false);
-    }, SOUND_CONFIG.autoStopAfterMs);
+    }, limit);
   };
 
   const tryEnsureSoundPlayback = () => {
@@ -750,6 +757,8 @@
     if (!fallbackAudio && typeof Audio === 'function') {
       try {
         fallbackAudio = new Audio('data:audio/wav;base64,UklGRhQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=');
+        const volume = clamp(Number(SOUND_CONFIG.elementVolume) || 1, 0, 1);
+        fallbackAudio.volume = volume;
       } catch (error) {
         fallbackAudio = null;
       }
@@ -768,6 +777,8 @@
       const element = new Audio(SOUND_CONFIG.url);
       element.loop = true;
       element.preload = 'auto';
+      const volume = clamp(Number(SOUND_CONFIG.elementVolume) || 1, 0, 1);
+      element.volume = volume;
       htmlAudioElement = element;
       return element;
     } catch (error) {
@@ -890,7 +901,8 @@
             source.loop = true;
             const gain = context.createGain ? context.createGain() : null;
             if (gain) {
-              gain.gain.setValueAtTime(0.45, context.currentTime);
+              const targetGain = clamp(Number(SOUND_CONFIG.gain) || 0.9, 0, 1);
+              gain.gain.setValueAtTime(targetGain, context.currentTime);
               source.connect(gain);
               gain.connect(context.destination);
               loopGainNode = gain;
@@ -979,7 +991,8 @@
       const oscillator = context.createOscillator();
       oscillator.type = 'sine';
       oscillator.frequency.setValueAtTime(880, startAt);
-      gain.gain.linearRampToValueAtTime(0.36, startAt + 0.02);
+      const chimeGain = clamp(Number(SOUND_CONFIG.chimeGain) || 0.6, 0, 1);
+      gain.gain.linearRampToValueAtTime(chimeGain, startAt + 0.02);
       gain.gain.linearRampToValueAtTime(0, startAt + 1.1);
       oscillator.connect(gain);
       oscillator.start(startAt);
@@ -992,6 +1005,8 @@
     if (fallbackAudio) {
       try {
         const cloneAudio = fallbackAudio.cloneNode();
+        const volume = clamp(Number(SOUND_CONFIG.elementVolume) || 1, 0, 1);
+        try { cloneAudio.volume = volume; } catch (error) {}
         cloneAudio.play().catch(() => {});
       } catch (error) {
         console.warn('[HelenScheduler] No se pudo reproducir sonido de respaldo:', error);
