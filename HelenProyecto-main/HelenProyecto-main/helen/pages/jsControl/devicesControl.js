@@ -1,5 +1,17 @@
 const client = mqtt.connect("wss://teamrocket.serveminecraft.net:8883/mqtt");
 
+const triggerActivationRing = () => {
+  if (typeof window.triggerActivationAnimation === 'function') {
+    window.triggerActivationAnimation();
+  }
+};
+
+const resetRingToIdle = () => {
+  if (typeof window.setActivationRingState === 'function') {
+    window.setActivationRingState('idle');
+  }
+};
+
 client.on("connect", () => {
   console.log("Conectado al broker MQTT");
   client.publish("general/light", "true", (err) => {
@@ -21,14 +33,14 @@ socket.on("message", (data) => {
   if (data.character === "Start") {
     isActive = true;
     console.log("Sistema activado. Ahora puedes realizar acciones.");
-    showPopup("¡Sistema activado! Puedes realizar acciones ahora.", "success");
+    triggerActivationRing();
     resetDeactivationTimer();
     return;
   }
 
   if (!isActive) {
     console.log('Sistema inactivo. Usa la seña "Start" para activarlo.');
-    showPopup('Sistema inactivo. Usa la seña "Start" para activarlo.', "info");
+    resetRingToIdle();
     return;
   }
   resetDeactivationTimer();

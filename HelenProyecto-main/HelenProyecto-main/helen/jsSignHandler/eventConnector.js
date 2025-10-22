@@ -114,14 +114,12 @@ let lastNotification = "";
 let ringTransitionTimer;
 let ringFadeTimer;
 let ringErrorTimer;
-let gestureConfirmTimer;
 let currentRingState = 'idle';
 
 const DEACTIVATION_DELAY = 3000;
 const ABSOLUTE_URL_REGEX = /^(?:[a-z]+:)?\/\//i;
 const RING_DETECTION_MS = 900;
 const RING_ACTIVE_LINGER_MS = 5000;
-const RING_FADE_MS = 650;
 const RING_ERROR_MS = 900;
 
 const resolveTargetUrl = (targetUrl = '') => {
@@ -179,44 +177,11 @@ const resolveTargetUrl = (targetUrl = '') => {
   return `${ensureLeadingSlash(baseSegments)}/${sanitizedTarget.replace(/^\/+/, '')}`;
 };
 
-const prefersReducedMotion = () => {
-  if (typeof document !== 'undefined' && document.body && document.body.classList.contains('is-reduced-motion')) {
-    return true;
-  }
-
-  if (typeof window.matchMedia !== 'function') return false;
-  try {
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  } catch (error) {
-    console.warn('No se pudo evaluar prefers-reduced-motion:', error);
-    return false;
-  }
-};
-
 const updateBodyActivationState = (isActive) => {
   if (!document || !document.body) {
     return;
   }
   document.body.classList.toggle('helen-active', Boolean(isActive));
-  if (!isActive) {
-    document.body.classList.remove('helen-gesture-confirmed');
-  }
-};
-
-const triggerGestureConfirmationEffect = () => {
-  if (!document || !document.body) {
-    return;
-  }
-  document.body.classList.add('helen-gesture-confirmed');
-  if (gestureConfirmTimer) {
-    window.clearTimeout(gestureConfirmTimer);
-  }
-  gestureConfirmTimer = window.setTimeout(() => {
-    gestureConfirmTimer = undefined;
-    if (document && document.body) {
-      document.body.classList.remove('helen-gesture-confirmed');
-    }
-  }, 600);
 };
 
 const ensureActivationRingElement = () => {
@@ -232,11 +197,7 @@ const ensureActivationRingElement = () => {
   const halo = document.createElement('div');
   halo.className = 'activation-ring__halo';
 
-  const pulse = document.createElement('div');
-  pulse.className = 'activation-ring__pulse';
-
   ring.appendChild(halo);
-  ring.appendChild(pulse);
 
   const attach = () => {
     if (!document.body) {
@@ -267,10 +228,6 @@ const clearRingTimers = () => {
     clearTimeout(ringErrorTimer);
     ringErrorTimer = undefined;
   }
-  if (gestureConfirmTimer) {
-    clearTimeout(gestureConfirmTimer);
-    gestureConfirmTimer = undefined;
-  }
 };
 
 const scheduleFadeOut = (delayMs) => {
@@ -290,7 +247,6 @@ const setRingState = (state, options = {}) => {
     return;
   }
 
-  const reduceMotion = prefersReducedMotion();
   const linger = typeof options.linger === 'number' ? options.linger : RING_ACTIVE_LINGER_MS;
 
   if (state === 'idle') {
@@ -330,19 +286,6 @@ const setRingState = (state, options = {}) => {
   clearRingTimers();
   currentRingState = 'detected';
   ring.classList.remove('is-active', 'is-error');
-  triggerGestureConfirmationEffect();
-
-  if (reduceMotion) {
-    ring.classList.remove('is-detected');
-    ring.classList.add('is-active');
-    currentRingState = 'active';
-    scheduleFadeOut(Math.max(linger / 1.6, 400));
-    return;
-  }
-
-  // Reiniciar animaciones CSS
-  ring.classList.remove('is-detected');
-  void ring.offsetWidth; // force reflow
   ring.classList.add('is-detected');
 
   ringTransitionTimer = window.setTimeout(() => {
@@ -364,48 +307,24 @@ const triggerRingError = () => {
   setRingState('error');
 };
 
-const ALERT_VARIANTS = {
-  success: { icon: 'bi-check2-circle', className: 'helen-alert--success' },
-  warning: { icon: 'bi-exclamation-triangle', className: 'helen-alert--warning' },
-  error: { icon: 'bi-x-circle', className: 'helen-alert--error' },
-  info: { icon: 'bi-info-circle', className: 'helen-alert--info' },
-};
-
 const showPopup = (message, type = 'info') => {
-  if (message === lastNotification) return;
-  lastNotification = message;
-
-  if (typeof Swal === 'undefined') {
-    console.warn('Swal no está disponible. Mensaje:', message);
-    if (type === 'error') {
-      triggerRingError();
-    }
-    return;
-  }
-
   const normalizedType = String(type || 'info').toLowerCase();
-  const variant = ALERT_VARIANTS[normalizedType] || ALERT_VARIANTS.info;
-  const safeMessage = Swal.escapeHtml ? Swal.escapeHtml(String(message)) : String(message);
-  const iconMarkup = `<i class="bi ${variant.icon}" aria-hidden="true"></i>`;
-
-  Swal.fire({
-    toast: true,
-    position: 'top',
-    timer: 3200,
-    timerProgressBar: true,
-    showConfirmButton: false,
-    background: 'transparent',
-    html: `<div class="helen-alert__container"><span class="helen-alert__icon">${iconMarkup}</span><span class="helen-alert__text">${safeMessage}</span></div>`,
-    customClass: {
-      popup: `helen-alert ${variant.className}`,
-      htmlContainer: 'helen-alert__content',
-      timerProgressBar: 'helen-alert__progress',
-    },
-  });
 
   if (normalizedType === 'error') {
     triggerRingError();
   }
+
+  if (!message) {
+    lastNotification = '';
+    return;
+  }
+
+  if (message === lastNotification) {
+    return;
+  }
+
+  lastNotification = message;
+  console.info(`[Helen][${normalizedType}] ${message}`);
 };
 
 const resetDeactivationTimer = () => {
@@ -415,7 +334,6 @@ const resetDeactivationTimer = () => {
     timeoutId = setTimeout(() => {
         isActive = false;
         console.log('Sistema desactivado automáticamente por inactividad.');
-        showPopup('Sistema desactivado por inactividad.', 'warning');
         setRingState('idle');
     }, DEACTIVATION_DELAY);
 };

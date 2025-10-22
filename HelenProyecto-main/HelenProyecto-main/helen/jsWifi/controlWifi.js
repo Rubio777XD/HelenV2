@@ -30,6 +30,8 @@
   const statusMeta = document.getElementById('wifi-status-extra');
 
   const pollingIntervalMs = 12000;
+  const AUTO_RECONNECT_DELAY_MS = 7000;
+  const AUTO_RECONNECT_MAX_ATTEMPTS = 3;
 
   let networks = [];
   let selectedNetwork = null;
@@ -37,6 +39,9 @@
   let pollingHandle = null;
   let scanning = false;
   let connecting = false;
+  let autoReconnectTimer = null;
+  let autoReconnectAttempts = 0;
+  let lastSuccessfulCredentials = null;
 
   const SECURE_WORDS = ['wpa', 'wpa2', 'wpa3', 'sae', 'wep'];
 
@@ -179,6 +184,45 @@
     }
   };
 
+  function clearAutoReconnectTimer () {
+    if (autoReconnectTimer) {
+      window.clearTimeout(autoReconnectTimer);
+      autoReconnectTimer = null;
+    }
+  }
+
+  function scheduleAutoReconnect () {
+    if (!lastSuccessfulCredentials) return;
+    if (connecting) return;
+    if (autoReconnectTimer) return;
+    if (autoReconnectAttempts >= AUTO_RECONNECT_MAX_ATTEMPTS) return;
+    if (document.hidden) return;
+    if (lastStatus && lastStatus.connected_ssid) {
+      autoReconnectAttempts = 0;
+      return;
+    }
+
+    autoReconnectTimer = window.setTimeout(() => {
+      autoReconnectTimer = null;
+      if (connecting) {
+        scheduleAutoReconnect();
+        return;
+      }
+      if (lastStatus && lastStatus.connected_ssid) {
+        autoReconnectAttempts = 0;
+        return;
+      }
+      autoReconnectAttempts += 1;
+      performConnectionAttempt(lastSuccessfulCredentials, { auto: true }).then((success) => {
+        if (success) {
+          autoReconnectAttempts = 0;
+        } else {
+          scheduleAutoReconnect();
+        }
+      });
+    }, AUTO_RECONNECT_DELAY_MS);
+  }
+
   const setNetworksEmptyState = (visible, message) => {
     if (!networksEmpty) return;
     networksEmpty.style.display = visible ? 'flex' : 'none';
@@ -294,6 +338,11 @@
       wifiList.querySelectorAll('.wifi-item').forEach((el) => el.classList.remove('selected'));
       item.classList.add('selected');
       selectedNetwork = network;
+      clearAutoReconnectTimer();
+      autoReconnectAttempts = 0;
+      if (lastSuccessfulCredentials && lastSuccessfulCredentials.ssid !== network.ssid) {
+        lastSuccessfulCredentials = null;
+      }
       setFeedback('', '');
       const isCurrent = Boolean(lastStatus && lastStatus.connected_ssid && lastStatus.connected_ssid.toLowerCase() === network.ssid.toLowerCase());
       if (passwordContainer) {
@@ -345,6 +394,7 @@
     if (!status) {
       setStatusTexts('Sin conexión', fallbackMessage || 'Escanea para buscar redes disponibles.', [] , 'is-offline');
       highlightConnected('');
+      scheduleAutoReconnect();
       return;
     }
 
@@ -370,6 +420,13 @@
     const stateClass = online ? 'is-online' : (status.connecting ? 'is-connecting' : 'is-offline');
     setStatusTexts(primary, secondary, metaLines, stateClass);
     highlightConnected(status.connected_ssid || '');
+
+    if (online) {
+      clearAutoReconnectTimer();
+      autoReconnectAttempts = 0;
+    } else {
+      scheduleAutoReconnect();
+    }
   };
 
   const refreshStatus = async () => {
@@ -436,46 +493,97 @@
     }
   };
 
-  const connectToNetwork = async () => {
-    if (!selectedNetwork || connecting) {
-      return;
-    }
-    if (selectedNetwork.secure && passwordInput && !passwordInput.value) {
-      setFeedback('Introduce la contraseña de la red seleccionada.', 'error');
-      passwordInput.focus();
-      return;
+  async function performConnectionAttempt (credentials, options = {}) {
+    if (!credentials || !credentials.ssid || connecting) {
+      return false;
     }
 
-    setFeedback('', '');
+    const auto = Boolean(options.auto);
+    const passwordValue = credentials.password || '';
+    const secure = Boolean(credentials.secure);
+
+    if (!auto) {
+      setFeedback('', '');
+    } else if (connectFeedback && credentials.ssid) {
+      setFeedback(`Intentando reconectar a ${credentials.ssid}...`, '');
+    }
+
     connecting = true;
-    setButtonLoading(true);
+    if (!auto) {
+      setButtonLoading(true);
+    }
 
-    const payload = {
-      ssid: selectedNetwork.ssid,
-    };
-    if (selectedNetwork.secure && passwordInput) {
-      payload.password = passwordInput.value;
+    const payload = { ssid: credentials.ssid };
+    if (secure && passwordValue) {
+      payload.password = passwordValue;
     }
 
     try {
       const response = await axios.post(getApiUrl('/net/connect'), payload, { timeout: 20000 });
       const data = response && response.data ? response.data : {};
       if (data.connected) {
-        setFeedback(`Conectado a ${selectedNetwork.ssid}.`, 'success');
+        setFeedback(`Conectado a ${credentials.ssid}.`, 'success');
+        lastSuccessfulCredentials = {
+          ssid: credentials.ssid,
+          password: passwordValue,
+          secure
+        };
+        autoReconnectAttempts = 0;
+        clearAutoReconnectTimer();
         await refreshStatus();
         window.setTimeout(scanNetworks, 500);
-      } else {
-        const reason = extractErrorMessage({ response: { data } }, httpErrorCopy.invalidPassword);
-        setFeedback(reason, 'error');
+        return true;
       }
+
+      const reason = extractErrorMessage({ response: { data } }, httpErrorCopy.invalidPassword);
+      if (!auto) {
+        setFeedback(reason, 'error');
+      } else {
+        console.warn('[WiFi] Reconexión automática fallida:', reason);
+      }
+      return false;
     } catch (error) {
-      console.error('[WiFi] connectToNetwork:', error);
       const message = extractErrorMessage(error, httpErrorCopy.default);
-      setFeedback(message, 'error');
+      if (!auto) {
+        setFeedback(message, 'error');
+      } else {
+        console.error('[WiFi] Reconexión automática fallida:', message);
+      }
+      return false;
     } finally {
       connecting = false;
-      setButtonLoading(false);
+      if (!auto) {
+        setButtonLoading(false);
+      }
     }
+  }
+
+  const connectToNetwork = async () => {
+    if (!selectedNetwork || connecting) {
+      return;
+    }
+
+    const requiresPassword = Boolean(selectedNetwork.secure);
+    const passwordValue = requiresPassword && passwordInput ? passwordInput.value : '';
+
+    if (requiresPassword && !passwordValue) {
+      setFeedback('Introduce la contraseña de la red seleccionada.', 'error');
+      if (passwordInput) {
+        passwordInput.focus();
+      }
+      return;
+    }
+
+    clearAutoReconnectTimer();
+    autoReconnectAttempts = 0;
+
+    const credentials = {
+      ssid: selectedNetwork.ssid,
+      password: passwordValue,
+      secure: requiresPassword
+    };
+
+    await performConnectionAttempt(credentials);
   };
 
   if (togglePassword && passwordInput) {
@@ -510,6 +618,7 @@
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       stopPolling();
+      clearAutoReconnectTimer();
     } else {
       refreshStatus();
       schedulePolling();
