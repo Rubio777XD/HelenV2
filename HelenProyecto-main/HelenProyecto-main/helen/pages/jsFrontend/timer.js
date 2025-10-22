@@ -29,6 +29,7 @@
   let customHours;
   let customMinutes;
   let customSeconds;
+  let visualTicker = null;
 
   const pad2 = (value) => String(value).padStart(2, '0');
 
@@ -210,6 +211,58 @@
     updateControlButtons(timer);
   };
 
+  const updateTimersListTimes = () => {
+    if (!timersList) {
+      return;
+    }
+    const map = new Map(state.timers.map((timer) => [timer.id, timer]));
+    timersList.querySelectorAll('.timer-item').forEach((item) => {
+      const id = item.dataset.timerId;
+      if (!id || !map.has(id)) {
+        return;
+      }
+      const timer = map.get(id);
+      const timeEl = item.querySelector('.timer-item__time');
+      if (timeEl) {
+        timeEl.textContent = formatForDisplay(computeRemainingMs(timer));
+      }
+      const metaEl = item.querySelector('.timer-item__meta');
+      if (metaEl) {
+        const descriptor = describeStatus(timer);
+        const iconEl = metaEl.querySelector('i');
+        const textEl = metaEl.querySelector('span');
+        if (iconEl) {
+          iconEl.className = `bi ${descriptor.icon}`;
+        }
+        if (textEl) {
+          textEl.textContent = descriptor.text;
+        }
+      }
+    });
+  };
+
+  const updateVisualCountdowns = () => {
+    if (!state.timers.length) {
+      renderMain();
+      return;
+    }
+    renderMain();
+    updateTimersListTimes();
+  };
+
+  const startVisualTicker = () => {
+    if (visualTicker) {
+      return;
+    }
+    visualTicker = window.setInterval(() => {
+      if (!state.timers.length) {
+        renderMain();
+        return;
+      }
+      updateVisualCountdowns();
+    }, 500);
+  };
+
   const buildTimerCard = (timer) => {
     const article = document.createElement('article');
     article.className = 'timer-item';
@@ -333,6 +386,7 @@
       ? items.filter((item) => item && item.type === 'timer')
       : [];
     render();
+    updateVisualCountdowns();
   };
 
   const createTimer = (durationMs, labelText) => {
@@ -631,7 +685,9 @@
     scheduler.on('update', handleSchedulerUpdate);
     scheduler.ready().then(() => {
       handleSchedulerUpdate(scheduler.list('timer'));
+      startVisualTicker();
     });
+    startVisualTicker();
   };
 
   if (document.readyState === 'loading') {

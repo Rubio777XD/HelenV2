@@ -6,14 +6,139 @@ let deviceToEditId = null;
 let nextDeviceId = 1;
 let selectedRoom = '';
 let selectedType = '';
+let devices = [];
 
-const qs  = s => document.querySelector(s);
-const qsa = s => document.querySelectorAll(s);
+const STORAGE_KEY = 'helen:devices:v1';
+
+const qs  = (s) => document.querySelector(s);
+const qsa = (s) => document.querySelectorAll(s);
+
+const safeStorage = {
+  get(key) {
+    try {
+      return window.localStorage.getItem(key);
+    } catch (error) {
+      console.warn('[Dispositivos] No se pudo leer localStorage:', error);
+      return null;
+    }
+  },
+  set(key, value) {
+    try {
+      window.localStorage.setItem(key, value);
+    } catch (error) {
+      console.warn('[Dispositivos] No se pudo escribir localStorage:', error);
+    }
+  },
+};
+
+function loadDevicesFromStorage() {
+  const raw = safeStorage.get(STORAGE_KEY);
+  if (!raw) {
+    devices = [];
+    nextDeviceId = 1;
+    return;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      devices = [];
+      nextDeviceId = 1;
+      return;
+    }
+    const mapped = [];
+    let maxId = 0;
+    parsed.forEach((item) => {
+      if (!item) return;
+      const numericId = Number(item.id);
+      if (!Number.isFinite(numericId)) return;
+      const room = typeof item.room === 'string' ? item.room : '';
+      const type = typeof item.type === 'string' ? item.type : '';
+      const baseName = typeof item.name === 'string' ? item.name : [room, type].filter(Boolean).join(' - ');
+      const name = baseName || 'Dispositivo';
+      const icon = typeof item.icon === 'string' ? item.icon : '';
+      const isOn = Boolean(item.isOn);
+      mapped.push({
+        id: numericId,
+        room,
+        type,
+        name,
+        icon,
+        isOn,
+      });
+      if (numericId > maxId) {
+        maxId = numericId;
+      }
+    });
+    devices = mapped;
+    nextDeviceId = maxId + 1 || 1;
+  } catch (error) {
+    console.warn('[Dispositivos] No se pudo parsear dispositivos almacenados:', error);
+    devices = [];
+    nextDeviceId = 1;
+  }
+}
+
+function saveDevicesToStorage() {
+  safeStorage.set(STORAGE_KEY, JSON.stringify(devices));
+}
+
+function getDeviceById(id) {
+  const numericId = Number(id);
+  if (!Number.isFinite(numericId)) return null;
+  return devices.find((device) => device.id === numericId) || null;
+}
+
+function renderDevices() {
+  const list = qs('#deviceList');
+  if (!list) return;
+  list.innerHTML = '';
+
+  devices.forEach((device) => {
+    const name = device.name || [device.room, device.type].filter(Boolean).join(' - ') || 'Dispositivo';
+    const statusText = device.isOn ? 'Encendido' : 'Apagado';
+    const badgeClass = device.isOn ? 'status-on' : 'status-off';
+    const badgeLabel = device.isOn ? 'ON' : 'OFF';
+    const card = document.createElement('div');
+    card.className = `device-card${device.isOn ? '' : ' is-off'}`;
+    card.id = `device-${device.id}`;
+    card.innerHTML = `
+      <div class="device-header">
+        <div class="device-icon">${device.icon || '💡'}</div>
+        <div class="device-name">${name}</div>
+      </div>
+      <div class="device-status">
+        <label class="switch">
+          <input type="checkbox" ${device.isOn ? 'checked' : ''} onchange="toggleDeviceStatus(this, ${device.id})">
+          <span class="slider"></span>
+        </label>
+        <span class="device-status-text">${statusText}</span>
+        <span class="status-badge ${badgeClass}">${badgeLabel}</span>
+      </div>
+      <div class="device-actions">
+        <button class="action-button" onclick="showEditModal(${device.id})" aria-label="Editar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button class="action-button" onclick="showDeleteModal(${device.id})" aria-label="Eliminar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+    `;
+    list.appendChild(card);
+  });
+
+  updateUIState();
+}
 
 // ================== Init ==================
 document.addEventListener('DOMContentLoaded', () => {
   ensureEmptyStateNode();
-  updateUIState();
+  loadDevicesFromStorage();
+  renderDevices();
 });
 
 // ================== Helpers UI ==================
@@ -52,7 +177,7 @@ function updateUIState() {
 
   if (!list) return;
 
-  const count = list.querySelectorAll('.device-card').length;
+  const count = Array.isArray(devices) ? devices.length : list.querySelectorAll('.device-card').length;
 
   if (count > 0) {
     list.style.display = 'grid';
@@ -67,7 +192,7 @@ function updateUIState() {
 
 // ================== Eliminar ==================
 function showDeleteModal(deviceId) {
-  deviceToDeleteId = deviceId;
+  deviceToDeleteId = Number(deviceId);
   const m = qs('#deleteModal');
   if (m) m.style.display = 'grid';
 }
@@ -77,39 +202,49 @@ function hideDeleteModal() {
   deviceToDeleteId = null;
 }
 function confirmDelete() {
-  if (!deviceToDeleteId) return;
-  const el = qs(`#device-${deviceToDeleteId}`);
-  if (el) el.remove();
+  if (deviceToDeleteId == null) return;
+  devices = devices.filter((device) => device.id !== deviceToDeleteId);
+  saveDevicesToStorage();
+  renderDevices();
   hideDeleteModal();
-  updateUIState();
 }
 
 // ================== Editar ==================
 function showEditModal(deviceId) {
-  deviceToEditId = deviceId;
+  deviceToEditId = Number(deviceId);
 
-  const card = qs(`#device-${deviceId}`);
-  if (!card) return;
+  const device = getDeviceById(deviceToEditId);
+  if (!device) return;
 
-  const currentName = card.querySelector('.device-name')?.textContent || '';
-  const currentIcon = card.querySelector('.device-icon')?.textContent || '';
+  selectedRoom = device.room || '';
+  selectedType = device.type || '';
+  selectedIcon = device.icon || '';
 
-  // set selección inicial por nombre "Sala - Luz"
-  const [room, type] = currentName.split(' - ');
-  if (room) {
-    const r = qs(`#editModal .room-option[data-room="${room}"]`);
-    r && selectRoom(r, room);
-  }
-  if (type) {
-    const t = qs(`#editModal .type-option[data-type="${type}"]`);
-    t && selectDeviceType(t, type);
+  if ((!selectedRoom || !selectedType) && device.name) {
+    const [roomFromName, typeFromName] = device.name.split(' - ');
+    if (!selectedRoom && roomFromName) selectedRoom = roomFromName;
+    if (!selectedType && typeFromName) selectedType = typeFromName;
   }
 
-  // icono actual
-  qsa('#editModal .icon-option').forEach(opt => {
-    const match = opt.textContent.trim() === currentIcon.trim();
+  qsa('#editModal .room-option').forEach((opt) => opt.classList.remove('selected'));
+  if (selectedRoom) {
+    const roomEl = qs(`#editModal .room-option[data-room="${selectedRoom}"]`);
+    if (roomEl) {
+      selectRoom(roomEl, selectedRoom);
+    }
+  }
+
+  qsa('#editModal .type-option').forEach((opt) => opt.classList.remove('selected'));
+  if (selectedType) {
+    const typeEl = qs(`#editModal .type-option[data-type="${selectedType}"]`);
+    if (typeEl) {
+      selectDeviceType(typeEl, selectedType);
+    }
+  }
+
+  qsa('#editModal .icon-option').forEach((opt) => {
+    const match = opt.textContent.trim() === (selectedIcon || '').trim();
     opt.classList.toggle('selected', match);
-    if (match) selectedIcon = currentIcon;
   });
 
   const m = qs('#editModal');
@@ -196,12 +331,16 @@ function saveDeviceChanges() {
   if (!selectedRoom || !selectedType) { alert('Selecciona ubicación y tipo'); return; }
   if (!selectedIcon) { alert('Selecciona un ícono'); return; }
 
-  const card = qs(`#device-${deviceToEditId}`);
-  if (!card) return;
+  const device = getDeviceById(deviceToEditId);
+  if (!device) return;
 
-  card.querySelector('.device-name').textContent = `${selectedRoom} - ${selectedType}`;
-  card.querySelector('.device-icon').textContent = selectedIcon;
+  device.room = selectedRoom;
+  device.type = selectedType;
+  device.name = `${selectedRoom} - ${selectedType}`;
+  device.icon = selectedIcon;
 
+  saveDevicesToStorage();
+  renderDevices();
   hideEditModal();
 }
 
@@ -251,46 +390,20 @@ function addNewDevice() {
   if (!selectedAddIcon) { alert('Por favor selecciona un ícono para el dispositivo'); return; }
 
   const deviceName = `${selectedRoom} - ${selectedType}`;
-
-  const list = qs('#deviceList');
-  if (!list) return;
-
   const id = nextDeviceId++;
 
-  const card = document.createElement('div');
-  card.className = 'device-card is-off'; // inicia apagado
-  card.id = `device-${id}`;
-  card.innerHTML = `
-    <div class="device-header">
-      <div class="device-icon">${selectedAddIcon}</div>
-      <div class="device-name">${deviceName}</div>
-    </div>
-    <div class="device-status">
-      <label class="switch">
-        <input type="checkbox" onchange="toggleDeviceStatus(this, ${id})">
-        <span class="slider"></span>
-      </label>
-      <span class="device-status-text">Apagado</span>
-      <span class="status-badge status-off">OFF</span>
-    </div>
-    <div class="device-actions">
-      <button class="action-button" onclick="showEditModal(${id})" aria-label="Editar">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-      <button class="action-button" onclick="showDeleteModal(${id})" aria-label="Eliminar">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-    </div>
-  `;
-  list.appendChild(card);
+  devices.push({
+    id,
+    room: selectedRoom,
+    type: selectedType,
+    name: deviceName,
+    icon: selectedAddIcon,
+    isOn: false,
+  });
 
+  saveDevicesToStorage();
+  renderDevices();
   hideAddModal();
-  updateUIState();
 }
 
 // ================== Encendido/Apagado ==================
@@ -308,6 +421,12 @@ function toggleDeviceStatus(checkbox, deviceId) {
     statusBadge.className   = 'status-badge ' + (isOn ? 'status-on' : 'status-off');
   }
   card.classList.toggle('is-off', !isOn);
+
+  const device = getDeviceById(deviceId);
+  if (device) {
+    device.isOn = isOn;
+    saveDevicesToStorage();
+  }
 
   // Hook opcional para backend
   if (typeof window.onDeviceToggle === 'function') {

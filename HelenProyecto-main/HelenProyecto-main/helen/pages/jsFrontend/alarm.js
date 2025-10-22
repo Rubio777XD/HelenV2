@@ -1,11 +1,305 @@
 (function () {
   'use strict';
 
-  const scheduler = window.HelenScheduler;
-  if (!scheduler) {
-    console.warn('[Alarmas] HelenScheduler no está disponible.');
-    return;
-  }
+  const FALLBACK_STORAGE_KEY = 'helen:alarms:fallback:v1';
+  const SCHEDULER_CHECK_INTERVAL = 50;
+  const SCHEDULER_MAX_ATTEMPTS = 40;
+
+  const safeLocalStorage = {
+    get(key) {
+      try {
+        return window.localStorage.getItem(key);
+      } catch (error) {
+        console.warn('[Alarmas] No se pudo leer localStorage:', error);
+        return null;
+      }
+    },
+    set(key, value) {
+      try {
+        window.localStorage.setItem(key, value);
+      } catch (error) {
+        console.warn('[Alarmas] No se pudo escribir localStorage:', error);
+      }
+    },
+  };
+
+  const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+  const toNumber = (value, fallback = 0) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  const clone = (value) => {
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch (error) {
+      return value;
+    }
+  };
+
+  const computeAlarmTarget = (metadata, reference = Date.now()) => {
+    if (!metadata) return null;
+    const hours24 = toNumber(metadata.hours24, NaN);
+    const minutes = clamp(toNumber(metadata.minutes, 0), 0, 59);
+    if (!Number.isFinite(hours24)) {
+      return null;
+    }
+
+    const base = new Date(reference);
+    base.setMilliseconds(0);
+    base.setSeconds(0);
+    base.setMinutes(minutes);
+    base.setHours(hours24);
+
+    let candidate = base.getTime();
+    const repeatDays = Array.isArray(metadata.repeatDays)
+      ? metadata.repeatDays.map((day) => Number(day)).filter((day) => Number.isFinite(day))
+      : [];
+    const currentDay = new Date(reference).getDay();
+
+    if (repeatDays.length) {
+      let best = null;
+      repeatDays.sort((a, b) => a - b);
+      for (const day of repeatDays) {
+        let delta = day - currentDay;
+        if (delta < 0) delta += 7;
+        let scheduled = candidate + delta * 24 * 60 * 60 * 1000;
+        if (delta === 0 && scheduled <= reference + 1000) {
+          scheduled += 7 * 24 * 60 * 60 * 1000;
+        }
+        if (best === null || scheduled < best) {
+          best = scheduled;
+        }
+      }
+      return best;
+    }
+
+    if (candidate <= reference + 1000) {
+      candidate += 24 * 60 * 60 * 1000;
+    }
+    return candidate;
+  };
+
+  const createFallbackScheduler = () => {
+    let items = [];
+    const raw = safeLocalStorage.get(FALLBACK_STORAGE_KEY);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          items = parsed.map((item) => ({
+            ...item,
+            metadata: item.metadata || {},
+          }));
+        }
+      } catch (error) {
+        console.warn('[Alarmas] No se pudo parsear fallback de alarmas:', error);
+      }
+    }
+
+    const listeners = new Set();
+
+    const persist = () => {
+      safeLocalStorage.set(FALLBACK_STORAGE_KEY, JSON.stringify(items));
+    };
+
+    const emitUpdate = () => {
+      const snapshot = items.map((item) => clone(item));
+      listeners.forEach((handler) => {
+        try {
+          handler(snapshot);
+        } catch (error) {
+          console.error('[Alarmas] Error en listener fallback', error);
+        }
+      });
+      persist();
+    };
+
+    const ensureMetadata = (item) => {
+      const meta = item.metadata || {};
+      item.metadata = meta;
+      meta.hours = String(meta.hours || '07').padStart(2, '0');
+      meta.minutes = String(clamp(toNumber(meta.minutes, 0), 0, 59)).padStart(2, '0');
+      meta.ampm = String(meta.ampm || 'AM').toUpperCase();
+      let hours24 = toNumber(meta.hours, 0);
+      if (meta.ampm === 'PM' && hours24 < 12) {
+        hours24 += 12;
+      }
+      if (meta.ampm === 'AM' && hours24 === 12) {
+        hours24 = 0;
+      }
+      meta.hours24 = hours24;
+      meta.repeatDays = Array.isArray(meta.repeatDays)
+        ? meta.repeatDays.map((day) => Number(day)).filter((day) => Number.isFinite(day))
+        : [];
+      meta.active = meta.active !== false;
+      if (typeof meta.label === 'string') {
+        item.label = meta.label || 'Alarma';
+      }
+      if (!item.label) {
+        item.label = 'Alarma';
+      }
+    };
+
+    items.forEach((item) => ensureMetadata(item));
+
+    const recalc = (item) => {
+      ensureMetadata(item);
+      item.updatedAt = Date.now();
+      if (item.metadata.active) {
+        const target = computeAlarmTarget(item.metadata);
+        if (target) {
+          item.targetEpochMs = target;
+          item.remainingMs = Math.max(0, target - Date.now());
+          item.state = 'running';
+          return;
+        }
+      }
+      item.targetEpochMs = null;
+      item.remainingMs = null;
+      item.state = 'paused';
+    };
+
+    items.forEach((item) => recalc(item));
+
+    const list = (type) => {
+      const snapshot = items.map((item) => clone(item));
+      if (type) {
+        return snapshot.filter((item) => item.type === type);
+      }
+      return snapshot;
+    };
+
+    const findIndex = (id) => items.findIndex((item) => item.id === id);
+
+    return {
+      ready: () => Promise.resolve(),
+      on(event, handler) {
+        if (event === 'update' && typeof handler === 'function') {
+          listeners.add(handler);
+        }
+      },
+      off(event, handler) {
+        if (event === 'update' && handler) {
+          listeners.delete(handler);
+        }
+      },
+      list,
+      createAlarm(options = {}) {
+        const hoursRaw = options.hours != null ? String(options.hours).padStart(2, '0') : '07';
+        const minutesRaw = options.minutes != null ? String(options.minutes).padStart(2, '0') : '00';
+        const ampm = String(options.ampm || 'AM').toUpperCase();
+        const repeatDays = Array.isArray(options.repeatDays)
+          ? options.repeatDays.map((day) => Number(day)).filter((day) => Number.isFinite(day))
+          : [];
+        const id = options.id || `fallback-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const item = {
+          id,
+          type: 'alarm',
+          label: options.label ? String(options.label) : 'Alarma',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          metadata: {
+            hours: hoursRaw,
+            minutes: minutesRaw,
+            ampm,
+            repeatDays,
+            active: options.active !== false,
+            label: options.label ? String(options.label) : 'Alarma',
+          },
+          targetEpochMs: null,
+          remainingMs: null,
+          state: 'paused',
+        };
+        ensureMetadata(item);
+        recalc(item);
+        items.push(item);
+        emitUpdate();
+        return item.id;
+      },
+      updateAlarm(id, updates = {}) {
+        const index = findIndex(id);
+        if (index === -1) return;
+        const item = items[index];
+        if (updates.label != null) {
+          item.label = String(updates.label);
+          item.metadata.label = item.label;
+        }
+        if (updates.hours != null) {
+          item.metadata.hours = String(updates.hours).padStart(2, '0');
+        }
+        if (updates.minutes != null) {
+          item.metadata.minutes = String(updates.minutes).padStart(2, '0');
+        }
+        if (updates.ampm) {
+          item.metadata.ampm = String(updates.ampm).toUpperCase();
+        }
+        if (updates.repeatDays) {
+          item.metadata.repeatDays = Array.isArray(updates.repeatDays)
+            ? updates.repeatDays.map((day) => Number(day)).filter((day) => Number.isFinite(day))
+            : [];
+        }
+        recalc(item);
+        emitUpdate();
+      },
+      toggleAlarm(id, active) {
+        const index = findIndex(id);
+        if (index === -1) return;
+        const item = items[index];
+        const desired = typeof active === 'boolean' ? active : !item.metadata.active;
+        item.metadata.active = desired;
+        recalc(item);
+        emitUpdate();
+      },
+      deleteAlarm(id) {
+        const index = findIndex(id);
+        if (index === -1) return;
+        items.splice(index, 1);
+        emitUpdate();
+      },
+    };
+  };
+
+  let scheduler = null;
+  let schedulerPromise = null;
+
+  const waitForScheduler = () => {
+    if (scheduler) return Promise.resolve(scheduler);
+    if (schedulerPromise) return schedulerPromise;
+
+    schedulerPromise = new Promise((resolve) => {
+      const finalize = (instance) => {
+        scheduler = instance;
+        resolve(instance);
+      };
+
+      const attemptAssign = () => {
+        if (window.HelenScheduler) {
+          finalize(window.HelenScheduler);
+          return true;
+        }
+        return false;
+      };
+
+      if (attemptAssign()) {
+        return;
+      }
+
+      let attempts = 0;
+      const interval = window.setInterval(() => {
+        attempts += 1;
+        if (attemptAssign()) {
+          window.clearInterval(interval);
+        } else if (attempts >= SCHEDULER_MAX_ATTEMPTS) {
+          window.clearInterval(interval);
+          console.warn('[Alarmas] Usando modo fallback de alarmas.');
+          finalize(createFallbackScheduler());
+        }
+      }, SCHEDULER_CHECK_INTERVAL);
+    });
+
+    return schedulerPromise;
+  };
 
   const alarmList = document.querySelector('.alarm-list, .alarms-list');
   const loadingElement = document.querySelector('.alarm-loading');
@@ -133,6 +427,7 @@
     alarmItem.classList.toggle('inactive', !isActive);
 
     toggleInput.addEventListener('change', (event) => {
+      if (!scheduler) return;
       scheduler.toggleAlarm(alarm.id, event.target.checked);
       showToast(event.target.checked ? 'success' : 'success', event.target.checked ? 'Alarma activada' : 'Alarma desactivada');
     });
@@ -236,34 +531,47 @@
   const createAlarmFromModal = () => {
     const payload = getAlarmPayloadFromModal();
     if (!payload) return;
-    scheduler.createAlarm({
-      hours: payload.hours,
-      minutes: payload.minutes,
-      ampm: payload.ampm,
-      repeatDays: payload.repeatDays,
-      label: payload.label,
-      active: true,
+    waitForScheduler().then(() => {
+      if (!scheduler) {
+        showToast('error', 'No se pudo crear la alarma.');
+        return;
+      }
+      scheduler.createAlarm({
+        hours: payload.hours,
+        minutes: payload.minutes,
+        ampm: payload.ampm,
+        repeatDays: payload.repeatDays,
+        label: payload.label,
+        active: true,
+      });
+      showToast('success', 'Alarma creada');
+      closeAlarmModal();
     });
-    showToast('success', 'Alarma creada');
-    closeAlarmModal();
   };
 
   const saveEditAlarm = () => {
     if (!editingAlarmId) return;
     const payload = getAlarmPayloadFromModal();
     if (!payload) return;
-    scheduler.updateAlarm(editingAlarmId, {
-      hours: payload.hours,
-      minutes: payload.minutes,
-      ampm: payload.ampm,
-      repeatDays: payload.repeatDays,
-      label: payload.label,
+    waitForScheduler().then(() => {
+      if (!scheduler) {
+        showToast('error', 'No se pudo actualizar la alarma.');
+        return;
+      }
+      scheduler.updateAlarm(editingAlarmId, {
+        hours: payload.hours,
+        minutes: payload.minutes,
+        ampm: payload.ampm,
+        repeatDays: payload.repeatDays,
+        label: payload.label,
+      });
+      showToast('success', 'Alarma actualizada');
+      closeAlarmModal();
     });
-    showToast('success', 'Alarma actualizada');
-    closeAlarmModal();
   };
 
   const deleteAlarm = (id) => {
+    if (!scheduler) return;
     scheduler.deleteAlarm(id);
     showToast('success', 'Alarma eliminada');
   };
@@ -288,14 +596,28 @@
   };
 
   const refreshAlarms = () => {
+    if (!scheduler) return;
     alarms = scheduler.list('alarm') || [];
     renderAlarms();
   };
 
-  scheduler.on('update', refreshAlarms);
+  const attachScheduler = () => {
+    if (!scheduler) return;
+    scheduler.on && scheduler.on('update', refreshAlarms);
+    if (typeof scheduler.ready === 'function') {
+      scheduler.ready().then(() => {
+        refreshAlarms();
+      });
+    } else {
+      refreshAlarms();
+    }
+  };
 
-  document.addEventListener('DOMContentLoaded', () => {
-    scheduler.ready().then(refreshAlarms);
+  const init = () => {
+    waitForScheduler().then(() => {
+      attachScheduler();
+    });
+
     updateClock();
     setInterval(updateClock, 1000);
 
@@ -342,5 +664,16 @@
         closeDeleteModal();
       });
     }
-  });
+
+    waitForScheduler().then(() => {
+      refreshAlarms();
+      hideLoading();
+    });
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })();
