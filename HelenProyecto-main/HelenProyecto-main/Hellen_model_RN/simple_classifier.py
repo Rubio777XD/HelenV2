@@ -28,6 +28,7 @@ import math
 import pickle
 import random
 import threading
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, Iterator, List, Sequence, Tuple
@@ -175,10 +176,22 @@ class SyntheticGestureStream:
 
         priority = ["Start", "Clima", "Reloj", "Inicio"]
         if any(label in priority for _, label in self._samples):
-            prioritized = [sample for sample in self._samples if sample[1] in priority]
-            others = [sample for sample in self._samples if sample[1] not in priority]
-            prioritized.sort(key=lambda pair: priority.index(pair[1]))
-            self._samples = prioritized + others
+            buckets = {label: deque() for label in priority}
+            others: List[Tuple[List[float], str]] = []
+            for sample in self._samples:
+                label = sample[1]
+                if label in buckets:
+                    buckets[label].append(sample)
+                else:
+                    others.append(sample)
+
+            interleaved: List[Tuple[List[float], str]] = []
+            while any(buckets[label] for label in priority):
+                for label in priority:
+                    if buckets[label]:
+                        interleaved.append(buckets[label].popleft())
+
+            self._samples = interleaved + others
 
         self._index = 0
         self._lock = threading.Lock()

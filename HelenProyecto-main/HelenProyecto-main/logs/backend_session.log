@@ -1,0 +1,82 @@
+[2025-10-22 22:04:09,330] WARNING data.pickle no encontrado (archivo grande omitido del repo, ver documentación de build). Fallback activo; la calibración puede degradar accuracy.
+[2025-10-22 22:04:09,330] INFO Se utilizará el dataset legado /workspace/HelenV2/HelenProyecto-main/HelenProyecto-main/Hellen_model_RN/data1.pickle
+[2025-10-22 22:04:09,341] INFO Se utilizará el dataset legado /workspace/HelenV2/HelenProyecto-main/HelenProyecto-main/Hellen_model_RN/data1.pickle
+[2025-10-22 22:04:09,714] WARNING Verificación geométrica deshabilitada: data.pickle no está presente. Se utilizarán solo las predicciones del modelo.
+[2025-10-22 22:04:10,825] INFO Modelo de producción cargado desde /workspace/HelenV2/HelenProyecto-main/HelenProyecto-main/Hellen_model_RN/model.p
+[2025-10-22 22:04:11,702] INFO Clasificador secundario preparado desde /workspace/HelenV2/HelenProyecto-main/HelenProyecto-main/Hellen_model_RN/data1.pickle
+[2025-10-22 22:04:11,703] INFO Modelo activo source=production loaded=True path=/workspace/HelenV2/HelenProyecto-main/HelenProyecto-main/Hellen_model_RN/model.p dataset=/workspace/HelenV2/HelenProyecto-main/HelenProyecto-main/Hellen_model_RN/data1.pickle exists=True fallback=True
+[2025-10-22 22:04:11,703] INFO Umbrales aplicados => Clima=0.34/0.24, Inicio=0.35/0.25, Reloj=0.35/0.25, Start=0.37/0.26
+[2025-10-22 22:04:11,703] INFO Usando flujo sintético de gestos desde /workspace/HelenV2/HelenProyecto-main/HelenProyecto-main/Hellen_model_RN/data1.pickle
+[2025-10-22 22:04:12,288] INFO Gesture pipeline started
+[2025-10-22 22:04:12,288] INFO HELEN backend serving from 0.0.0.0:5500
+[2025-10-22 22:04:12,295] INFO gesture_detected label=Start score=1.000 latency=6.3ms state=idle source=pipeline
+[2025-10-22 22:04:13,385] INFO gesture_detected label=Clima score=1.000 latency=2.2ms state=listening source=pipeline
+[2025-10-22 22:04:14,475] INFO gesture_detected label=Start score=1.000 latency=2.2ms state=idle source=pipeline
+[2025-10-22 22:04:15,565] INFO gesture_detected label=Clima score=1.000 latency=2.1ms state=listening source=pipeline
+[2025-10-22 22:04:16,654] INFO gesture_detected label=Start score=1.000 latency=2.1ms state=idle source=pipeline
+[2025-10-22 22:04:17,744] INFO gesture_detected label=Clima score=1.000 latency=2.2ms state=listening source=pipeline
+[2025-10-22 22:04:18,834] INFO gesture_detected label=Start score=1.000 latency=2.3ms state=idle source=pipeline
+[2025-10-22 22:04:19,923] INFO gesture_detected label=Clima score=1.000 latency=2.2ms state=listening source=pipeline
+[2025-10-22 22:04:21,014] INFO gesture_detected label=Start score=1.000 latency=2.4ms state=idle source=pipeline
+[2025-10-22 22:04:21,760] INFO HTTP 127.0.0.1 - "GET /engine/status HTTP/1.1" 200 -
+[2025-10-22 22:04:22,128] INFO gesture_detected label=Clima score=1.000 latency=2.9ms state=listening source=pipeline
+[2025-10-22 22:04:23,218] INFO gesture_detected label=Start score=1.000 latency=2.1ms state=idle source=pipeline
+[2025-10-22 22:04:24,309] INFO gesture_detected label=Clima score=1.000 latency=2.1ms state=listening source=pipeline
+[2025-10-22 22:04:25,233] INFO HTTP 127.0.0.1 - "GET /events HTTP/1.1" 200 -
+[2025-10-22 22:04:25,234] INFO SSE client 1 connected from ('127.0.0.1', 42550)
+[2025-10-22 22:04:25,399] INFO gesture_detected label=Start score=1.000 latency=2.2ms state=idle source=pipeline
+[2025-10-22 22:04:26,489] INFO gesture_detected label=Clima score=1.000 latency=1.9ms state=listening source=pipeline
+[2025-10-22 22:04:27,589] INFO gesture_detected label=Start score=1.000 latency=1.9ms state=idle source=pipeline
+[2025-10-22 22:04:28,679] INFO gesture_detected label=Clima score=0.999 latency=2.1ms state=listening source=pipeline
+[2025-10-22 22:04:29,769] INFO gesture_detected label=Start score=1.000 latency=2.1ms state=idle source=pipeline
+[2025-10-22 22:04:30,861] INFO gesture_detected label=Clima score=1.000 latency=2.2ms state=listening source=pipeline
+[2025-10-22 22:04:31,966] INFO gesture_detected label=Start score=1.000 latency=2.0ms state=idle source=pipeline
+[2025-10-22 22:04:33,056] INFO gesture_detected label=Clima score=1.000 latency=2.0ms state=listening source=pipeline
+[2025-10-22 22:04:34,154] INFO gesture_detected label=Start score=1.000 latency=2.0ms state=idle source=pipeline
+[2025-10-22 22:04:35,244] INFO gesture_detected label=Clima score=1.000 latency=2.0ms state=listening source=pipeline
+[2025-10-22 22:04:36,335] INFO gesture_detected label=Start score=1.000 latency=2.1ms state=idle source=pipeline
+[2025-10-22 22:04:37,426] INFO gesture_detected label=Clima score=1.000 latency=2.1ms state=listening source=pipeline
+[2025-10-22 22:04:38,515] INFO gesture_detected label=Start score=1.000 latency=2.1ms state=idle source=pipeline
+[2025-10-22 22:04:39,968] INFO gesture_detected label=Start score=1.000 latency=2.2ms state=idle source=pipeline
+[2025-10-22 22:04:41,058] INFO gesture_detected label=Clima score=1.000 latency=2.1ms state=listening source=pipeline
+[2025-10-22 22:04:42,148] INFO gesture_detected label=Start score=1.000 latency=2.1ms state=idle source=pipeline
+[2025-10-22 22:04:43,242] INFO gesture_detected label=Clima score=0.600 latency=2.0ms state=listening source=pipeline
+[2025-10-22 22:04:44,331] INFO gesture_detected label=Start score=1.000 latency=2.2ms state=idle source=pipeline
+[2025-10-22 22:04:45,421] INFO gesture_detected label=Clima score=1.000 latency=2.2ms state=listening source=pipeline
+[2025-10-22 22:04:46,511] INFO gesture_detected label=Start score=1.000 latency=2.4ms state=idle source=pipeline
+[2025-10-22 22:04:47,964] INFO gesture_detected label=Start score=1.000 latency=2.0ms state=idle source=pipeline
+[2025-10-22 22:04:49,053] INFO gesture_detected label=Clima score=0.965 latency=2.0ms state=listening source=pipeline
+[2025-10-22 22:04:50,143] INFO gesture_detected label=Start score=1.000 latency=2.1ms state=idle source=pipeline
+[2025-10-22 22:04:51,233] INFO gesture_detected label=Clima score=0.844 latency=2.0ms state=listening source=pipeline
+[2025-10-22 22:04:52,322] INFO gesture_detected label=Start score=1.000 latency=2.1ms state=idle source=pipeline
+[2025-10-22 22:04:53,412] INFO gesture_detected label=Clima score=0.974 latency=2.1ms state=listening source=pipeline
+[2025-10-22 22:04:54,502] INFO gesture_detected label=Start score=1.000 latency=2.0ms state=idle source=pipeline
+[2025-10-22 22:04:55,591] INFO gesture_detected label=Clima score=0.995 latency=2.0ms state=listening source=pipeline
+[2025-10-22 22:04:56,683] INFO gesture_detected label=Start score=1.000 latency=2.2ms state=idle source=pipeline
+[2025-10-22 22:04:57,773] INFO gesture_detected label=Clima score=1.000 latency=2.7ms state=listening source=pipeline
+[2025-10-22 22:04:58,862] INFO gesture_detected label=Start score=1.000 latency=2.0ms state=idle source=pipeline
+[2025-10-22 22:04:59,952] INFO gesture_detected label=Clima score=0.999 latency=2.7ms state=listening source=pipeline
+[2025-10-22 22:05:01,042] INFO gesture_detected label=Start score=1.000 latency=2.3ms state=idle source=pipeline
+[2025-10-22 22:05:02,131] INFO gesture_detected label=Clima score=0.544 latency=2.2ms state=listening source=pipeline
+[2025-10-22 22:05:03,221] INFO gesture_detected label=Start score=1.000 latency=1.9ms state=idle source=pipeline
+[2025-10-22 22:05:04,311] INFO gesture_detected label=Clima score=1.000 latency=2.1ms state=listening source=pipeline
+[2025-10-22 22:05:05,401] INFO gesture_detected label=Start score=1.000 latency=2.0ms state=idle source=pipeline
+[2025-10-22 22:05:06,491] INFO gesture_detected label=Clima score=1.000 latency=2.2ms state=listening source=pipeline
+[2025-10-22 22:05:06,491] INFO SSE client 1 disconnected
+[2025-10-22 22:05:07,581] INFO gesture_detected label=Start score=1.000 latency=2.0ms state=idle source=pipeline
+[2025-10-22 22:05:08,670] INFO gesture_detected label=Clima score=1.000 latency=2.3ms state=listening source=pipeline
+[2025-10-22 22:05:09,759] INFO gesture_detected label=Start score=1.000 latency=2.2ms state=idle source=pipeline
+[2025-10-22 22:05:10,849] INFO gesture_detected label=Clima score=1.000 latency=2.4ms state=listening source=pipeline
+[2025-10-22 22:05:11,939] INFO gesture_detected label=Start score=1.000 latency=2.5ms state=idle source=pipeline
+[2025-10-22 22:05:13,028] INFO gesture_detected label=Clima score=1.000 latency=2.3ms state=listening source=pipeline
+[2025-10-22 22:05:14,118] INFO gesture_detected label=Start score=1.000 latency=2.1ms state=idle source=pipeline
+[2025-10-22 22:05:14,149] INFO HTTP 127.0.0.1 - "GET /engine/status HTTP/1.1" 200 -
+[2025-10-22 22:05:15,210] INFO gesture_detected label=Clima score=1.000 latency=2.0ms state=listening source=pipeline
+[2025-10-22 22:05:16,299] INFO gesture_detected label=Start score=1.000 latency=2.2ms state=idle source=pipeline
+[2025-10-22 22:05:17,389] INFO gesture_detected label=Clima score=0.996 latency=2.1ms state=listening source=pipeline
+[2025-10-22 22:05:18,478] INFO gesture_detected label=Start score=1.000 latency=2.1ms state=idle source=pipeline
+[2025-10-22 22:05:19,568] INFO gesture_detected label=Clima score=1.000 latency=2.1ms state=listening source=pipeline
+[2025-10-22 22:05:19,647] INFO Shutting down backend
+[2025-10-22 22:05:19,688] INFO Gesture pipeline stopped
+[2025-10-22 22:05:19,693] INFO Reporte de métricas actualizado en /workspace/HelenV2/HelenProyecto-main/HelenProyecto-main/reports/gesture_session_report.md
+[2025-10-22 22:05:19,694] INFO diagnostic session=f5e41abdd4524811be97e4fa5882cb06 model=/workspace/HelenV2/HelenProyecto-main/HelenProyecto-main/Hellen_model_RN/model.p frames_total=0 frames_valid=0 fps=0.00 latency_avg=2.23ms latency_p95=2.68ms thresholds={Start=0.37/0.26, Clima=0.34/0.24, Reloj=0.35/0.25, Inicio=0.35/0.25} reasons={'accepted': 62, 'cooldown_active': 32, 'start_rearm_deferred': 32, 'command_debounce_active': 58, 'release_hold_active': 2}

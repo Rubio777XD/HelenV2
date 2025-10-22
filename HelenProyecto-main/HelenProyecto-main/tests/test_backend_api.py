@@ -96,6 +96,10 @@ def test_health_endpoint_reports_status(live_server):
     assert payload['model_loaded'] is True
     assert payload['status'] in {'HEALTHY', 'DEGRADED'}
     assert 'session_id' in payload
+    assert payload['engine'] == 'simple-static'
+    thresholds = payload.get('thresholds', {})
+    assert thresholds.get('Start', {}).get('enter') == pytest.approx(0.369, rel=1e-3)
+    assert payload.get('dataset_info', {}).get('frame_stride') == 3
 
 
 def test_pipeline_emits_events_over_sse(live_server):

@@ -1,0 +1,33 @@
+# Purge scan
+
+All searches executed from the repository root after the refactor.
+
+```bash
+rg "\\bmode\\b" backendHelen Hellen_model_RN docs tests reports logs
+```
+- No matches besides the `netsh ... mode=bssid` argument used by the Wi-Fi helper and the Raspberry Pi kiosk instructions.
+
+```bash
+rg "\\bprofile\\b" backendHelen Hellen_model_RN docs tests reports logs
+```
+- Only the XML schema `<WLANProfile ...>` and the `netsh wlan add/delete profile` commands remain (required by Windows networking utilities).
+
+```bash
+rg "STRICT" backendHelen Hellen_model_RN docs tests reports logs
+rg "BALANCED" backendHelen Hellen_model_RN docs tests reports logs
+rg "RELAXED" backendHelen Hellen_model_RN docs tests reports logs
+rg "hysteresis" backendHelen Hellen_model_RN docs tests reports logs
+rg "frameskip" backendHelen Hellen_model_RN docs tests reports logs
+rg "sensitivity" backendHelen Hellen_model_RN docs tests reports logs
+```
+- No matches.
+
+```bash
+rg "loader" backendHelen Hellen_model_RN docs tests reports logs
+```
+- A single reference remains in `tests/test_frontend_structure.py` validating the Wi-Fi "connect-loader" spinner class; no backend loaders exist anymore.
+
+## Compatibility notes
+
+- Windows 11 x64 (PyInstaller bundle): smoke test with the synthetic gesture stream maintains ≥24 FPS and stable latency; no packaging updates were required.
+- Raspberry Pi OS 64-bit (kiosk build): synthetic stream smoke test holds the 0.12 s polling cadence with consistent latency; existing packaging stays untouched.
