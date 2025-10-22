@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=1024, initial-scale=1.0" />
   <title>HELEN – Tutorial</title>
 
   <link rel="stylesheet" href="../css/settings.css" />
@@ -13,88 +13,80 @@
 </head>
 
 <body>
-  <div class="container tutorial-layout">
+  <div class="container">
     <div class="right-panel">
-      <div class="tutorial-surface" data-tutorial>
-        <div class="settings-title tutorial-title">
-          <button class="back-button" type="button" onclick="window.location.href='../../index.html'">
-            <i class="bi bi-arrow-left" aria-hidden="true"></i>
-            <span class="visually-hidden">Volver al inicio</span>
-          </button>
-          <h1>Tutorial interactivo</h1>
-        </div>
+      <div class="tutorial-content" data-tutorial>
+        <section class="tutorial-view tutorial-menu is-active" data-view="menu" aria-hidden="false">
+          <header class="tutorial-header">
+            <button class="back-button" type="button" onclick="window.location.href='../../index.html'">
+              <i class="bi bi-arrow-left" aria-hidden="true"></i>
+              <span class="visually-hidden">Volver al inicio</span>
+            </button>
+            <h1 class="tutorial-title">Tutorial interactivo</h1>
+          </header>
 
-        <p class="settings-subtitle tutorial-subtitle">Explora las señas esenciales de HELEN con guías paso a paso.</p>
+          <p class="tutorial-subtitle">Explora las señas esenciales de HELEN con guías paso a paso.</p>
+          <p class="tutorial-intro">Selecciona una categoría para practicar la secuencia oficial. Cada paso puede confirmarse con la cámara o simularse manualmente.</p>
 
-        <div class="view-stack">
-          <section class="tutorial-view tutorial-menu is-active" data-view="menu" aria-hidden="false">
-            <p class="tutorial-menu__intro">
-              Selecciona una categoría para practicar la secuencia oficial. Cada paso puede confirmarse con la cámara o simularse manualmente.
-            </p>
+          <div class="settings-buttons tutorial-menu__cards" data-module-list></div>
+        </section>
 
-            <div class="settings-buttons tutorial-menu__cards" data-module-list></div>
-            <template data-module-card-template>
-              <button class="qcard tutorial-card" type="button">
-                <span class="qcard__icon" aria-hidden="true" data-card-icon><i class="bi" aria-hidden="true"></i></span>
-                <span class="qcard__title" data-card-title></span>
-                <span class="qcard__subtitle" data-card-subtitle></span>
-                <span class="tutorial-card__cta">Iniciar guía</span>
-              </button>
-            </template>
-          </section>
+        <section class="tutorial-view tutorial-flow" data-view="flow" tabindex="-1" aria-hidden="true">
+          <header class="tutorial-header flow-header">
+            <button class="back-button flow-close" type="button" data-action="close-flow" aria-label="Volver al menú de tutoriales">
+              <i class="bi bi-arrow-left" aria-hidden="true"></i>
+            </button>
+            <h1 class="tutorial-title" data-flow-title>Clima</h1>
+          </header>
 
-          <section class="tutorial-view tutorial-flow" data-view="flow" tabindex="-1" aria-hidden="true">
-            <div class="flow-panel">
-              <header class="flow-header">
-                <button class="flow-close" type="button" data-action="close-flow" aria-label="Volver al menú de tutoriales">
-                  <i class="bi bi-arrow-left" aria-hidden="true"></i>
-                </button>
+          <p class="tutorial-subtitle flow-subtitle" data-flow-subtitle>Secuencia guiada para consultar el clima.</p>
 
-                <div class="flow-heading">
-                  <i class="flow-heading__icon bi bi-cloud-sun" data-flow-icon aria-hidden="true"></i>
-                  <div class="flow-heading__copy">
-                    <h2 data-flow-title>Clima</h2>
-                    <p data-flow-subtitle>Secuencia guiada para consultar el clima.</p>
-                  </div>
-                </div>
+          <div class="flow-context">
+            <span class="flow-heading__icon bi bi-cloud-sun" data-flow-icon aria-hidden="true"></span>
+            <ul class="step-dots" data-step-dots aria-hidden="true"></ul>
+          </div>
 
-                <ul class="step-dots" data-step-dots aria-hidden="true"></ul>
-              </header>
-
-              <div class="flow-stage">
-                <div class="step-visual" data-step-visual>
-                  <span class="step-number" data-step-number>Paso 1 de 3</span>
-                  <div class="step-ring" aria-hidden="true">
-                    <span class="step-digit" data-step-digit>1</span>
-                    <span class="step-check"><i class="bi bi-check-lg"></i></span>
-                  </div>
-                  <h3 class="step-text is-appear" data-step-text>Haz la seña de la letra H para activar a HELEN.</h3>
-                  <p class="step-status is-appear" data-step-status role="status">Cuando HELEN confirme la seña o simules el paso, verás esta marca verde.</p>
-                </div>
+          <div class="flow-stage">
+            <div class="step-visual" data-step-visual>
+              <span class="step-number" data-step-number>Paso 1 de 3</span>
+              <div class="step-ring" aria-hidden="true">
+                <span class="step-digit" data-step-digit>1</span>
+                <span class="step-check"><i class="bi bi-check-lg"></i></span>
               </div>
-
-              <div class="flow-controls" data-flow-controls>
-                <button class="tutorial-button flow-next is-visible" type="button" data-action="next-step" aria-hidden="false">
-                  Confirmar paso
-                </button>
-              </div>
-
-              <div class="flow-complete" data-flow-success aria-hidden="true">
-                <span class="flow-complete__icon" aria-hidden="true"><i class="bi bi-check-circle-fill"></i></span>
-                <div class="flow-complete__copy">
-                  <p class="flow-complete__title" data-success-title>¡Secuencia completada!</p>
-                  <p class="flow-complete__detail" data-success-detail>Ya dominaste esta guía. Puedes repetirla o volver al menú.</p>
-                </div>
-              </div>
-
-              <p class="flow-footnote" data-flow-footnote>Secuencia de práctica: H → Comando → Salir.</p>
-
-              <button class="tutorial-button tutorial-button--secondary flow-return" type="button" data-action="return-menu" aria-hidden="true">
-                Volver al menú de tutoriales
-              </button>
+              <h3 class="step-text is-appear" data-step-text>Haz la seña de la letra H para activar a HELEN.</h3>
+              <p class="step-status is-appear" data-step-status role="status">Cuando HELEN confirme la seña o simules el paso, verás esta marca verde.</p>
             </div>
-          </section>
-        </div>
+          </div>
+
+          <div class="flow-controls" data-flow-controls>
+            <button class="tutorial-button flow-next is-visible" type="button" data-action="next-step" aria-hidden="false">
+              Confirmar paso
+            </button>
+          </div>
+
+          <div class="flow-complete" data-flow-success aria-hidden="true">
+            <span class="flow-complete__icon" aria-hidden="true"><i class="bi bi-check-circle-fill"></i></span>
+            <div class="flow-complete__copy">
+              <p class="flow-complete__title" data-success-title>¡Secuencia completada!</p>
+              <p class="flow-complete__detail" data-success-detail>Ya dominaste esta guía. Puedes repetirla o volver al menú.</p>
+            </div>
+          </div>
+
+          <p class="flow-footnote is-hidden" data-flow-footnote>Secuencia de práctica: H → Comando → Salir.</p>
+
+          <button class="tutorial-button tutorial-button--secondary flow-return" type="button" data-action="return-menu" aria-hidden="true">
+            Volver al menú de tutoriales
+          </button>
+        </section>
+
+        <template data-module-card-template>
+          <button class="qcard tutorial-card" type="button">
+            <span class="qcard__icon" aria-hidden="true" data-card-icon><i class="bi" aria-hidden="true"></i></span>
+            <span class="qcard__title" data-card-title></span>
+            <span class="qcard__subtitle" data-card-subtitle></span>
+            <span class="tutorial-card__cta">Iniciar guía</span>
+          </button>
+        </template>
       </div>
     </div>
   </div>
