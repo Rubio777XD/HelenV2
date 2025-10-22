@@ -1,464 +1,314 @@
-(function () {
+(() => {
   'use strict';
 
-  const trainers = Array.from(document.querySelectorAll('.gesture-trainer'));
-  const motionButtons = Array.from(document.querySelectorAll('[data-action="toggle-motion"]'));
-  const gestureKeys = ['gesture', 'character', 'label', 'command', 'action', 'key'];
-  const navigationGestures = new Set(['clima', 'weather', 'reloj', 'hora', 'inicio', 'home', 'alarma', 'alarmas', 'ajustes', 'configuracion', 'dispositivos', 'devices']);
-  const trainerStates = new Map();
-  const body = document.body;
-  const tutorialRoot = document.querySelector('[data-tutorial-root]');
-  const tutorialShell = document.querySelector('.tutorial-shell');
-
-  const raf = (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function')
-    ? window.requestAnimationFrame.bind(window)
-    : (callback) => window.setTimeout(callback, 16);
-
-  const caf = (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function')
-    ? window.cancelAnimationFrame.bind(window)
-    : window.clearTimeout.bind(window);
-
-  let pendingLayoutFrame = null;
-
-  const getActiveTutorialView = () => {
-    if (!tutorialRoot) {
-      return null;
+  const modules = {
+    weather: {
+      title: 'Clima',
+      subtitle: 'Secuencia guiada para consultar el clima.',
+      icon: 'bi-cloud-sun',
+      footnote: 'Secuencia oficial: H → C → H + I.',
+      steps: [
+        {
+          text: 'Haz la seña de la letra H para activar a HELEN.',
+          hint: 'Esta seña despierta al asistente antes de cualquier comando.',
+          complete: 'Seña H reconocida. HELEN está lista para ayudarte.'
+        },
+        {
+          text: 'Ahora haz la seña de la letra C para consultar el clima.',
+          hint: 'Mantén la mano centrada frente a la cámara para una detección clara.',
+          complete: '¡Perfecto! HELEN obtiene el clima actual.'
+        },
+        {
+          text: 'HELEN te mostrará el clima actual. Para volver, haz H + I.',
+          hint: 'Recuerda cerrar la sesión con la seña de Inicio.',
+          complete: 'Tutorial de clima completado.'
+        }
+      ]
+    },
+    clock: {
+      title: 'Hora',
+      subtitle: 'Aprende a pedir la hora con confirmaciones guiadas.',
+      icon: 'bi-clock-history',
+      footnote: 'Secuencia oficial: H → R → H + I.',
+      steps: [
+        {
+          text: 'Haz la seña de la letra H para activar a HELEN.',
+          hint: 'Asegúrate de que HELEN esté atenta antes de continuar.',
+          complete: 'Activación lista. HELEN está escuchando.'
+        },
+        {
+          text: 'Luego haz la seña de la letra R para consultar la hora.',
+          hint: 'Forma la letra R con claridad y sostenla un instante.',
+          complete: 'Hora solicitada correctamente.'
+        },
+        {
+          text: 'HELEN te dirá la hora actual. Para terminar, realiza H + I.',
+          hint: 'Finaliza con Inicio para volver al panel principal.',
+          complete: 'Tutorial de hora completado.'
+        }
+      ]
+    },
+    devices: {
+      title: 'Dispositivos',
+      subtitle: 'Simula cómo encender o apagar dispositivos conectados.',
+      icon: 'bi-lightbulb',
+      footnote: 'Secuencia oficial: H → Seña del dispositivo → H + I.',
+      steps: [
+        {
+          text: 'Haz la seña de la letra H para activar a HELEN.',
+          hint: 'Activa siempre a HELEN antes de controlar dispositivos.',
+          complete: 'HELEN está lista para recibir la seña del dispositivo.'
+        },
+        {
+          text: 'Realiza la seña de activación del dispositivo que necesites.',
+          hint: 'Imagina la seña asignada al dispositivo para practicarla.',
+          complete: 'Comando del dispositivo confirmado.'
+        },
+        {
+          text: 'HELEN mostrará el estado ON/OFF. Para salir, haz H + I.',
+          hint: 'Cierra con Inicio para regresar al menú principal.',
+          complete: 'Tutorial de dispositivos completado.'
+        }
+      ]
     }
-    return tutorialRoot.querySelector('.tut-view.is-active') || tutorialRoot.firstElementChild;
   };
 
-  const applyTutorialLayout = () => {
-    if (!tutorialRoot) {
+  const root = document.querySelector('[data-tutorial]');
+  if (!root) {
+    return;
+  }
+
+  const menuView = root.querySelector('[data-view="menu"]');
+  const flowView = root.querySelector('[data-view="flow"]');
+  const triggers = Array.from(root.querySelectorAll('[data-module-trigger]'));
+  const flowIcon = flowView.querySelector('[data-flow-icon]');
+  const flowTitle = flowView.querySelector('[data-flow-title]');
+  const flowSubtitle = flowView.querySelector('[data-flow-subtitle]');
+  const footnote = flowView.querySelector('[data-flow-footnote]');
+  const stepVisual = flowView.querySelector('[data-step-visual]');
+  const stepNumber = flowView.querySelector('[data-step-number]');
+  const stepDigit = flowView.querySelector('[data-step-digit]');
+  const stepText = flowView.querySelector('[data-step-text]');
+  const stepStatus = flowView.querySelector('[data-step-status]');
+  const dotsContainer = flowView.querySelector('[data-step-dots]');
+  const flowControls = flowView.querySelector('[data-flow-controls]');
+  const nextButton = flowView.querySelector('[data-action="next-step"]');
+  const closeButton = flowView.querySelector('[data-action="close-flow"]');
+  const returnButton = flowView.querySelector('[data-action="return-menu"]');
+
+  const reducedMotionQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+
+  let activeKey = null;
+  let activeStep = 0;
+  let dots = [];
+  let stepTimer = null;
+
+  const getStepDelay = (stepData) => {
+    if (stepData && typeof stepData.delay === 'number') {
+      return Math.max(400, stepData.delay);
+    }
+    if (reducedMotionQuery && reducedMotionQuery.matches) {
+      return 900;
+    }
+    return 2000;
+  };
+
+  const clearTimer = () => {
+    if (stepTimer) {
+      window.clearTimeout(stepTimer);
+      stepTimer = null;
+    }
+  };
+
+  const toggleFootnote = (text) => {
+    if (!footnote) {
       return;
     }
-
-    const activeView = getActiveTutorialView();
-    const target = activeView || tutorialRoot;
-    const rect = target.getBoundingClientRect();
-    const availableHeight = window.innerHeight || document.documentElement.clientHeight || rect.height;
-    const container = tutorialShell || tutorialRoot;
-    const shouldCenter = rect.height > 0 && rect.height + 80 < availableHeight;
-
-    if (!container) {
-      return;
-    }
-
-    container.style.alignItems = shouldCenter ? 'center' : 'flex-start';
-
-    if (shouldCenter) {
-      const verticalPadding = Math.max(36, Math.floor((availableHeight - rect.height) / 2));
-      container.style.paddingTop = `${verticalPadding}px`;
-      container.style.paddingBottom = `${verticalPadding}px`;
+    if (text) {
+      footnote.textContent = text;
+      footnote.classList.remove('is-hidden');
     } else {
-      container.style.paddingTop = '';
-      container.style.paddingBottom = '';
+      footnote.textContent = '';
+      footnote.classList.add('is-hidden');
     }
   };
 
-  const scheduleTutorialLayoutUpdate = () => {
-    if (!tutorialRoot) {
-      return;
+  const setView = (viewName) => {
+    const isFlow = viewName === 'flow';
+    menuView.classList.toggle('is-active', !isFlow);
+    menuView.setAttribute('aria-hidden', isFlow ? 'true' : 'false');
+    flowView.classList.toggle('is-active', isFlow);
+    flowView.setAttribute('aria-hidden', isFlow ? 'false' : 'true');
+    if (isFlow) {
+      try {
+        flowView.focus({ preventScroll: true });
+      } catch (error) {
+        flowView.focus();
+      }
     }
-    if (pendingLayoutFrame !== null) {
-      return;
+  };
+
+  const buildDots = (count) => {
+    dotsContainer.innerHTML = '';
+    dots = [];
+    for (let index = 0; index < count; index += 1) {
+      const dot = document.createElement('li');
+      dot.className = 'step-dot';
+      dot.dataset.stepIndex = String(index);
+      dotsContainer.appendChild(dot);
+      dots.push(dot);
     }
-    pendingLayoutFrame = raf(() => {
-      pendingLayoutFrame = null;
-      applyTutorialLayout();
+  };
+
+  const updateDots = () => {
+    dots.forEach((dot, index) => {
+      dot.classList.toggle('is-active', index <= activeStep);
+      dot.classList.toggle('is-current', index === activeStep);
     });
   };
 
-  let userMotionPreference = null;
-
-  const collapseGesture = (value) => {
-    if (value == null) {
-      return '';
-    }
-
-    let candidate = String(value);
-    try {
-      candidate = candidate.normalize('NFKC');
-    } catch (error) {
-      console.warn('No se pudo normalizar la seña recibida:', error);
-    }
-
-    return candidate
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/\s+/g, '')
-      .toLowerCase();
+  const animateCopy = () => {
+    [stepText, stepStatus].forEach((node) => {
+      if (!node) return;
+      node.classList.remove('is-appear');
+      void node.offsetWidth; // reflow para reiniciar animación
+      node.classList.add('is-appear');
+    });
   };
 
-  const resolveGestureFromPayload = (payload = {}) => {
-    for (const key of gestureKeys) {
-      if (Object.prototype.hasOwnProperty.call(payload, key)) {
-        const collapsed = collapseGesture(payload[key]);
-        if (collapsed) {
-          return collapsed;
-        }
-      }
-    }
-
-    if (payload.state) {
-      const collapsed = collapseGesture(payload.state);
-      if (collapsed) {
-        return collapsed;
-      }
-    }
-
-    return '';
-  };
-
-  const getStepTitle = (step) => {
-    const titleEl = step.node.querySelector('.gesture-step__title');
-    return titleEl ? titleEl.textContent.trim() : 'la seña';
-  };
-
-  const parseFeedbackMessages = (trainer) => {
-    const map = {};
-    const entries = Object.entries(trainer.dataset || {});
-    for (const [key, value] of entries) {
-      if (typeof value !== 'string') continue;
-      if (!key || !key.startsWith('feedback')) continue;
-      const stageKey = collapseGesture(key.replace(/^feedback/, ''));
-      if (stageKey) {
-        map[stageKey] = value.trim();
-      }
-    }
-    return map;
-  };
-
-  const setModuleStage = (state, stage, options = {}) => {
-    if (!state.modulePreview) {
+  const runStep = () => {
+    const module = modules[activeKey];
+    if (!module) {
       return;
     }
 
-    const preview = state.modulePreview;
-    const statusEl = state.moduleStatus;
-    const stageKey = collapseGesture(stage) || 'idle';
-    const transient = Boolean(options.transient);
-    const duration = typeof options.duration === 'number' ? options.duration : 2000;
-
-    if (!transient && state.previewTimer) {
-      window.clearTimeout(state.previewTimer);
-      state.previewTimer = null;
+    const steps = module.steps;
+    if (!Array.isArray(steps) || steps.length === 0) {
+      return;
     }
 
-    preview.classList.remove('is-animate');
-    preview.classList.remove('is-primed', 'is-triggered', 'is-complete', 'is-reset');
+    const total = steps.length;
+    activeStep = Math.min(Math.max(activeStep, 0), total - 1);
+    const stepData = steps[activeStep];
+    const isLast = activeStep === total - 1;
 
-    let message = state.feedbackMessages[stageKey];
-    if (!message) {
-      if (stageKey === 'start') {
-        message = state.feedbackMessages.start || 'Helen está lista. Sigue las instrucciones en pantalla.';
-      } else if (stageKey === state.moduleKey) {
-        const label = state.moduleLabel || state.moduleKey;
-        message = state.feedbackMessages[state.moduleKey] || `Seña ${label} detectada.`;
-      } else if (stageKey === 'inicio') {
-        message = state.feedbackMessages.inicio || 'Regresando al inicio.';
-      } else if (stageKey === 'complete') {
-        message = state.feedbackMessages.complete || state.successMessage;
+    stepVisual.classList.remove('is-complete');
+    stepNumber.textContent = `Paso ${activeStep + 1} de ${total}`;
+    stepDigit.textContent = String(activeStep + 1);
+    stepText.textContent = stepData.text;
+    stepStatus.textContent = stepData.hint || 'Cuando HELEN confirme la seña verás esta marca verde.';
+    animateCopy();
+
+    flowControls.classList.toggle('is-hidden', isLast);
+    nextButton.disabled = true;
+    nextButton.classList.remove('is-visible');
+    nextButton.setAttribute('aria-hidden', isLast ? 'true' : 'false');
+
+    returnButton.classList.remove('is-visible');
+    returnButton.setAttribute('aria-hidden', 'true');
+
+    updateDots();
+    clearTimer();
+
+    const delay = getStepDelay(stepData);
+    stepTimer = window.setTimeout(() => {
+      stepVisual.classList.add('is-complete');
+      stepStatus.textContent = stepData.complete || '¡Paso completado!';
+
+      if (isLast) {
+        returnButton.classList.add('is-visible');
+        returnButton.setAttribute('aria-hidden', 'false');
+        try {
+          returnButton.focus({ preventScroll: true });
+        } catch (error) {
+          returnButton.focus();
+        }
       } else {
-        message = state.moduleDefaultStatus || state.defaultMessage || '';
-      }
-    }
-
-    switch (stageKey) {
-      case 'start':
-        preview.classList.add('is-primed');
-        break;
-      case state.moduleKey:
-        preview.classList.add('is-triggered');
-        break;
-      case 'inicio':
-        preview.classList.add('is-reset');
-        break;
-      case 'complete':
-        preview.classList.add('is-complete');
-        break;
-      default:
-        preview.classList.add('is-reset');
-        break;
-    }
-
-    // Reactiva la animación
-    void preview.offsetWidth;
-    preview.classList.add('is-animate');
-    state.moduleStage = stageKey;
-
-    if (statusEl && typeof message === 'string') {
-      statusEl.textContent = message;
-    }
-
-    if (transient) {
-      if (state.previewTimer) {
-        window.clearTimeout(state.previewTimer);
-      }
-      state.previewTimer = window.setTimeout(() => {
-        state.previewTimer = null;
-        setModuleStage(state, 'idle');
-      }, Math.max(600, duration));
-    }
-
-    scheduleTutorialLayoutUpdate();
-  };
-
-  const updateStatus = (state, message, positive = false) => {
-    if (!state.statusEl) return;
-    state.statusEl.textContent = message;
-    state.statusEl.classList.toggle('is-positive', positive);
-    scheduleTutorialLayoutUpdate();
-  };
-
-  const highlightCurrentStep = (state) => {
-    state.steps.forEach((step, index) => {
-      step.node.classList.toggle('is-current', state.active && index === state.current);
-    });
-  };
-
-  const updatePracticeButton = (state) => {
-    if (!state.practiceButton) return;
-    state.practiceButton.setAttribute('aria-pressed', state.active ? 'true' : 'false');
-  };
-
-  const resetSteps = (state) => {
-    state.steps.forEach((step) => {
-      step.node.classList.remove('is-completed', 'is-current');
-      const status = step.node.querySelector('.gesture-step__status');
-      if (status) {
-        status.textContent = '';
-      }
-    });
-  };
-
-  const startPractice = (state) => {
-    state.active = true;
-    state.current = 0;
-    state.trainer.classList.add('is-active');
-    state.trainer.classList.remove('is-complete');
-    resetSteps(state);
-    highlightCurrentStep(state);
-    updatePracticeButton(state);
-    setModuleStage(state, 'start');
-
-    const firstStep = state.steps[state.current];
-    if (firstStep) {
-      updateStatus(state, `Realiza “${getStepTitle(firstStep)}” frente a la cámara.`);
-      firstStep.node.classList.add('is-current');
-    } else {
-      updateStatus(state, state.defaultMessage || 'Realiza las señas en orden.');
-    }
-
-    scheduleTutorialLayoutUpdate();
-  };
-
-  const finishPractice = (state) => {
-    state.active = false;
-    state.trainer.classList.remove('is-active');
-    state.trainer.classList.add('is-complete');
-    updatePracticeButton(state);
-    highlightCurrentStep(state);
-    setModuleStage(state, 'complete');
-    updateStatus(state, state.successMessage, true);
-    scheduleTutorialLayoutUpdate();
-  };
-
-  const completeCurrentStep = (state) => {
-    const step = state.steps[state.current];
-    if (!step) {
-      return;
-    }
-
-    const stepId = step.node.dataset.stepId || '';
-    setModuleStage(state, stepId);
-
-    step.node.classList.remove('is-current');
-    step.node.classList.add('is-completed');
-    const status = step.node.querySelector('.gesture-step__status');
-    if (status) {
-      status.textContent = '✓';
-    }
-
-    const nextIndex = state.current + 1;
-    if (nextIndex < state.steps.length) {
-      state.current = nextIndex;
-      const nextStep = state.steps[state.current];
-      nextStep.node.classList.add('is-current');
-      updateStatus(state, `¡Bien! Ahora realiza “${getStepTitle(nextStep)}”.`);
-    } else {
-      finishPractice(state);
-    }
-
-    scheduleTutorialLayoutUpdate();
-  };
-
-  const attachTrainer = (trainer) => {
-    const steps = Array.from(trainer.querySelectorAll('.gesture-step')).map((node, index) => {
-      const matches = (node.dataset.match || '')
-        .split('|')
-        .map((token) => collapseGesture(token))
-        .filter(Boolean);
-      return { node, matches, index };
-    });
-
-    if (!steps.length) {
-      return;
-    }
-
-    const practiceButton = trainer.querySelector('[data-action="toggle-practice"]');
-    const statusEl = trainer.querySelector('.gesture-visual__status');
-    const modulePreview = trainer.querySelector('[data-module-preview]');
-    const moduleStatus = modulePreview ? modulePreview.querySelector('[data-module-status]') : null;
-    const moduleDefaultStatus = moduleStatus ? moduleStatus.textContent.trim() : '';
-    const moduleLabelEl = modulePreview ? modulePreview.querySelector('.module-preview__title') : null;
-    const moduleLabel = moduleLabelEl ? moduleLabelEl.textContent.trim() : '';
-    const moduleKey = collapseGesture(trainer.dataset.module || '');
-    const feedbackMessages = parseFeedbackMessages(trainer);
-
-    const state = {
-      trainer,
-      steps,
-      practiceButton,
-      statusEl,
-      current: 0,
-      active: false,
-      successMessage: trainer.dataset.success || '¡Práctica completada! HELEN te entendió.',
-      defaultMessage: statusEl ? (statusEl.dataset.default || statusEl.textContent.trim()) : '',
-      modulePreview,
-      moduleStatus,
-      moduleDefaultStatus,
-      moduleLabel,
-      moduleKey,
-      feedbackMessages,
-      moduleStage: 'idle',
-      previewTimer: null,
-    };
-
-    state.feedbackMessages.complete = state.successMessage;
-    if (!state.feedbackMessages.idle && state.moduleDefaultStatus) {
-      state.feedbackMessages.idle = state.moduleDefaultStatus;
-    }
-
-    trainerStates.set(trainer, state);
-    setModuleStage(state, 'idle');
-
-    if (practiceButton) {
-      practiceButton.addEventListener('click', () => {
-        startPractice(state);
-      });
-    }
-
-    scheduleTutorialLayoutUpdate();
-  };
-
-  const handleGesture = (data = {}) => {
-    const collapsed = resolveGestureFromPayload(data);
-    if (!collapsed) {
-      return;
-    }
-
-    trainerStates.forEach((state) => {
-      const isModuleGesture = state.moduleKey && collapsed === state.moduleKey;
-      if (!state.active) {
-        if (collapsed === 'start' || isModuleGesture || collapsed === 'inicio') {
-          setModuleStage(state, collapsed, { transient: true });
+        nextButton.disabled = false;
+        nextButton.classList.add('is-visible');
+        try {
+          nextButton.focus({ preventScroll: true });
+        } catch (error) {
+          nextButton.focus();
         }
-        return;
       }
-
-      const step = state.steps[state.current];
-      if (!step) {
-        return;
-      }
-
-      if (step.matches.includes(collapsed)) {
-        completeCurrentStep(state);
-      }
-    });
+    }, Math.max(600, delay));
   };
 
-  const setupMotionToggle = () => {
-    if (!motionButtons.length) {
+  const startModule = (key) => {
+    const module = modules[key];
+    if (!module) {
       return;
     }
 
-    const prefersReduced = typeof window.matchMedia === 'function'
-      ? window.matchMedia('(prefers-reduced-motion: reduce)')
-      : null;
+    activeKey = key;
+    activeStep = 0;
 
-    const applyMotionState = (forced) => {
-      const reduce = typeof forced === 'boolean'
-        ? forced
-        : (userMotionPreference !== null
-          ? userMotionPreference
-          : (prefersReduced ? prefersReduced.matches : false));
+    flowIcon.className = `flow-heading__icon bi ${module.icon}`;
+    flowTitle.textContent = module.title;
+    flowSubtitle.textContent = module.subtitle;
+    toggleFootnote(module.footnote);
 
-      body.classList.toggle('is-reduced-motion', reduce);
-      motionButtons.forEach((button) => {
-        button.setAttribute('aria-pressed', reduce ? 'true' : 'false');
-        const stateLabel = button.querySelector('.motion-toggle__state');
-        if (stateLabel) {
-          stateLabel.textContent = reduce ? 'Activado' : 'Desactivado';
-        }
-      });
-    };
+    buildDots(module.steps.length);
+    setView('flow');
+    runStep();
+  };
 
-    motionButtons.forEach((button) => {
-      button.addEventListener('click', () => {
-        userMotionPreference = !body.classList.contains('is-reduced-motion');
-        applyMotionState(userMotionPreference);
-      });
+  const exitFlow = () => {
+    clearTimer();
+    activeKey = null;
+    activeStep = 0;
+    flowControls.classList.remove('is-hidden');
+    nextButton.disabled = true;
+    nextButton.classList.remove('is-visible');
+    nextButton.setAttribute('aria-hidden', 'false');
+    returnButton.classList.remove('is-visible');
+    returnButton.setAttribute('aria-hidden', 'true');
+    toggleFootnote('');
+    setView('menu');
+  };
+
+  triggers.forEach((trigger) => {
+    trigger.addEventListener('click', () => {
+      const key = trigger.dataset.moduleTrigger;
+      startModule(key);
     });
+  });
 
-    if (prefersReduced && typeof prefersReduced.addEventListener === 'function') {
-      prefersReduced.addEventListener('change', (event) => {
-        if (userMotionPreference === null) {
-          applyMotionState(event.matches);
-        }
-      });
+  nextButton.addEventListener('click', () => {
+    const module = modules[activeKey];
+    if (!module) {
+      return;
     }
 
-    applyMotionState();
-  };
-
-  if (trainers.length) {
-    trainers.forEach(attachTrainer);
-    scheduleTutorialLayoutUpdate();
-  }
-
-  setupMotionToggle();
-  scheduleTutorialLayoutUpdate();
-
-  if (typeof window.socket === 'object' && typeof window.socket.on === 'function') {
-    window.socket.on('message', handleGesture);
-  } else {
-    console.warn('[Helen] Tutorial interactivo: no hay conexión SSE para validar las señas.');
-  }
-
-  window.addEventListener('resize', scheduleTutorialLayoutUpdate);
-  window.addEventListener('hashchange', scheduleTutorialLayoutUpdate);
-
-  const interceptNavigation = (gestureKey, normalizedGesture) => {
-    const candidate = collapseGesture(gestureKey || normalizedGesture || '');
-    return navigationGestures.has(candidate);
-  };
-
-  window.helenTutorial = {
-    interceptNavigation,
-  };
-
-  window.addEventListener('unload', () => {
-    if (pendingLayoutFrame !== null) {
-      caf(pendingLayoutFrame);
-      pendingLayoutFrame = null;
-    }
-    window.removeEventListener('resize', scheduleTutorialLayoutUpdate);
-    window.removeEventListener('hashchange', scheduleTutorialLayoutUpdate);
-    if (window.socket && typeof window.socket.off === 'function') {
-      window.socket.off('message', handleGesture);
-    }
-    if (window.helenTutorial && window.helenTutorial.interceptNavigation === interceptNavigation) {
-      delete window.helenTutorial;
+    if (activeStep < module.steps.length - 1) {
+      activeStep += 1;
+      runStep();
     }
   });
+
+  const leaveFlow = () => {
+    exitFlow();
+  };
+
+  closeButton.addEventListener('click', leaveFlow);
+  returnButton.addEventListener('click', leaveFlow);
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && flowView.classList.contains('is-active')) {
+      exitFlow();
+    }
+  });
+
+  if (reducedMotionQuery && typeof reducedMotionQuery.addEventListener === 'function') {
+    reducedMotionQuery.addEventListener('change', () => {
+      if (!flowView.classList.contains('is-active')) {
+        return;
+      }
+      clearTimer();
+      runStep();
+    });
+  }
+
+  setView('menu');
 })();
