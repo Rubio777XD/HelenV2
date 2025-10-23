@@ -8,6 +8,125 @@ const MODE_API_BASE = '/mode';
 const MODE_GET_URL = `${MODE_API_BASE}/get`;
 const MODE_SET_URL = `${MODE_API_BASE}/set`;
 
+const raspberryFit = (() => {
+  if (typeof window === 'undefined') {
+    return { schedule: () => {}, measure: () => {}, reset: () => {} };
+  }
+
+  const SCALE_VAR = '--raspberry-scale';
+  const SCALE_ATTR = 'data-raspberry-scaling';
+  const ACTIVE_VALUE = 'active';
+  const MIN_SCALE = 0.82;
+  let frameId = null;
+
+  const reset = () => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    if (document.body) {
+      document.body.removeAttribute(SCALE_ATTR);
+    }
+    if (document.documentElement) {
+      document.documentElement.style.removeProperty(SCALE_VAR);
+    }
+  };
+
+  const measure = () => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') {
+      return;
+    }
+
+    const body = document.body;
+    if (!body || body.getAttribute('data-mode') !== 'raspberry') {
+      reset();
+      return;
+    }
+
+    const candidates = Array.from(document.querySelectorAll('[data-raspberry-fit-root]'));
+    const targets = candidates.length ? candidates : (body ? [body] : []);
+
+    if (!targets.length) {
+      reset();
+      return;
+    }
+
+    const viewportWidth = Math.max(window.innerWidth || 0, 1);
+    const viewportHeight = Math.max(window.innerHeight || 0, 1);
+
+    let contentWidth = 0;
+    let contentHeight = 0;
+
+    targets.forEach((target) => {
+      if (!target) return;
+      const rect = target.getBoundingClientRect();
+      const width = Math.max(rect.width, target.scrollWidth);
+      const height = Math.max(rect.height, target.scrollHeight);
+      contentWidth = Math.max(contentWidth, width);
+      contentHeight = Math.max(contentHeight, height);
+    });
+
+    if (!contentWidth || !contentHeight) {
+      reset();
+      return;
+    }
+
+    const scale = Math.min(1, viewportWidth / contentWidth, viewportHeight / contentHeight);
+    if (!Number.isFinite(scale) || scale >= 0.995) {
+      reset();
+      return;
+    }
+
+    const finalScale = Math.max(scale, MIN_SCALE);
+    if (document.documentElement) {
+      document.documentElement.style.setProperty(SCALE_VAR, finalScale.toFixed(4));
+    }
+    body.setAttribute(SCALE_ATTR, ACTIVE_VALUE);
+  };
+
+  const schedule = () => {
+    if (typeof window.requestAnimationFrame !== 'function') {
+      measure();
+      return;
+    }
+    if (frameId) {
+      window.cancelAnimationFrame(frameId);
+    }
+    frameId = window.requestAnimationFrame(() => {
+      frameId = null;
+      measure();
+    });
+  };
+
+  const queue = () => schedule();
+
+  window.addEventListener('resize', queue);
+  window.addEventListener('orientationchange', queue);
+  window.addEventListener('load', queue);
+  window.addEventListener('helen:display-mode', (event) => {
+    if (event && event.detail && event.detail.mode === 'raspberry') {
+      schedule();
+    }
+  });
+
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => schedule(), { once: true });
+    } else {
+      schedule();
+    }
+  }
+
+  return { schedule, measure, reset };
+})();
+
+if (typeof window !== 'undefined') {
+  window.HelenRaspberryFit = {
+    refresh: () => raspberryFit.schedule(),
+    measure: () => raspberryFit.measure(),
+    reset: () => raspberryFit.reset(),
+  };
+}
+
 const normalizeDisplayMode = (value) => (value === 'raspberry' ? 'raspberry' : DEFAULT_DISPLAY_MODE);
 
 const dispatchDisplayModeChange = (mode) => {
@@ -41,11 +160,20 @@ const applyDisplayMode = (mode, options = {}) => {
         () => {
           if (document.body) {
             document.body.setAttribute('data-mode', currentDisplayMode);
+            if (currentDisplayMode === 'raspberry') {
+              raspberryFit.schedule();
+            }
           }
         },
         { once: true },
       );
     }
+  }
+
+  if (normalized === 'raspberry') {
+    raspberryFit.schedule();
+  } else {
+    raspberryFit.reset();
   }
 
   if (!silent) {
