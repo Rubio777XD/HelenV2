@@ -520,6 +520,222 @@ const ensureActivationRingElement = () => {
   return ring;
 };
 
+const activationRingLayout = (() => {
+  const DEFAULTS = {
+    enabled: true,
+    maxScale: 0.92,
+    safePadding: 12,
+    zIndexBase: 0,
+  };
+
+  let options = { ...DEFAULTS };
+  let resizeObserver = null;
+  let observedTarget = null;
+  let rafId = null;
+
+  const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+  const schedule = () => {
+    if (rafId !== null) {
+      return;
+    }
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        applyLayout();
+      });
+      return;
+    }
+    rafId = window.setTimeout(() => {
+      rafId = null;
+      applyLayout();
+    }, 16);
+  };
+
+  const stopObserving = () => {
+    if (resizeObserver && observedTarget) {
+      resizeObserver.unobserve(observedTarget);
+      observedTarget = null;
+    }
+  };
+
+  const observeContainer = (node) => {
+    if (typeof ResizeObserver !== 'function' || !node) {
+      observedTarget = node;
+      return;
+    }
+    if (!resizeObserver) {
+      resizeObserver = new ResizeObserver(() => schedule());
+    }
+    if (observedTarget && observedTarget !== node) {
+      resizeObserver.unobserve(observedTarget);
+    }
+    resizeObserver.observe(node);
+    observedTarget = node;
+  };
+
+  const resetLayout = () => {
+    const ring = document.querySelector('.activation-ring');
+    if (!ring) {
+      return;
+    }
+    ring.classList.remove('activation-ring--fit');
+    ring.classList.toggle('activation-ring--disabled', !options.enabled);
+    ring.style.removeProperty('--activation-ring-left');
+    ring.style.removeProperty('--activation-ring-top');
+    ring.style.removeProperty('--activation-ring-diameter');
+    ring.style.removeProperty('--activation-ring-safe-padding');
+    ring.style.removeProperty('--activation-ring-blur');
+    ring.style.removeProperty('--activation-ring-radius');
+    ring.style.removeProperty('--activation-ring-z-index');
+  };
+
+  const selectContainer = () => {
+    if (typeof document === 'undefined') {
+      return null;
+    }
+    const body = document.body;
+    if (!body || body.getAttribute('data-mode') !== 'raspberry') {
+      return null;
+    }
+
+    const candidates = Array.from(document.querySelectorAll('[data-raspberry-fit-root]'));
+    if (!candidates.length) {
+      const fallback = document.querySelector('.home-hero');
+      return fallback || body;
+    }
+
+    let best = null;
+    let bestArea = 0;
+    candidates.forEach((node) => {
+      if (!node || typeof node.getBoundingClientRect !== 'function') {
+        return;
+      }
+      const rect = node.getBoundingClientRect();
+      const area = Math.max(rect.width, 0) * Math.max(rect.height, 0);
+      if (area > bestArea) {
+        bestArea = area;
+        best = node;
+      }
+    });
+    return best || candidates[0];
+  };
+
+  const applyLayout = () => {
+    const ring = ensureActivationRingElement();
+    if (!ring) {
+      return;
+    }
+    const halo = ring.querySelector('.activation-ring__halo');
+    if (!halo) {
+      return;
+    }
+
+    if (!options.enabled) {
+      stopObserving();
+      ring.classList.add('activation-ring--disabled');
+      ring.classList.remove('activation-ring--fit');
+      return;
+    }
+
+    const container = selectContainer();
+    if (!container) {
+      stopObserving();
+      resetLayout();
+      return;
+    }
+
+    ring.classList.remove('activation-ring--disabled');
+    ring.style.setProperty('--activation-ring-z-index', String(options.zIndexBase));
+
+    observeContainer(container);
+    const rect = container.getBoundingClientRect();
+    const padding = Math.max(0, Number(options.safePadding) || 0);
+    const safeWidth = Math.max(0, rect.width - padding * 2);
+    const safeHeight = Math.max(0, rect.height - padding * 2);
+
+    if (!safeWidth || !safeHeight) {
+      resetLayout();
+      return;
+    }
+
+    const scale = clamp(Number(options.maxScale) || 1, 0.4, 1.0);
+    const diameter = Math.max(0, Math.min(safeWidth, safeHeight) * scale);
+    if (!diameter) {
+      resetLayout();
+      return;
+    }
+
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const blurBase = Math.max(18, Math.min(64, padding * 1.6));
+    const radius = Math.max(32, diameter / 2);
+
+    ring.classList.add('activation-ring--fit');
+    ring.style.setProperty('--activation-ring-left', `${centerX}px`);
+    ring.style.setProperty('--activation-ring-top', `${centerY}px`);
+    ring.style.setProperty('--activation-ring-diameter', `${diameter}px`);
+    ring.style.setProperty('--activation-ring-safe-padding', `${padding}px`);
+    ring.style.setProperty('--activation-ring-blur', `${blurBase}px`);
+    ring.style.setProperty('--activation-ring-radius', `${radius}px`);
+  };
+
+  const configure = (overrides = {}) => {
+    if (!overrides || typeof overrides !== 'object') {
+      return { ...options };
+    }
+    const next = { ...options };
+    if (Object.prototype.hasOwnProperty.call(overrides, 'enabled')) {
+      next.enabled = Boolean(overrides.enabled);
+    }
+    if (typeof overrides.maxScale === 'number') {
+      next.maxScale = overrides.maxScale;
+    }
+    if (typeof overrides.safePadding === 'number') {
+      next.safePadding = overrides.safePadding;
+    }
+    if (typeof overrides.zIndexBase === 'number') {
+      next.zIndexBase = overrides.zIndexBase;
+    }
+    options = next;
+    schedule();
+    return { ...options };
+  };
+
+  const refresh = () => {
+    schedule();
+    return { ...options };
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', schedule);
+    window.addEventListener('orientationchange', schedule);
+    window.addEventListener('helen:display-mode', (event) => {
+      const mode = event && event.detail ? event.detail.mode : undefined;
+      if (mode === 'raspberry') {
+        schedule();
+      } else {
+        stopObserving();
+        resetLayout();
+      }
+    });
+  }
+
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => schedule(), { once: true });
+    } else {
+      schedule();
+    }
+  }
+
+  return {
+    configure,
+    refresh,
+    options: () => ({ ...options }),
+  };
+})();
+
 const clearRingTimers = () => {
   if (ringFadeTimer) {
     clearTimeout(ringFadeTimer);
@@ -547,6 +763,8 @@ const setRingState = (state, options = {}) => {
   if (!ring) {
     return;
   }
+
+  activationRingLayout.refresh();
 
   const linger = typeof options.linger === 'number' ? options.linger : RING_ACTIVE_LINGER_MS;
   const persist = Boolean(options.persist);
@@ -689,6 +907,11 @@ window.triggerActivationAnimation = triggerActivationAnimation;
 window.triggerRingError = triggerRingError;
 window.setActivationRingState = setRingState;
 window.goToPageWithLoading = goToPageWithLoading;
+window.HelenActivationRing = {
+  configure: (overrides) => activationRingLayout.configure(overrides),
+  refresh: () => activationRingLayout.refresh(),
+  options: () => activationRingLayout.options(),
+};
 
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
@@ -699,8 +922,10 @@ if (typeof window !== 'undefined') {
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     ensureActivationRingElement();
+    activationRingLayout.refresh();
   }, { once: true });
 } else {
   ensureActivationRingElement();
+  activationRingLayout.refresh();
 }
 

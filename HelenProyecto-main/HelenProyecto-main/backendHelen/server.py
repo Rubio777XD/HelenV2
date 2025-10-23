@@ -41,7 +41,7 @@ from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler
 from pathlib import Path
-from typing import Any, Deque, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
+from typing import Any, Deque, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple, TYPE_CHECKING
 import statistics
 from xml.sax.saxutils import escape
 
@@ -61,6 +61,10 @@ from Hellen_model_RN.simple_classifier import (
     SimpleGestureClassifier,
     SyntheticGestureStream,
 )
+from . import camera_probe
+
+if TYPE_CHECKING:  # pragma: no cover - typing aid only
+    from .camera_probe import CameraSelection
 
 
 LOGGER = logging.getLogger("helen.backend")
@@ -74,6 +78,95 @@ with contextlib.suppress(Exception):
     absl_logging.set_verbosity(absl_logging.WARNING)
     handler = absl_logging.get_absl_handler()
     handler.setLevel(logging.WARNING)
+
+
+def _read_os_release() -> str:
+    path = Path("/etc/os-release")
+    if not path.exists():
+        return ""
+    content = {}
+    with contextlib.suppress(OSError, UnicodeDecodeError):
+        for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            content[key] = value.strip().strip('"')
+    name = content.get("PRETTY_NAME") or content.get("NAME") or ""
+    version = content.get("VERSION_ID") or content.get("VERSION") or ""
+    return f"{name} {version}".strip()
+
+
+def _log_vision_runtime_snapshot() -> Dict[str, Any]:
+    snapshot: Dict[str, Any] = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "python_version": platform.python_version(),
+        "arch": platform.machine(),
+        "os_release": _read_os_release(),
+        "mediapipe": {"status": "missing"},
+        "opencv": {"status": "missing"},
+        "numpy": {"status": "missing"},
+        "notes": [],
+    }
+
+    if mp is None:
+        snapshot["mediapipe"] = {
+            "status": "error",
+            "message": "ImportError",
+            "suggestion": "Reinstala mediapipe==0.10.18 dentro del entorno .venv.",
+        }
+    else:
+        version = getattr(mp, "__version__", "unknown")
+        snapshot["mediapipe"] = {
+            "status": "ok",
+            "version": version,
+        }
+        with contextlib.suppress(Exception):  # pragma: no cover - smoke import already executed in setup
+            with mp.solutions.hands.Hands():
+                snapshot["mediapipe"]["hands"] = "initialised"
+
+    if cv2 is None:
+        snapshot["opencv"] = {
+            "status": "error",
+            "message": "ImportError",
+            "suggestion": "Instala opencv-python==4.9.0.80 dentro del entorno .venv.",
+        }
+    else:
+        build_info = ""
+        with contextlib.suppress(Exception):
+            build_info = cv2.getBuildInformation()
+        snapshot["opencv"] = {
+            "status": "ok",
+            "version": getattr(cv2, "__version__", "unknown"),
+            "gstreamer": "YES" if "GStreamer:                   YES" in build_info else "NO",
+            "v4l2": "YES" if "V4L/V4L2:                  YES" in build_info else "NO",
+        }
+
+    with contextlib.suppress(Exception):  # pragma: no cover - optional dependency
+        import numpy  # type: ignore
+
+        snapshot["numpy"] = {
+            "status": "ok",
+            "version": numpy.__version__,
+        }
+
+    camera_probe.LOG_DIR.mkdir(parents=True, exist_ok=True)
+    path = camera_probe.LOG_DIR / f"vision-runtime-{time.strftime('%Y%m%d-%H%M%S')}.json"
+    with contextlib.suppress(OSError):
+        path.write_text(json.dumps(snapshot, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    if snapshot["mediapipe"].get("status") != "ok" or snapshot["opencv"].get("status") != "ok":
+        LOGGER.error("Stack de visión incompleto: %s", snapshot)
+    else:
+        LOGGER.info(
+            "Stack MediaPipe/OpenCV disponible (mediapipe=%s, opencv=%s)",
+            snapshot["mediapipe"].get("version"),
+            snapshot["opencv"].get("version"),
+        )
+
+    return snapshot
+
+
+VISION_RUNTIME_SNAPSHOT = _log_vision_runtime_snapshot()
 
 
 def _resolve_repo_root() -> Path:
@@ -2294,16 +2387,25 @@ class CameraGestureStream:
         tracking_confidence: float = 0.6,
         metrics: Optional[GestureMetrics] = None,
         profile: Optional[PiCameraProfile] = None,
+        selection: Optional[CameraSelection] = None,
     ) -> None:
         if cv2 is None:
             raise RuntimeError("OpenCV no está instalado. Ejecuta `pip install opencv-python`.")
         if mp is None:
             raise RuntimeError("MediaPipe no está instalado. Ejecuta `pip install mediapipe`.")
 
+        self._selection = selection
+        if selection and selection.index is not None:
+            camera_index = selection.index
         self._camera_index = camera_index
         self._detection_confidence = detection_confidence
         self._tracking_confidence = tracking_confidence
         self._metrics = metrics
+        self._device_path = selection.device if selection and selection.device else None
+        self._preferred_backend = (selection.backend if selection else None) or "v4l2"
+        self._selection_dict = selection.to_dict() if selection else None
+        self._probe_latency_ms = selection.latency_ms if selection else None
+        self._orientation_hint = selection.orientation if selection else None
 
         self._cap: Optional[Any] = None
         self._hands: Optional[Any] = None
@@ -2323,30 +2425,45 @@ class CameraGestureStream:
         self._last_roi: Optional[Dict[str, Any]] = None
 
     # ------------------------------------------------------------------
-    def _configure_capture(self, cap: Any) -> None:
+    def _desired_dimensions(self) -> Tuple[int, int, float]:
+        selection = self._selection
+        if selection:
+            width = int(getattr(selection, "width", 0) or 0)
+            height = int(getattr(selection, "height", 0) or 0)
+            fps = float(getattr(selection, "fps", 0.0) or 0.0)
+            if width > 0 and height > 0:
+                return width, height, fps
         profile = self._profile
-        if not profile:
-            return
+        if profile:
+            return profile.width, profile.height, float(profile.fps)
+        return 0, 0, 0.0
 
-        with contextlib.suppress(Exception):
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, profile.width)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, profile.height)
-            cap.set(cv2.CAP_PROP_FPS, profile.fps)
+    # ------------------------------------------------------------------
+    def _configure_capture(self, cap: Any) -> None:
+        width, height, fps = self._desired_dimensions()
+        if width > 0 and height > 0:
+            with contextlib.suppress(Exception):
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        if fps > 0:
+            with contextlib.suppress(Exception):
+                cap.set(cv2.CAP_PROP_FPS, fps)
 
     # ------------------------------------------------------------------
     def _attempt_v4l2(self) -> Tuple[Optional[Any], Optional[str]]:
+        target: Any = self._device_path if self._device_path else self._camera_index
         args: Tuple[Any, ...]
         if IS_LINUX and hasattr(cv2, "CAP_V4L2"):
-            args = (self._camera_index, cv2.CAP_V4L2)
+            args = (target, cv2.CAP_V4L2)
         else:
-            args = (self._camera_index,)
+            args = (target,)
 
         cap = cv2.VideoCapture(*args)
         if not cap or not cap.isOpened():
             if cap:
                 with contextlib.suppress(Exception):
                     cap.release()
-            return None, f"V4L2 no se pudo abrir en el índice {self._camera_index}"
+            return None, f"V4L2 no se pudo abrir en {target}"
 
         self._configure_capture(cap)
         actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
@@ -2354,8 +2471,8 @@ class CameraGestureStream:
         actual_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
 
         LOGGER.info(
-            "Ruta de cámara inicializada: v4l2 (index=%s, %sx%s @ %.2f fps)",
-            self._camera_index,
+            "Ruta de cámara inicializada: v4l2 (target=%s, %sx%s @ %.2f fps)",
+            target,
             actual_width,
             actual_height,
             actual_fps,
@@ -2366,10 +2483,15 @@ class CameraGestureStream:
 
     # ------------------------------------------------------------------
     def _build_gstreamer_pipeline(self) -> str:
-        profile = self._profile
-        width = profile.width if profile else 1280
-        height = profile.height if profile else 720
-        fps = profile.fps if profile else 30
+        if self._selection_dict and self._selection_dict.get("pipeline"):
+            return str(self._selection_dict["pipeline"])
+        width, height, fps = self._desired_dimensions()
+        if width <= 0:
+            width = 1280
+        if height <= 0:
+            height = 720
+        if fps <= 0:
+            fps = 30
         return (
             "libcamerasrc ! video/x-raw,width="
             f"{width},height={height},framerate={fps}/1,format=RGB ! "
@@ -2394,17 +2516,27 @@ class CameraGestureStream:
     # ------------------------------------------------------------------
     def _initialise_capture(self) -> Any:
         errors: List[str] = []
+        preferred_order = ["v4l2", "gstreamer"]
+        if self._preferred_backend == "gstreamer":
+            preferred_order = ["gstreamer", "v4l2"]
 
-        cap, error = self._attempt_v4l2()
+        cap: Optional[Any] = None
+        error: Optional[str] = None
+        for backend in preferred_order:
+            if backend == "v4l2":
+                cap, error = self._attempt_v4l2()
+            else:
+                cap, error = self._attempt_gstreamer()
+            if cap is not None:
+                break
+            if error:
+                errors.append(error)
+
         if cap is None:
             if error:
                 errors.append(error)
-            cap, error = self._attempt_gstreamer()
-
-        if cap is None:
-            if error:
-                errors.append(error)
-            message = "; ".join(errors) if errors else f"No se pudo abrir la cámara {self._camera_index}"
+            target = self._device_path if self._device_path else self._camera_index
+            message = "; ".join(errors) if errors else f"No se pudo abrir la cámara {target}"
             self._last_error = message
             raise RuntimeError(message)
 
@@ -2546,7 +2678,7 @@ class CameraGestureStream:
 
     # ------------------------------------------------------------------
     def status(self) -> Dict[str, Any]:
-        return {
+        status: Dict[str, Any] = {
             "healthy": self._healthy,
             "camera_index": self._camera_index,
             "last_capture": self._last_capture,
@@ -2557,7 +2689,16 @@ class CameraGestureStream:
             "roi_snapshot": self._last_roi,
             "capture_backend": self._capture_backend,
             "gstreamer_pipeline": self._gstreamer_pipeline,
+            "device_path": self._device_path,
+            "preferred_backend": self._preferred_backend,
+            "probe_latency_ms": self._probe_latency_ms,
+            "orientation_hint": self._orientation_hint,
         }
+
+        if self._selection_dict:
+            status["selection"] = dict(self._selection_dict)
+
+        return status
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -2988,6 +3129,10 @@ class HelenRuntime:
         self.started_at = time.time()
         self.event_stream = EventStream()
         self.metrics = GestureMetrics()
+        self.vision_snapshot = VISION_RUNTIME_SNAPSHOT
+        self._camera_selection: Optional[CameraSelection] = None
+        if self.config.enable_camera:
+            self._camera_selection = self._ensure_camera_selection(force=False)
 
         dataset_path = self.config.dataset_path
         primary_exists = (MODEL_DIR / PRIMARY_DATASET_NAME).exists()
@@ -3082,6 +3227,27 @@ class HelenRuntime:
             LOGGER.debug("No se pudo registrar los ajustes de Clima: %s", error)
 
     # ------------------------------------------------------------------
+    def _ensure_camera_selection(self, *, force: bool) -> Optional[CameraSelection]:
+        preferred: Optional[int] = None
+        camera_index = getattr(self.config, "camera_index", None)
+        if isinstance(camera_index, int):
+            preferred = camera_index
+
+        try:
+            selection = camera_probe.ensure_camera_selection(
+                force=force,
+                preferred=preferred,
+                logger=LOGGER,
+            )
+        except Exception as error:  # pragma: no cover - depends on environment
+            LOGGER.warning("Auto-probe de cámara falló: %s", error)
+            return None
+
+        if selection and selection.index is not None:
+            self.config.camera_index = selection.index
+        return selection
+
+    # ------------------------------------------------------------------
     def _create_geometry_verifier(self) -> Optional[LandmarkGeometryVerifier]:
         primary_dataset = MODEL_DIR / PRIMARY_DATASET_NAME
         if primary_dataset.exists():
@@ -3112,6 +3278,7 @@ class HelenRuntime:
     # ------------------------------------------------------------------
     def _create_stream(self) -> Tuple[Any, Dict[str, Any]]:
         if self.config.enable_camera:
+            selection = getattr(self, "_camera_selection", None)
             try:
                 stream = CameraGestureStream(
                     camera_index=self.config.camera_index,
@@ -3119,13 +3286,32 @@ class HelenRuntime:
                     tracking_confidence=self.config.tracking_confidence,
                     metrics=self.metrics,
                     profile=self.config.camera_profile,
+                    selection=selection,
                 )
-                LOGGER.info("Usando cámara física en el índice %s", self.config.camera_index)
+                target = selection.device if selection and selection.device else self.config.camera_index
+                LOGGER.info("Usando cámara física en %s", target)
                 return stream, {"source": CameraGestureStream.source}
             except Exception as error:
                 LOGGER.warning("No se pudo inicializar la cámara: %s", error)
                 if not self.config.fallback_to_synthetic:
                     raise
+                refreshed = self._ensure_camera_selection(force=True)
+                if refreshed:
+                    self._camera_selection = refreshed
+                    try:
+                        stream = CameraGestureStream(
+                            camera_index=self.config.camera_index,
+                            detection_confidence=self.config.detection_confidence,
+                            tracking_confidence=self.config.tracking_confidence,
+                            metrics=self.metrics,
+                            profile=self.config.camera_profile,
+                            selection=refreshed,
+                        )
+                        target = refreshed.device if refreshed.device else refreshed.index
+                        LOGGER.info("Cámara reprovisionada automáticamente en %s", target)
+                        return stream, {"source": CameraGestureStream.source}
+                    except Exception as retry_error:
+                        LOGGER.warning("Reintento de cámara fallido: %s", retry_error)
 
         dataset_path = self.config.dataset_path
         if not dataset_path.exists():
@@ -3245,7 +3431,7 @@ class HelenRuntime:
         stream_status = getattr(self.stream, "status", lambda: {})()
         mode_snapshot = self.mode_snapshot()
 
-        return {
+        payload = {
             "mode": mode_snapshot,
             "ui_mode": mode_snapshot.get("active", DEFAULT_DISPLAY_MODE),
             "thresholds": thresholds,
@@ -3256,7 +3442,13 @@ class HelenRuntime:
                 "running": self.pipeline.is_running(),
             },
             "stream": stream_status,
+            "vision": self.vision_snapshot,
         }
+
+        if self._camera_selection:
+            payload["camera_selection"] = self._camera_selection.to_dict()
+
+        return payload
 
     # ------------------------------------------------------------------
     def report_error(self, message: str) -> None:
