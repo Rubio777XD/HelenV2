@@ -144,6 +144,71 @@ DATASET_PATH = _default_dataset_path()
 TRACKED_GESTURES = {"Start", "Clima", "Reloj", "Inicio"}
 GESTURE_ALIASES = {"Start": "H", "Clima": "C", "Reloj": "R", "Inicio": "I"}
 
+MODE_STORAGE_PATH = REPO_ROOT / "backendHelen" / "runtime_mode.json"
+
+
+def _normalize_display_mode(value: Optional[str]) -> str:
+    candidate = str(value or "").strip().lower()
+    return "raspberry" if candidate == "raspberry" else "windows"
+
+
+class DisplayModeStore:
+    """Persist and retrieve the display mode selected by the operator."""
+
+    def __init__(self, path: Path, default_mode: str) -> None:
+        self._path = path
+        self._lock = threading.Lock()
+        self._default_mode = _normalize_display_mode(default_mode)
+        self._cached: Optional[str] = None
+
+    def load(self) -> str:
+        with self._lock:
+            if self._cached:
+                return self._cached
+
+            try:
+                text = self._path.read_text(encoding="utf-8")
+            except FileNotFoundError:
+                self._cached = self._default_mode
+                return self._cached
+            except Exception as error:
+                LOGGER.warning("No se pudo leer el modo persistido (%s): %s", self._path, error)
+                self._cached = self._default_mode
+                return self._cached
+
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError as error:
+                LOGGER.warning("Archivo de modo inválido (%s): %s", self._path, error)
+                self._cached = self._default_mode
+                return self._cached
+
+            mode = _normalize_display_mode(data.get("mode"))
+            self._cached = mode
+            return mode
+
+    def save(self, mode: str) -> str:
+        normalized = _normalize_display_mode(mode)
+        payload = {"mode": normalized, "updated_at": time.time()}
+
+        with self._lock:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            self._path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            self._cached = normalized
+
+        return normalized
+
+    def cached(self) -> str:
+        cached = self._cached
+        if cached is not None:
+            return cached
+        return self.load()
+
+
+def _profile_for_mode(mode: str) -> Optional[PiCameraProfile]:
+    normalized = _normalize_display_mode(mode)
+    return RASPBERRY_MODE_PROFILE if normalized == "raspberry" else None
+
 
 @dataclass(frozen=True)
 class ClassThreshold:
@@ -152,7 +217,7 @@ class ClassThreshold:
 
 
 LEGACY_CLIMA_THRESHOLD = ClassThreshold(enter=0.8, release=0.7)
-UPDATED_CLIMA_THRESHOLD = ClassThreshold(enter=0.74, release=0.64)
+UPDATED_CLIMA_THRESHOLD = ClassThreshold(enter=0.66, release=0.56)
 
 DEFAULT_CLASS_THRESHOLDS: Dict[str, ClassThreshold] = {
     "Start": ClassThreshold(enter=0.75, release=0.65),
@@ -183,7 +248,7 @@ class ConsensusConfig:
 
 DEFAULT_CONSENSUS_CONFIG = ConsensusConfig()
 
-CLIMA_CONSENSUS_OVERRIDE = ConsensusConfig(window_size=4, required_votes=2)
+CLIMA_CONSENSUS_OVERRIDE = ConsensusConfig(window_size=2, required_votes=1)
 
 CLIMA_POST_START_DELAY = 0.4
 
@@ -892,8 +957,14 @@ class LandmarkGeometryVerifier:
 
         points = list(landmarks)
         if len(points) < 21:
-            self._log_once("landmarks_insuficientes")
-            return False, "geometry_incomplete"
+            if canonical == "Clima" and len(points) >= 18:
+                missing = 21 - len(points)
+                last_point = points[-1]
+                points.extend([last_point] * missing)
+                self._log_once(f"landmarks_clima_padded_{missing}")
+            else:
+                self._log_once("landmarks_insuficientes")
+                return False, "geometry_incomplete"
 
         finger_states = self._finger_states(points)
         wrist = points[0]
@@ -924,35 +995,43 @@ class LandmarkGeometryVerifier:
 
         if canonical == "Clima":
             finger_names = ("index", "middle", "ring", "pinky")
-            strong_extended = sum(1 for finger in finger_names if is_extended(finger, 0.85))
+            strong_extended = sum(1 for finger in finger_names if is_extended(finger, 0.8))
             relaxed_extended = sum(
                 1 for finger in finger_names if finger_states.get(finger, {}).get("curl", 0.0) >= 120.0
             )
             arc_span = self._distance(index_tip, pinky_tip)
+            finger_spans = {
+                finger: self._distance(
+                    points[self._FINGER_LANDMARKS[finger][0]], points[self._FINGER_LANDMARKS[finger][-1]]
+                )
+                for finger in finger_names
+            }
+            occluded_fingers = sum(1 for span in finger_spans.values() if span <= 0.028)
+            effective_relaxed = relaxed_extended + min(occluded_fingers, 3)
 
             curvature_ok = (
-                thumb_index_distance >= 0.045
-                and palm_spread >= 0.165
-                and arc_span >= 0.15
-                and index_middle_distance >= 0.035
+                thumb_index_distance >= 0.038
+                and palm_spread >= 0.152
+                and arc_span >= 0.138
+                and index_middle_distance >= 0.03
             )
 
             if curvature_ok and (
-                strong_extended >= 3 or (strong_extended >= 2 and relaxed_extended >= 3)
+                strong_extended >= 3 or (strong_extended >= 2 and effective_relaxed >= 3)
             ):
                 return True, None
 
-            if curvature_ok and relaxed_extended >= 3:
+            if curvature_ok and effective_relaxed >= 3:
                 curls = [finger_states.get(finger, {}).get("curl", 0.0) for finger in finger_names]
                 average_curl = statistics.fmean(curls) if curls else 0.0
-                if average_curl >= 135.0:
+                if average_curl >= 130.0:
                     return True, None
 
             if (
-                thumb_index_distance >= 0.042
-                and palm_spread >= 0.155
-                and arc_span >= 0.145
-                and relaxed_extended >= 3
+                thumb_index_distance >= 0.036
+                and palm_spread >= 0.148
+                and arc_span >= 0.132
+                and effective_relaxed >= 3
             ):
                 return True, None
 
@@ -1017,6 +1096,8 @@ class GestureDecisionEngine:
         self._last_state_change = time.time()
         self._last_activation_at = 0.0
         self._lock = threading.Lock()
+        self._last_clima_warning: Optional[str] = None
+        self._last_clima_accept_signature: Optional[Tuple[int, int, int, int]] = None
 
     # ------------------------------------------------------------------
     def _reset_consensus(self) -> None:
@@ -1079,6 +1160,75 @@ class GestureDecisionEngine:
         self._metrics.record_sample(record)
 
     # ------------------------------------------------------------------
+    def _log_clima_decision(
+        self,
+        *,
+        accepted: bool,
+        reason: str,
+        score: float,
+        support: int,
+        required_votes: int,
+        window_ms: float,
+        total_votes: int,
+    ) -> None:
+        frames_used = max(int(total_votes), support, 0)
+        window_display = max(window_ms, 0.0)
+        if accepted:
+            signature = (int(round(score * 1000)), support, required_votes, frames_used)
+            if signature != self._last_clima_accept_signature:
+                LOGGER.info(
+                    "Seña 'C' aceptada (score=%.3f, votos=%d/%d, frames=%d, ventana=%.0f ms)",
+                    score,
+                    support,
+                    required_votes,
+                    frames_used,
+                    window_display,
+                )
+                self._last_clima_accept_signature = signature
+                self._last_clima_warning = None
+            return
+
+        warning_key = f"{reason}:{support}:{required_votes}:{frames_used}"
+        if warning_key != self._last_clima_warning:
+            LOGGER.warning(
+                "Seña 'C' descartada por %s (score=%.3f, votos=%d/%d, frames=%d, ventana=%.0f ms)",
+                reason,
+                score,
+                support,
+                required_votes,
+                frames_used,
+                window_display,
+            )
+            self._last_clima_warning = warning_key
+
+    # ------------------------------------------------------------------
+    def _finalize_decision(
+        self,
+        emit: bool,
+        canonical_label: str,
+        score: float,
+        payload: Dict[str, Any],
+        reason: str,
+        state: str,
+        canonical_hint: Optional[str],
+        support: int,
+        window_ms: float,
+        required_votes: int,
+        total_votes: int,
+    ) -> DecisionOutcome:
+        if canonical_label == "Clima":
+            self._log_clima_decision(
+                accepted=emit,
+                reason=reason,
+                score=score,
+                support=support,
+                required_votes=required_votes,
+                window_ms=window_ms,
+                total_votes=total_votes,
+            )
+        return DecisionOutcome(emit, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+
+    # ------------------------------------------------------------------
     def _apply_hysteresis(self, label: str) -> Optional[str]:
         if not self._dominant_label:
             return None
@@ -1126,6 +1276,13 @@ class GestureDecisionEngine:
             }
             geometry_checked = False
 
+            required_votes = (
+                consensus_override.required_votes if consensus_override else self._consensus_config.required_votes
+            )
+            consensus_window = (
+                consensus_override.window_size if consensus_override else self._consensus_config.window_size
+            )
+
             if self._geometry_verifier is not None and landmarks is not None:
                 geometry_ok, geometry_reason = self._geometry_verifier.verify(canonical_label, landmarks)
                 geometry_checked = True
@@ -1145,7 +1302,7 @@ class GestureDecisionEngine:
                     payload["decision_reason"] = reason
                     payload["geometry_checked"] = True
                     payload["geometry_reason"] = reason
-                    return DecisionOutcome(
+                    return self._finalize_decision(
                         False,
                         canonical_label,
                         score,
@@ -1155,6 +1312,8 @@ class GestureDecisionEngine:
                         canonical_hint,
                         0,
                         0.0,
+                        required_votes,
+                        0,
                     )
             if self._geometry_verifier is not None:
                 payload["geometry_checked"] = geometry_checked
@@ -1164,17 +1323,12 @@ class GestureDecisionEngine:
             result = self._consensus.evaluate(
                 canonical_label,
                 thresholds.enter if thresholds else self._global_min_score,
-                window_size=consensus_override.window_size if consensus_override else None,
+                window_size=consensus_window,
             )
 
             support = result.votes
             window_ms = result.span_ms
-            required_votes = (
-                consensus_override.required_votes if consensus_override else self._consensus_config.required_votes
-            )
-            consensus_window = (
-                consensus_override.window_size if consensus_override else self._consensus_config.window_size
-            )
+            total_votes = result.total
 
             if thresholds and result.average >= thresholds.enter:
                 self._dominant_label = canonical_label
@@ -1207,7 +1361,19 @@ class GestureDecisionEngine:
                 )
                 payload["locked_label"] = locked_label
                 payload["decision_reason"] = reason
-                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+                return self._finalize_decision(
+                    False,
+                    canonical_label,
+                    score,
+                    payload,
+                    reason,
+                    state,
+                    canonical_hint,
+                    support,
+                    window_ms,
+                    required_votes,
+                    total_votes,
+                )
 
             if score < self._global_min_score:
                 reason = "score_below_global"
@@ -1223,7 +1389,19 @@ class GestureDecisionEngine:
                     timestamp=timestamp,
                 )
                 payload["decision_reason"] = reason
-                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+                return self._finalize_decision(
+                    False,
+                    canonical_label,
+                    score,
+                    payload,
+                    reason,
+                    state,
+                    canonical_hint,
+                    support,
+                    window_ms,
+                    required_votes,
+                    total_votes,
+                )
 
             if thresholds is None:
                 reason = "not_tracked"
@@ -1239,7 +1417,19 @@ class GestureDecisionEngine:
                     timestamp=timestamp,
                 )
                 payload["decision_reason"] = reason
-                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+                return self._finalize_decision(
+                    False,
+                    canonical_label,
+                    score,
+                    payload,
+                    reason,
+                    state,
+                    canonical_hint,
+                    support,
+                    window_ms,
+                    required_votes,
+                    total_votes,
+                )
 
             if (
                 canonical_label == "Clima"
@@ -1260,7 +1450,19 @@ class GestureDecisionEngine:
                     timestamp=timestamp,
                 )
                 payload["decision_reason"] = reason
-                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+                return self._finalize_decision(
+                    False,
+                    canonical_label,
+                    score,
+                    payload,
+                    reason,
+                    state,
+                    canonical_hint,
+                    support,
+                    window_ms,
+                    required_votes,
+                    total_votes,
+                )
 
             if state == "command_debounce" and timestamp < self._command_debounce_until:
                 reason = "command_debounce_active"
@@ -1276,7 +1478,19 @@ class GestureDecisionEngine:
                     timestamp=timestamp,
                 )
                 payload["decision_reason"] = reason
-                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+                return self._finalize_decision(
+                    False,
+                    canonical_label,
+                    score,
+                    payload,
+                    reason,
+                    state,
+                    canonical_hint,
+                    support,
+                    window_ms,
+                    required_votes,
+                    total_votes,
+                )
 
             if state == "cooldown" and timestamp < self._cooldown_until:
                 reason = "cooldown_active"
@@ -1292,7 +1506,19 @@ class GestureDecisionEngine:
                     timestamp=timestamp,
                 )
                 payload["decision_reason"] = reason
-                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+                return self._finalize_decision(
+                    False,
+                    canonical_label,
+                    score,
+                    payload,
+                    reason,
+                    state,
+                    canonical_hint,
+                    support,
+                    window_ms,
+                    required_votes,
+                    total_votes,
+                )
 
             if state == "idle" and canonical_label != "Start":
                 reason = "awaiting_activation"
@@ -1308,7 +1534,19 @@ class GestureDecisionEngine:
                     timestamp=timestamp,
                 )
                 payload["decision_reason"] = reason
-                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+                return self._finalize_decision(
+                    False,
+                    canonical_label,
+                    score,
+                    payload,
+                    reason,
+                    state,
+                    canonical_hint,
+                    support,
+                    window_ms,
+                    required_votes,
+                    total_votes,
+                )
 
             if state == "listening" and canonical_label == "Start":
                 reason = "awaiting_command"
@@ -1324,7 +1562,19 @@ class GestureDecisionEngine:
                     timestamp=timestamp,
                 )
                 payload["decision_reason"] = reason
-                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+                return self._finalize_decision(
+                    False,
+                    canonical_label,
+                    score,
+                    payload,
+                    reason,
+                    state,
+                    canonical_hint,
+                    support,
+                    window_ms,
+                    required_votes,
+                    total_votes,
+                )
 
             if state == "listening" and canonical_label not in {"Clima", "Reloj", "Inicio"}:
                 reason = "unsupported_command"
@@ -1340,7 +1590,19 @@ class GestureDecisionEngine:
                     timestamp=timestamp,
                 )
                 payload["decision_reason"] = reason
-                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+                return self._finalize_decision(
+                    False,
+                    canonical_label,
+                    score,
+                    payload,
+                    reason,
+                    state,
+                    canonical_hint,
+                    support,
+                    window_ms,
+                    required_votes,
+                    total_votes,
+                )
 
             if score < thresholds.enter:
                 reason = "score_below_threshold"
@@ -1357,7 +1619,19 @@ class GestureDecisionEngine:
                 )
                 payload["threshold_enter"] = thresholds.enter
                 payload["decision_reason"] = reason
-                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+                return self._finalize_decision(
+                    False,
+                    canonical_label,
+                    score,
+                    payload,
+                    reason,
+                    state,
+                    canonical_hint,
+                    support,
+                    window_ms,
+                    required_votes,
+                    total_votes,
+                )
 
             passes_votes = support >= required_votes
             passes_average = result.average >= thresholds.enter
@@ -1376,7 +1650,19 @@ class GestureDecisionEngine:
                     timestamp=timestamp,
                 )
                 payload["decision_reason"] = reason
-                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+                return self._finalize_decision(
+                    False,
+                    canonical_label,
+                    score,
+                    payload,
+                    reason,
+                    state,
+                    canonical_hint,
+                    support,
+                    window_ms,
+                    required_votes,
+                    total_votes,
+                )
 
             reason = "accepted"
             self._record(
@@ -1414,7 +1700,19 @@ class GestureDecisionEngine:
 
             self._last_state_change = timestamp
 
-            return DecisionOutcome(True, canonical_label, score, payload, reason, self._state, canonical_hint, support, window_ms)
+            return self._finalize_decision(
+                True,
+                canonical_label,
+                score,
+                payload,
+                reason,
+                self._state,
+                canonical_hint,
+                support,
+                window_ms,
+                required_votes,
+                total_votes,
+            )
 
     # ------------------------------------------------------------------
     def thresholds(self) -> Dict[str, ClassThreshold]:
@@ -1486,6 +1784,18 @@ if PI_CAMERA_PROFILE:
         PI_CAMERA_PROFILE.poll_interval,
         PI_CAMERA_PROFILE.process_every_n,
     )
+
+
+DEFAULT_DISPLAY_MODE = "raspberry" if PI_CAMERA_PROFILE else "windows"
+DISPLAY_MODE_STORE = DisplayModeStore(MODE_STORAGE_PATH, DEFAULT_DISPLAY_MODE)
+RASPBERRY_MODE_PROFILE = PiCameraProfile(
+    PI_CAMERA_PROFILE.model if PI_CAMERA_PROFILE else "raspberry-mode",
+    960,
+    540,
+    24,
+    0.042,
+    2,
+)
 
 
 def _command_exists(command: str) -> bool:
@@ -1838,6 +2148,8 @@ class RuntimeConfig:
     model_path: Path = MODEL_PATH
     dataset_path: Path = field(default_factory=_default_dataset_path)
     process_every_n: int = 3
+    display_mode: str = DEFAULT_DISPLAY_MODE
+    camera_profile: Optional[PiCameraProfile] = None
 
 
 @dataclass
@@ -1981,6 +2293,7 @@ class CameraGestureStream:
         detection_confidence: float = 0.7,
         tracking_confidence: float = 0.6,
         metrics: Optional[GestureMetrics] = None,
+        profile: Optional[PiCameraProfile] = None,
     ) -> None:
         if cv2 is None:
             raise RuntimeError("OpenCV no está instalado. Ejecuta `pip install opencv-python`.")
@@ -1995,7 +2308,7 @@ class CameraGestureStream:
         self._cap: Optional[Any] = None
         self._hands: Optional[Any] = None
         self._opened = False
-        self._profile: Optional[PiCameraProfile] = PI_CAMERA_PROFILE
+        self._profile: Optional[PiCameraProfile] = profile
         self._capture_backend: Optional[str] = None
         self._gstreamer_pipeline: Optional[str] = None
 
@@ -2319,9 +2632,9 @@ class CameraGestureStream:
         if width <= 0 or height <= 0:
             return
 
-        margin_x = max(1, int(round(width * 0.05)))
-        margin_top = max(1, int(round(height * 0.06)))
-        margin_bottom = max(1, int(round(height * 0.03)))
+        margin_x = max(1, int(round(width * 0.09)))
+        margin_top = max(1, int(round(height * 0.08)))
+        margin_bottom = max(1, int(round(height * 0.04)))
 
         roi["x1"] = max(0, int(roi["x1"]) - margin_x)
         roi["x2"] = min(width - 1, int(roi["x2"]) + margin_x)
@@ -2657,26 +2970,20 @@ class HelenRuntime:
 
     def __init__(self, config: Optional[RuntimeConfig] = None) -> None:
         self.config = config or RuntimeConfig()
-        if (
-            PI_CAMERA_PROFILE
-            and math.isclose(
-                float(self.config.poll_interval_s),
-                DEFAULT_POLL_INTERVAL_S,
-                rel_tol=1e-3,
-                abs_tol=1e-3,
-            )
-        ):
-            tuned_interval = PI_CAMERA_PROFILE.poll_interval
-            self.config.poll_interval_s = tuned_interval
-            LOGGER.info(
-                "Intervalo de inferencia ajustado automáticamente a %.3f s para %s",
-                tuned_interval,
-                PI_CAMERA_PROFILE.model,
-            )
-        stride = max(1, int(getattr(self.config, 'process_every_n', 3) or 3))
-        if PI_CAMERA_PROFILE and stride == 3:
-            stride = max(1, int(getattr(PI_CAMERA_PROFILE, 'process_every_n', stride) or stride))
-        self.config.process_every_n = stride
+
+        provided_mode = getattr(self.config, "display_mode", None)
+        if config is None or provided_mode is None:
+            active_mode = DISPLAY_MODE_STORE.cached()
+        else:
+            active_mode = DISPLAY_MODE_STORE.save(provided_mode)
+        active_mode = _normalize_display_mode(active_mode)
+        self.config.display_mode = active_mode
+
+        profile_override = getattr(self.config, "camera_profile", None)
+        profile = profile_override if profile_override is not None else _profile_for_mode(active_mode)
+        self.config.camera_profile = profile
+
+        self._configure_mode_runtime(active_mode, profile)
         self.session_id = uuid.uuid4().hex
         self.started_at = time.time()
         self.event_stream = EventStream()
@@ -2721,6 +3028,33 @@ class HelenRuntime:
         self.last_prediction_at: Optional[float] = None
         self.last_heartbeat = 0.0
         self.last_error: Optional[str] = None
+
+    # ------------------------------------------------------------------
+    def _configure_mode_runtime(self, mode: str, profile: Optional[PiCameraProfile]) -> None:
+        if profile:
+            tuned_interval = float(profile.poll_interval)
+            self.config.poll_interval_s = tuned_interval
+            stride = max(1, int(profile.process_every_n))
+            self.config.process_every_n = stride
+            LOGGER.info(
+                "Modo %s activo (%s): %sx%s @ %s FPS; poll_interval=%.3f s; frame_stride=%s",
+                mode,
+                profile.model,
+                profile.width,
+                profile.height,
+                profile.fps,
+                tuned_interval,
+                stride,
+            )
+        else:
+            stride = max(1, int(getattr(self.config, "process_every_n", 3) or 3))
+            self.config.process_every_n = stride
+            LOGGER.info(
+                "Modo %s activo (perfil estándar); poll_interval=%.3f s; frame_stride=%s",
+                mode,
+                float(self.config.poll_interval_s),
+                stride,
+            )
 
     # ------------------------------------------------------------------
     def _log_clima_tuning(self) -> None:
@@ -2784,6 +3118,7 @@ class HelenRuntime:
                     detection_confidence=self.config.detection_confidence,
                     tracking_confidence=self.config.tracking_confidence,
                     metrics=self.metrics,
+                    profile=self.config.camera_profile,
                 )
                 LOGGER.info("Usando cámara física en el índice %s", self.config.camera_index)
                 return stream, {"source": CameraGestureStream.source}
@@ -2805,12 +3140,13 @@ class HelenRuntime:
         self.pipeline.start()
 
     # ------------------------------------------------------------------
-    def stop(self) -> None:
+    def stop(self, *, export_report: bool = True) -> None:
         self.pipeline.stop()
         close_stream = getattr(self.stream, "close", None)
         if callable(close_stream):
             close_stream()
-        self._export_session_report()
+        if export_report:
+            self._export_session_report()
 
     # ------------------------------------------------------------------
     def register_heartbeat(self) -> None:
@@ -2821,6 +3157,104 @@ class HelenRuntime:
     def clear_error(self) -> None:
         with self.lock:
             self.last_error = None
+
+    # ------------------------------------------------------------------
+    def mode_snapshot(self, persisted_mode: Optional[str] = None) -> Dict[str, Any]:
+        with self.lock:
+            active = self.config.display_mode
+            poll_interval = float(self.config.poll_interval_s)
+            stride = int(self.config.process_every_n)
+            profile = self.config.camera_profile
+            stream_source = self.stream_source
+
+        snapshot: Dict[str, Any] = {
+            "active": active,
+            "persisted": _normalize_display_mode(persisted_mode or DISPLAY_MODE_STORE.cached()),
+            "poll_interval_s": poll_interval,
+            "process_every_n": stride,
+            "stream_source": stream_source,
+            "camera_profile": None,
+        }
+
+        if profile:
+            snapshot["camera_profile"] = {
+                "model": profile.model,
+                "width": profile.width,
+                "height": profile.height,
+                "fps": profile.fps,
+                "poll_interval": profile.poll_interval,
+                "process_every_n": profile.process_every_n,
+            }
+
+        return snapshot
+
+    # ------------------------------------------------------------------
+    def apply_display_mode(self, mode: str) -> Dict[str, Any]:
+        normalized = _normalize_display_mode(mode)
+        persisted = DISPLAY_MODE_STORE.save(normalized)
+
+        with self.lock:
+            current_mode = self.config.display_mode
+        if normalized == current_mode:
+            return self.mode_snapshot(persisted_mode=persisted)
+
+        LOGGER.info("Cambiando modo de visualización: %s → %s", current_mode, normalized)
+
+        self.stop(export_report=False)
+
+        with self.lock:
+            self.config.display_mode = normalized
+            self.config.camera_profile = _profile_for_mode(normalized)
+            profile = self.config.camera_profile
+            self._configure_mode_runtime(normalized, profile)
+            stream, stream_meta = self._create_stream()
+            self.stream = stream
+            self.stream_source = stream_meta.get("source", "")
+            self.pipeline = GesturePipeline(
+                self,
+                interval_s=self.config.poll_interval_s,
+                frame_stride=self.config.process_every_n,
+            )
+
+        self.pipeline.start()
+        return self.mode_snapshot(persisted_mode=persisted)
+
+    # ------------------------------------------------------------------
+    def engine_status(self) -> Dict[str, Any]:
+        thresholds = {
+            label: {"enter": round(cfg.enter, 3), "release": round(cfg.release, 3)}
+            for label, cfg in self.decision_engine.thresholds().items()
+        }
+
+        consensus_overrides = {
+            label: {
+                "window_size": override.window_size,
+                "required_votes": override.required_votes,
+            }
+            for label, override in self.decision_engine.consensus_overrides().items()
+        }
+
+        consensus_payload = {
+            "default": {
+                "window_size": self.decision_engine.consensus_config.window_size,
+                "required_votes": self.decision_engine.consensus_config.required_votes,
+            },
+            "overrides": consensus_overrides,
+        }
+
+        stream_status = getattr(self.stream, "status", lambda: {})()
+
+        return {
+            "mode": self.mode_snapshot(),
+            "thresholds": thresholds,
+            "consensus": consensus_payload,
+            "pipeline": {
+                "poll_interval_s": float(self.config.poll_interval_s),
+                "process_every_n": int(self.config.process_every_n),
+                "running": self.pipeline.is_running(),
+            },
+            "stream": stream_status,
+        }
 
     # ------------------------------------------------------------------
     def report_error(self, message: str) -> None:
@@ -3048,6 +3482,11 @@ class HelenRequestHandler(SimpleHTTPRequestHandler):
             self._write_json(snapshot.__dict__)
             return
 
+        if path == "/engine/status":
+            payload = self.runtime.engine_status()
+            self._write_json(payload)
+            return
+
         if path == "/net/online":
             payload = check_online_status()
             status_info = current_wifi_status()
@@ -3069,6 +3508,11 @@ class HelenRequestHandler(SimpleHTTPRequestHandler):
 
         if path == "/net/status":
             self._write_json(current_wifi_status())
+            return
+
+        if path == "/mode/get":
+            snapshot = self.runtime.mode_snapshot()
+            self._write_json(snapshot)
             return
 
         if path.startswith("/events"):
@@ -3111,6 +3555,26 @@ class HelenRequestHandler(SimpleHTTPRequestHandler):
                 "status": status_info,
             }
             self._write_json(payload)
+            return
+
+        if path == "/mode/set":
+            length = int(self.headers.get("Content-Length", "0"))
+            raw_body = self.rfile.read(length) if length else b"{}"
+            try:
+                data = json.loads(raw_body.decode("utf-8"))
+            except json.JSONDecodeError:
+                self._write_json({"ok": False, "error": "JSON inválido"}, status=HTTPStatus.BAD_REQUEST)
+                return
+
+            mode_value = data.get("mode", "")
+            try:
+                snapshot = self.runtime.apply_display_mode(str(mode_value))
+            except Exception as error:  # pragma: no cover - runtime dependent
+                LOGGER.error("No se pudo aplicar el modo de visualización: %s", error)
+                self._write_json({"ok": False, "error": str(error)}, status=HTTPStatus.BAD_GATEWAY)
+                return
+
+            self._write_json({"mode": snapshot["active"], "snapshot": snapshot})
             return
 
         if path == "/gestures/gesture-key":
