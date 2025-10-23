@@ -72,34 +72,59 @@ if (( PY_MINOR < 10 )); then
     exit 1
 fi
 
-if [[ "${ARCH}" != "aarch64" && "${ARCH}" != "arm64" ]]; then
-    echo "[HELEN] Advertencia: arquitectura ${ARCH} no verificada. Los wheels oficiales están optimizados para ARM64." >&2
+if [[ "${ARCH}" != "aarch64" && "${ARCH}" != "arm64" && "${ARCH}" != "armv7l" && "${ARCH}" != "armv6l" ]]; then
+    echo "[HELEN] Advertencia: arquitectura ${ARCH} no verificada. Los wheels oficiales están optimizados para ARM." >&2
 fi
 
 resolve_mediapipe_spec() {
     local major="$1"
     local minor="$2"
+    local arch="$3"
+
     if (( major != 3 )); then
         echo "[HELEN] MediaPipe requiere Python 3.x" >&2
         return 1
     fi
-    case "${minor}" in
-        11)
-            echo "mediapipe==0.10.18"
-            ;;
-        10)
-            echo "[HELEN] Advertencia: Python 3.10 detectado. Se usará mediapipe==0.10.11 (última versión soportada)." >&2
-            echo "mediapipe==0.10.11"
-            ;;
-        *)
-            if (( minor >= 12 )); then
-                echo "[HELEN] MediaPipe no publica ruedas para Python ${major}.${minor} en ARM64. Instala Python 3.11 (sudo apt install python3.11-full) y reejecuta este script." >&2
+
+    local spec=""
+    local extra_index=""
+
+    case "${arch}" in
+        armv7l|armv6l)
+            if (( minor >= 11 )); then
+                echo "[HELEN] Error: MediaPipe para ${arch} solo publica ruedas hasta Python 3.10. Instala Raspberry Pi OS de 64 bits o Python 3.10 (32 bits)." >&2
                 exit 1
             fi
-            echo "[HELEN] Advertencia: Python ${major}.${minor} no está validado. Se intentará mediapipe==0.10.18." >&2
-            echo "mediapipe==0.10.18"
+            spec="mediapipe-rpi4==0.10.9"
+            extra_index="https://google-coral.github.io/py-repo/"
+            echo "[HELEN] Arquitectura ${arch} detectada. Se utilizará paquete especializado ${spec}." >&2
+            ;;
+        aarch64|arm64)
+            if (( minor >= 12 )); then
+                echo "[HELEN] MediaPipe no publica ruedas oficiales para Python ${major}.${minor} en ARM64. Instala Python 3.11 (sudo apt install python3.11-full) y reejecuta este script." >&2
+                exit 1
+            fi
+            case "${minor}" in
+                11)
+                    spec="mediapipe==0.10.21"
+                    ;;
+                10)
+                    echo "[HELEN] Advertencia: Python 3.10 detectado. Se forzará mediapipe==0.10.11 (última versión validada)." >&2
+                    spec="mediapipe==0.10.11"
+                    ;;
+                *)
+                    echo "[HELEN] Advertencia: Python ${major}.${minor} no está validado oficialmente. Se intentará mediapipe==0.10.21." >&2
+                    spec="mediapipe==0.10.21"
+                    ;;
+            esac
+            ;;
+        *)
+            echo "[HELEN] Advertencia: arquitectura ${arch} no verificada. Se intentará instalar mediapipe==0.10.21 desde PyPI." >&2
+            spec="mediapipe==0.10.21"
             ;;
     esac
+
+    printf '%s\n%s\n' "${spec}" "${extra_index}"
 }
 
 APT_PACKAGES=(
@@ -168,13 +193,28 @@ echo "[HELEN] Actualizando pip y herramientas base"
 
 NUMPY_SPEC="numpy==1.26.4"
 OPENCV_SPEC="opencv-python==4.9.0.80"
-MEDIAPIPE_SPEC="$(resolve_mediapipe_spec "${PY_MAJOR}" "${PY_MINOR}")"
+readarray -t MEDIAPIPE_INFO < <(resolve_mediapipe_spec "${PY_MAJOR}" "${PY_MINOR}" "${ARCH}")
+MEDIAPIPE_SPEC="${MEDIAPIPE_INFO[0]}"
+MEDIAPIPE_EXTRA_INDEX="${MEDIAPIPE_INFO[1]:-}"
+
+if [[ -z "${MEDIAPIPE_SPEC}" ]]; then
+    echo "[HELEN] No se pudo determinar la versión correcta de MediaPipe para este entorno." >&2
+    exit 1
+fi
 
 echo "[HELEN] Instalando stack numérico (${NUMPY_SPEC} ${OPENCV_SPEC})"
 "${VENV_PIP}" install --no-cache-dir "${NUMPY_SPEC}" "${OPENCV_SPEC}"
 
 echo "[HELEN] Instalando MediaPipe (${MEDIAPIPE_SPEC})"
-"${VENV_PIP}" install --no-cache-dir "${MEDIAPIPE_SPEC}"
+if [[ -n "${MEDIAPIPE_EXTRA_INDEX}" ]]; then
+    echo "[HELEN] Repositorio adicional: ${MEDIAPIPE_EXTRA_INDEX}"
+fi
+MEDIAPIPE_INSTALL_CMD=("${VENV_PIP}" install --no-cache-dir)
+if [[ -n "${MEDIAPIPE_EXTRA_INDEX}" ]]; then
+    MEDIAPIPE_INSTALL_CMD+=("--extra-index-url" "${MEDIAPIPE_EXTRA_INDEX}")
+fi
+MEDIAPIPE_INSTALL_CMD+=("${MEDIAPIPE_SPEC}")
+"${MEDIAPIPE_INSTALL_CMD[@]}"
 
 echo "[HELEN] Instalando dependencias de Python restantes"
 "${VENV_PIP}" install --no-cache-dir -r "${SCRIPT_DIR}/requirements-pi.txt"
@@ -184,6 +224,8 @@ if ! "${VENV_PIP}" check; then
 fi
 
 export HELEN_PI_LOG_DIR="${LOG_DIR}"
+export HELEN_MEDIAPIPE_SPEC="${MEDIAPIPE_SPEC}"
+export HELEN_MEDIAPIPE_EXTRA_INDEX="${MEDIAPIPE_EXTRA_INDEX}"
 "${VENV_PYTHON}" - <<'PYCODE'
 import json
 import os
@@ -221,9 +263,13 @@ try:
     version = getattr(mp, "__version__", "unknown")
     with mp.solutions.hands.Hands() as hands:  # noqa: F841 - smoke test
         pass
+    location = Path(getattr(mp, "__file__", "")).resolve()
     info["mediapipe"] = {
         "status": "ok",
         "version": version,
+        "location": str(location),
+        "spec": os.environ.get("HELEN_MEDIAPIPE_SPEC", ""),
+        "extra_index": os.environ.get("HELEN_MEDIAPIPE_EXTRA_INDEX", ""),
     }
     mediapipe_ok = True
 except Exception as error:  # pragma: no cover - depende del entorno
@@ -273,18 +319,28 @@ log_path.write_text(json.dumps(info, indent=2, ensure_ascii=False), encoding="ut
 print(f"[HELEN] Snapshot de dependencias guardado en {log_path}")
 
 if mediapipe_ok:
-    print(f"mediapipe ok: {info['mediapipe']['version']}")
+    mp_info = info["mediapipe"]
+    print(
+        "[HELEN] MediaPipe validado: {version} ({location})".format(
+            version=mp_info.get("version", "unknown"),
+            location=mp_info.get("location", "<desconocido>"),
+        )
+    )
 else:
     print("[HELEN] Error: MediaPipe no se pudo importar. Revisa el log anterior.", file=sys.stderr)
     sys.exit(1)
 PYCODE
 
-echo "[HELEN] Versión de paquetes instalados"
+echo "[HELEN] Resumen de paquetes instalados"
 "${VENV_PYTHON}" - <<'PYCODE'
+from pathlib import Path
 import mediapipe
 import cv2
 import numpy
-print(f"mediapipe={mediapipe.__version__} | opencv-python={cv2.__version__} | numpy={numpy.__version__}")
+
+print(f"[HELEN] mediapipe {mediapipe.__version__} -> {Path(mediapipe.__file__).resolve()}")
+print(f"[HELEN] opencv-python {cv2.__version__}")
+print(f"[HELEN] numpy {numpy.__version__}")
 PYCODE
 
 echo "Dependencias instaladas y entorno virtual configurado."
