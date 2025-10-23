@@ -1525,10 +1525,13 @@ body.force-ambient::after{
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 0;
+  z-index: var(--activation-ring-z-index, 0);
   opacity: 0;
   transition: opacity .24s ease;
+  --activation-ring-blur-base: var(--activation-ring-blur, 42px);
 }
+
+.activation-ring--disabled{ display: none !important; }
 
 .activation-ring.is-visible{ opacity: 1; }
 
@@ -1543,28 +1546,41 @@ body.force-ambient::after{
   background: transparent;
 }
 
+.activation-ring--fit .activation-ring__halo{
+  inset: auto;
+  left: var(--activation-ring-left, 50%);
+  top: var(--activation-ring-top, 50%);
+  width: var(--activation-ring-diameter, 60vmin);
+  height: var(--activation-ring-diameter, 60vmin);
+  margin-left: calc(-0.5 * var(--activation-ring-diameter, 60vmin));
+  margin-top: calc(-0.5 * var(--activation-ring-diameter, 60vmin));
+  border-radius: min(50%, var(--activation-ring-radius, 54px));
+  max-width: var(--activation-ring-max-width, 90vw);
+  max-height: var(--activation-ring-max-height, 90vh);
+}
+
 .activation-ring.is-detected .activation-ring__halo{
   opacity: 1;
   border-color: rgba(95,225,255,.45);
-  box-shadow: 0 0 42px rgba(95,225,255,.22);
+  box-shadow: 0 0 var(--activation-ring-blur-base, 42px) rgba(95,225,255,.22);
 }
 
 .activation-ring.is-active .activation-ring__halo{
   opacity: 1;
   border-color: rgba(95,225,255,.68);
-  box-shadow: 0 0 56px rgba(95,225,255,.32);
+  box-shadow: 0 0 calc(var(--activation-ring-blur-base, 42px) * 1.33) rgba(95,225,255,.32);
 }
 
 .activation-ring.is-persistent .activation-ring__halo{
   opacity: 1;
   border-color: rgba(95,225,255,.76);
-  box-shadow: 0 0 64px rgba(95,225,255,.38);
+  box-shadow: 0 0 calc(var(--activation-ring-blur-base, 42px) * 1.52) rgba(95,225,255,.38);
 }
 
 .activation-ring.is-error .activation-ring__halo{
   opacity: 1;
   border-color: rgba(255,118,150,.75);
-  box-shadow: 0 0 48px rgba(255,118,150,.28);
+  box-shadow: 0 0 calc(var(--activation-ring-blur-base, 42px) * 1.14) rgba(255,118,150,.28);
 }
 
 .activation-ring__pulse{ display: none !important; }

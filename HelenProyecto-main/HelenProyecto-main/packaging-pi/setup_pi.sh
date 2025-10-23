@@ -12,7 +12,7 @@ if ! command -v apt-get >/dev/null 2>&1; then
 fi
 
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
-    echo "No se encontró ${PYTHON_BIN}. Ajusta la variable de entorno PYTHON para apuntar al intérprete de Python 3.11 del sistema." >&2
+    echo "No se encontró ${PYTHON_BIN}. Ajusta la variable PYTHON para apuntar al intérprete de Python 3.11 del sistema." >&2
     exit 1
 fi
 
@@ -32,7 +32,7 @@ SETUP_LOG="${LOG_DIR}/setup-$(timestamp).log"
 
 exec > >(tee -a "${SETUP_LOG}") 2>&1
 
-echo "[HELEN] Registrando instalación en ${SETUP_LOG}"
+echo "[HELEN] Registrando instalación en ${SETUP_LOG}" 
 
 resolve_pkg() {
     for candidate in "$@"; do
@@ -42,6 +42,64 @@ resolve_pkg() {
         fi
     done
     return 1
+}
+
+readarray -t PY_INFO < <("${PYTHON_BIN}" - <<'PYCODE'
+import platform
+import sys
+print(platform.python_version())
+print(sys.version_info.major)
+print(sys.version_info.minor)
+print(sys.version_info.micro)
+PYCODE
+)
+
+PY_VERSION="${PY_INFO[0]}"
+PY_MAJOR="${PY_INFO[1]}"
+PY_MINOR="${PY_INFO[2]}"
+PY_PATCH="${PY_INFO[3]}"
+ARCH="$(uname -m)"
+
+echo "[HELEN] Python detectado: ${PY_VERSION} (${ARCH})"
+
+if (( PY_MAJOR != 3 )); then
+    echo "[HELEN] Se requiere Python 3.x para ejecutar HELEN en Raspberry Pi." >&2
+    exit 1
+fi
+
+if (( PY_MINOR < 10 )); then
+    echo "[HELEN] Python ${PY_MAJOR}.${PY_MINOR} es demasiado antiguo. Instala Python 3.11 desde los repositorios oficiales." >&2
+    exit 1
+fi
+
+if [[ "${ARCH}" != "aarch64" && "${ARCH}" != "arm64" ]]; then
+    echo "[HELEN] Advertencia: arquitectura ${ARCH} no verificada. Los wheels oficiales están optimizados para ARM64." >&2
+fi
+
+resolve_mediapipe_spec() {
+    local major="$1"
+    local minor="$2"
+    if (( major != 3 )); then
+        echo "[HELEN] MediaPipe requiere Python 3.x" >&2
+        return 1
+    fi
+    case "${minor}" in
+        11)
+            echo "mediapipe==0.10.18"
+            ;;
+        10)
+            echo "[HELEN] Advertencia: Python 3.10 detectado. Se usará mediapipe==0.10.11 (última versión soportada)." >&2
+            echo "mediapipe==0.10.11"
+            ;;
+        *)
+            if (( minor >= 12 )); then
+                echo "[HELEN] MediaPipe no publica ruedas para Python ${major}.${minor} en ARM64. Instala Python 3.11 (sudo apt install python3.11-full) y reejecuta este script." >&2
+                exit 1
+            fi
+            echo "[HELEN] Advertencia: Python ${major}.${minor} no está validado. Se intentará mediapipe==0.10.18." >&2
+            echo "mediapipe==0.10.18"
+            ;;
+    esac
 }
 
 APT_PACKAGES=(
@@ -84,10 +142,10 @@ else
 fi
 
 echo "[HELEN] Actualizando índices APT"
-${SUDO} apt-get update
+"${SUDO}" apt-get update
 
 echo "[HELEN] Instalando dependencias del sistema"
-${SUDO} apt-get install -y "${APT_PACKAGES[@]}"
+"${SUDO}" apt-get install -y "${APT_PACKAGES[@]}"
 
 echo "[HELEN] Preparando entorno virtual en ${VENV_DIR}"
 if [[ -d "${VENV_DIR}" ]]; then
@@ -108,12 +166,127 @@ fi
 echo "[HELEN] Actualizando pip y herramientas base"
 "${VENV_PIP}" install --upgrade pip wheel setuptools
 
-echo "[HELEN] Instalando dependencias de Python para Raspberry Pi"
+NUMPY_SPEC="numpy==1.26.4"
+OPENCV_SPEC="opencv-python==4.9.0.80"
+MEDIAPIPE_SPEC="$(resolve_mediapipe_spec "${PY_MAJOR}" "${PY_MINOR}")"
+
+echo "[HELEN] Instalando stack numérico (${NUMPY_SPEC} ${OPENCV_SPEC})"
+"${VENV_PIP}" install --no-cache-dir "${NUMPY_SPEC}" "${OPENCV_SPEC}"
+
+echo "[HELEN] Instalando MediaPipe (${MEDIAPIPE_SPEC})"
+"${VENV_PIP}" install --no-cache-dir "${MEDIAPIPE_SPEC}"
+
+echo "[HELEN] Instalando dependencias de Python restantes"
 "${VENV_PIP}" install --no-cache-dir -r "${SCRIPT_DIR}/requirements-pi.txt"
 
-cat <<'MSG'
-Dependencias instaladas y entorno virtual configurado.
-Activa el entorno con "source .venv/bin/activate" antes de ejecutar HELEN.
-Recuerda habilitar la cámara con `sudo raspi-config` (Interfacing Options > Camera) y reiniciar el equipo si es la primera vez.
-MSG
+if ! "${VENV_PIP}" check; then
+    echo "[HELEN] Advertencia: 'pip check' reportó inconsistencias. Revisa la salida anterior." >&2
+fi
 
+export HELEN_PI_LOG_DIR="${LOG_DIR}"
+"${VENV_PYTHON}" - <<'PYCODE'
+import json
+import os
+import platform
+import sys
+import time
+from pathlib import Path
+
+info = {
+    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    "python_version": platform.python_version(),
+    "arch": platform.machine(),
+    "os_release": "",
+    "mediapipe": {"status": "missing"},
+    "opencv": {"status": "missing"},
+    "numpy": {"status": "missing"},
+}
+
+os_release_path = Path("/etc/os-release")
+if os_release_path.exists():
+    content = {}
+    for line in os_release_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        content[key] = value.strip().strip('"')
+    name = content.get("PRETTY_NAME") or content.get("NAME")
+    version = content.get("VERSION_ID")
+    info["os_release"] = f"{name} {version}".strip()
+
+mediapipe_ok = False
+try:
+    import mediapipe as mp  # type: ignore
+
+    version = getattr(mp, "__version__", "unknown")
+    with mp.solutions.hands.Hands() as hands:  # noqa: F841 - smoke test
+        pass
+    info["mediapipe"] = {
+        "status": "ok",
+        "version": version,
+    }
+    mediapipe_ok = True
+except Exception as error:  # pragma: no cover - depende del entorno
+    info["mediapipe"] = {
+        "status": "error",
+        "message": str(error),
+    }
+
+try:
+    import cv2  # type: ignore
+
+    version = getattr(cv2, "__version__", "unknown")
+    build_info = ""
+    try:
+        build_info = cv2.getBuildInformation()
+    except Exception as error:  # pragma: no cover - depende del entorno
+        build_info = f"<no build info>: {error}"
+    info["opencv"] = {
+        "status": "ok",
+        "version": version,
+        "gstreamer": "YES" if "GStreamer:                   YES" in build_info else "NO",
+        "v4l2": "YES" if "Video I/O:" in build_info and "V4L/V4L2:                  YES" in build_info else "NO",
+    }
+except Exception as error:  # pragma: no cover - depende del entorno
+    info["opencv"] = {
+        "status": "error",
+        "message": str(error),
+    }
+
+try:
+    import numpy  # type: ignore
+
+    info["numpy"] = {
+        "status": "ok",
+        "version": numpy.__version__,
+    }
+except Exception as error:  # pragma: no cover - depende del entorno
+    info["numpy"] = {
+        "status": "error",
+        "message": str(error),
+    }
+
+log_dir = Path(os.environ.get("HELEN_PI_LOG_DIR", "."))
+log_dir.mkdir(parents=True, exist_ok=True)
+log_path = log_dir / f"vision-stack-{time.strftime('%Y%m%d-%H%M%S')}.json"
+log_path.write_text(json.dumps(info, indent=2, ensure_ascii=False), encoding="utf-8")
+print(f"[HELEN] Snapshot de dependencias guardado en {log_path}")
+
+if mediapipe_ok:
+    print(f"mediapipe ok: {info['mediapipe']['version']}")
+else:
+    print("[HELEN] Error: MediaPipe no se pudo importar. Revisa el log anterior.", file=sys.stderr)
+    sys.exit(1)
+PYCODE
+
+echo "[HELEN] Versión de paquetes instalados"
+"${VENV_PYTHON}" - <<'PYCODE'
+import mediapipe
+import cv2
+import numpy
+print(f"mediapipe={mediapipe.__version__} | opencv-python={cv2.__version__} | numpy={numpy.__version__}")
+PYCODE
+
+echo "Dependencias instaladas y entorno virtual configurado."
+echo "Activa el entorno con 'source .venv/bin/activate' antes de ejecutar HELEN."
+echo "Los detalles de la instalación se encuentran en ${SETUP_LOG}."
