@@ -535,6 +535,28 @@ const activationRingLayout = (() => {
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
+  const viewportMetrics = () => {
+    if (typeof window === 'undefined') {
+      return { width: 0, height: 0, left: 0, top: 0 };
+    }
+    const viewport = window.visualViewport;
+    if (viewport) {
+      return {
+        width: viewport.width || window.innerWidth || 0,
+        height: viewport.height || window.innerHeight || 0,
+        left: viewport.offsetLeft || 0,
+        top: viewport.offsetTop || 0,
+      };
+    }
+    const doc = window.document && window.document.documentElement;
+    return {
+      width: window.innerWidth || (doc && doc.clientWidth) || 0,
+      height: window.innerHeight || (doc && doc.clientHeight) || 0,
+      left: 0,
+      top: 0,
+    };
+  };
+
   const schedule = () => {
     if (rafId !== null) {
       return;
@@ -588,6 +610,8 @@ const activationRingLayout = (() => {
     ring.style.removeProperty('--activation-ring-blur');
     ring.style.removeProperty('--activation-ring-radius');
     ring.style.removeProperty('--activation-ring-z-index');
+    ring.style.removeProperty('--activation-ring-max-width');
+    ring.style.removeProperty('--activation-ring-max-height');
   };
 
   const selectContainer = () => {
@@ -646,38 +670,102 @@ const activationRingLayout = (() => {
     }
 
     ring.classList.remove('activation-ring--disabled');
-    ring.style.setProperty('--activation-ring-z-index', String(options.zIndexBase));
-
     observeContainer(container);
     const rect = container.getBoundingClientRect();
-    const padding = Math.max(0, Number(options.safePadding) || 0);
-    const safeWidth = Math.max(0, rect.width - padding * 2);
-    const safeHeight = Math.max(0, rect.height - padding * 2);
+    const metrics = viewportMetrics();
 
-    if (!safeWidth || !safeHeight) {
+    const basePadding = Math.max(0, Number(options.safePadding) || 0);
+    const minDimension = Math.max(0, Math.min(rect.width, rect.height));
+    const viewportMinDimension = Math.max(0, Math.min(metrics.width, metrics.height));
+    const dynamicPadding = Math.max(basePadding, Math.round(Math.min(minDimension, viewportMinDimension) * 0.045));
+    const paddingLimit = Math.max(basePadding, Math.round(Math.max(minDimension, viewportMinDimension) * 0.25));
+    const padding = clamp(dynamicPadding, basePadding, paddingLimit || basePadding);
+
+    const rectLeft = rect.left + metrics.left;
+    const rectTop = rect.top + metrics.top;
+    const rectRight = rect.right + metrics.left;
+    const rectBottom = rect.bottom + metrics.top;
+
+    const viewportLeft = metrics.left;
+    const viewportTop = metrics.top;
+    const viewportRight = metrics.left + metrics.width;
+    const viewportBottom = metrics.top + metrics.height;
+
+    const visibleLeft = Math.max(rectLeft, viewportLeft);
+    const visibleRight = Math.min(rectRight, viewportRight);
+    const visibleTop = Math.max(rectTop, viewportTop);
+    const visibleBottom = Math.min(rectBottom, viewportBottom);
+
+    const visibleWidth = Math.max(0, visibleRight - visibleLeft);
+    const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+    const containerWidth = Math.max(0, rect.width - padding * 2);
+    const containerHeight = Math.max(0, rect.height - padding * 2);
+    const viewportWidth = Math.max(0, metrics.width - padding * 2);
+    const viewportHeight = Math.max(0, metrics.height - padding * 2);
+
+    const constraints = [
+      containerWidth,
+      containerHeight,
+      Math.max(0, visibleWidth - padding * 2),
+      Math.max(0, visibleHeight - padding * 2),
+      viewportWidth,
+      viewportHeight,
+    ].filter((value) => Number.isFinite(value) && value > 0);
+
+    if (!constraints.length) {
       resetLayout();
       return;
     }
 
-    const scale = clamp(Number(options.maxScale) || 1, 0.4, 1.0);
-    const diameter = Math.max(0, Math.min(safeWidth, safeHeight) * scale);
+    const limitingSize = Math.min(...constraints);
+
+    const scale = clamp(Number(options.maxScale) || 1, 0.35, 0.96);
+    const diameter = Math.max(0, limitingSize * scale);
     if (!diameter) {
       resetLayout();
       return;
     }
 
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    const blurBase = Math.max(18, Math.min(64, padding * 1.6));
+    let centerXAbs = rectLeft + rect.width / 2;
+    let centerYAbs = rectTop + rect.height / 2;
+    const minCenterX = viewportLeft + padding + diameter / 2;
+    const maxCenterX = viewportRight - padding - diameter / 2;
+    const minCenterY = viewportTop + padding + diameter / 2;
+    const maxCenterY = viewportBottom - padding - diameter / 2;
+
+    if (minCenterX <= maxCenterX) {
+      centerXAbs = clamp(centerXAbs, minCenterX, maxCenterX);
+    }
+    if (minCenterY <= maxCenterY) {
+      centerYAbs = clamp(centerYAbs, minCenterY, maxCenterY);
+    }
+
+    const centerX = centerXAbs - viewportLeft;
+    const centerY = centerYAbs - viewportTop;
+    const blurBase = Math.max(18, Math.min(72, padding * 1.2));
     const radius = Math.max(32, diameter / 2);
 
+    let targetZ = typeof options.zIndexBase === 'number' ? options.zIndexBase : 0;
+    if (typeof window !== 'undefined' && window.getComputedStyle) {
+      const computed = window.getComputedStyle(container);
+      const parsed = parseInt(computed && computed.zIndex, 10);
+      if (!Number.isNaN(parsed)) {
+        targetZ = Math.max(targetZ, parsed + 2);
+      } else {
+        targetZ = Math.max(targetZ, 12);
+      }
+    }
+
     ring.classList.add('activation-ring--fit');
+    ring.style.setProperty('--activation-ring-z-index', String(targetZ));
     ring.style.setProperty('--activation-ring-left', `${centerX}px`);
     ring.style.setProperty('--activation-ring-top', `${centerY}px`);
     ring.style.setProperty('--activation-ring-diameter', `${diameter}px`);
     ring.style.setProperty('--activation-ring-safe-padding', `${padding}px`);
     ring.style.setProperty('--activation-ring-blur', `${blurBase}px`);
     ring.style.setProperty('--activation-ring-radius', `${radius}px`);
+    ring.style.setProperty('--activation-ring-max-width', `${Math.max(0, Math.min(containerWidth, viewportWidth, visibleWidth))}px`);
+    ring.style.setProperty('--activation-ring-max-height', `${Math.max(0, Math.min(containerHeight, viewportHeight, visibleHeight))}px`);
   };
 
   const configure = (overrides = {}) => {
@@ -719,6 +807,11 @@ const activationRingLayout = (() => {
         resetLayout();
       }
     });
+    if (window.visualViewport) {
+      ['resize', 'scroll'].forEach((eventName) => {
+        window.visualViewport.addEventListener(eventName, schedule);
+      });
+    }
   }
 
   if (typeof document !== 'undefined') {

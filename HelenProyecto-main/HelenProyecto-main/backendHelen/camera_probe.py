@@ -36,11 +36,22 @@ LOGGER = logging.getLogger("helen.camera_probe")
 if not LOGGER.handlers:
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s %(message)s")
 
+
+def _log(logger: Optional[logging.Logger], level: str, message: str, *args: Any) -> None:
+    target = logger if logger is not None else LOGGER
+    if not target:
+        return
+    handler = getattr(target, level, None)
+    if callable(handler):
+        handler(message, *args)
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REPORTS_DIR = REPO_ROOT / "reports"
 LOG_DIR = REPORTS_DIR / "logs" / "pi"
 CONFIG_DIR = REPORTS_DIR / "config"
 CONFIG_PATH = CONFIG_DIR / "camera_selection.json"
+
+CAMERA_NOT_FOUND_MESSAGE = "❌ Cámara no detectada. Verifique conexión o permisos."
 
 BLACK_FRAME_MEAN_THRESHOLD = 5.0
 BLACK_FRAME_STD_THRESHOLD = 3.5
@@ -161,11 +172,45 @@ def _extract_index(identifier: str) -> Optional[int]:
         return None
 
 
+def _collect_v4l2ctl_metadata() -> Dict[str, Dict[str, Any]]:
+    metadata: Dict[str, Dict[str, Any]] = {}
+    try:
+        result = _run_command(["v4l2-ctl", "--list-devices"], timeout=4.0)
+    except (OSError, subprocess.TimeoutExpired):
+        return metadata
+    if result.returncode != 0 or not result.stdout:
+        return metadata
+
+    current_label: Optional[str] = None
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.rstrip()
+        if not line.strip():
+            current_label = None
+            continue
+        if not line.startswith("\t") and not line.startswith("    "):
+            current_label = line.rstrip(":")
+            continue
+        path = line.strip()
+        if not path.startswith("/dev/video"):
+            continue
+        kind = "usb"
+        label_lower = (current_label or "").lower()
+        if any(keyword in label_lower for keyword in ("unicam", "csi", "imx", "ov", "raspberry", "pi camera")):
+            kind = "csi"
+        metadata[path] = {
+            "label": current_label or path,
+            "kind": kind,
+        }
+    return metadata
+
+
 def _list_v4l2_devices() -> List[CameraCandidate]:
     devices: List[CameraCandidate] = []
     video_root = Path("/dev")
     if not video_root.exists():
         return devices
+
+    ctl_metadata = _collect_v4l2ctl_metadata()
 
     for entry in sorted(video_root.glob("video*")):
         if not entry.is_char_device():
@@ -176,7 +221,10 @@ def _list_v4l2_devices() -> List[CameraCandidate]:
         label = _safe_read_text(sysfs / "name") or identifier
         kind = "usb"
         lower_label = label.lower()
-        if "unicam" in lower_label or "csi" in lower_label or "imx" in lower_label:
+        if identifier and f"/dev/{identifier}" in ctl_metadata:
+            label = ctl_metadata[f"/dev/{identifier}"]["label"] or label
+            kind = ctl_metadata[f"/dev/{identifier}"].get("kind", kind)
+        elif "unicam" in lower_label or "csi" in lower_label or "imx" in lower_label:
             kind = "csi"
         candidate = CameraCandidate(
             identifier=f"v4l2:{identifier}",
@@ -184,6 +232,20 @@ def _list_v4l2_devices() -> List[CameraCandidate]:
             kind=kind,
             backend_hint="v4l2",
             path=str(entry),
+            index=index,
+        )
+        devices.append(candidate)
+
+    for path, meta in ctl_metadata.items():
+        if any(candidate.path == path for candidate in devices):
+            continue
+        index = _extract_index(path)
+        candidate = CameraCandidate(
+            identifier=f"v4l2:{Path(path).name}",
+            label=meta.get("label", path),
+            kind=meta.get("kind", "usb"),
+            backend_hint="v4l2",
+            path=path,
             index=index,
         )
         devices.append(candidate)
@@ -247,11 +309,49 @@ def _list_libcamera_devices() -> List[CameraCandidate]:
     return []
 
 
+def _fallback_candidates() -> List[CameraCandidate]:
+    fallbacks: List[CameraCandidate] = []
+    for index in range(2):
+        path = f"/dev/video{index}"
+        if Path(path).exists():
+            fallbacks.append(
+                CameraCandidate(
+                    identifier=f"fallback:{path}",
+                    label=path,
+                    kind="usb",
+                    backend_hint="v4l2",
+                    path=path,
+                    index=index,
+                    metadata={"fallback": True},
+                )
+            )
+    if Path("/usr/bin/libcamera-hello").exists() or Path("/usr/bin/rpicam-hello").exists():
+        fallbacks.append(
+            CameraCandidate(
+                identifier="fallback:libcamerasrc",
+                label="libcamerasrc auto",
+                kind="csi",
+                backend_hint="gstreamer",
+                metadata={"fallback": True},
+            )
+        )
+    return fallbacks
+
+
 def list_sources() -> Dict[str, List[Dict[str, Any]]]:
     """Return discovered V4L2 and libcamera sources for diagnostic UIs."""
 
     v4l2 = [candidate.describe() for candidate in _list_v4l2_devices()]
     libcamera = [candidate.describe() for candidate in _list_libcamera_devices()]
+    fallback = _fallback_candidates()
+    for candidate in fallback:
+        description = candidate.describe()
+        if candidate.backend_hint == "v4l2":
+            if not any(entry.get("path") == description.get("path") for entry in v4l2):
+                v4l2.append(description)
+        else:
+            if not any(entry.get("id") == description.get("id") for entry in libcamera):
+                libcamera.append(description)
     return {"v4l2": v4l2, "libcamera": libcamera}
 
 
@@ -476,6 +576,79 @@ def _save_selection(selection: CameraSelection) -> None:
     log_path.write_text(json.dumps(log_payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def _annotate_selection(selection: CameraSelection, *, origin: str, verified: bool) -> CameraSelection:
+    annotated = dataclasses.replace(selection)
+    setattr(annotated, "_origin", origin)
+    setattr(annotated, "_verified", verified)
+    return annotated
+
+
+def _validate_cached_selection(
+    selection: CameraSelection,
+    *,
+    logger: Optional[logging.Logger] = None,
+) -> Optional[CameraSelection]:
+    if cv2 is None:
+        return None
+
+    candidate = dataclasses.replace(selection)
+
+    width = candidate.width or 640
+    height = candidate.height or 480
+    fps = int(round(candidate.fps or 30)) if candidate.fps else 30
+    mode = CameraMode(width=width, height=height, fps=max(fps, 1))
+
+    cap = None
+    try:
+        if candidate.backend == "gstreamer" and candidate.pipeline:
+            cap = cv2.VideoCapture(candidate.pipeline, cv2.CAP_GSTREAMER)
+        else:
+            target: Union[str, int, None]
+            if candidate.device:
+                target = candidate.device
+            else:
+                target = candidate.index
+            if target is None:
+                return None
+            backend_flag = cv2.CAP_V4L2 if hasattr(cv2, "CAP_V4L2") else 0
+            cap = cv2.VideoCapture(target, backend_flag) if backend_flag else cv2.VideoCapture(target)
+    except Exception as error:  # pragma: no cover - depende del entorno
+        if logger:
+            logger.debug("Validación de cámara cacheada falló (%s)", error)
+        return None
+
+    if not cap or not cap.isOpened():
+        if cap:
+            with contextlib.suppress(Exception):
+                cap.release()
+        if logger:
+            logger.debug("La cámara cacheada no se pudo abrir correctamente.")
+        return None
+
+    _configure_capture(cap, mode)
+    success, latency, resolution, fps_value, frames = _read_frames(cap, timeout=2.5)
+    with contextlib.suppress(Exception):
+        cap.release()
+
+    if not success:
+        if logger:
+            logger.debug("La cámara cacheada no entregó frames válidos (frames=%s)", frames)
+        return None
+
+    candidate.latency_ms = latency
+    if resolution[0] and resolution[1]:
+        candidate.width = resolution[0]
+        candidate.height = resolution[1]
+    if fps_value:
+        candidate.fps = fps_value
+    candidate.orientation = "portrait" if candidate.height > candidate.width else "landscape"
+    candidate.mode_name = f"{candidate.width}x{candidate.height}@{int(round(candidate.fps or mode.fps))}"
+    candidate.probed_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    return _annotate_selection(candidate, origin="cache", verified=True)
+
+
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -490,26 +663,34 @@ def ensure_camera_selection(
     """Return the cached camera selection or probe the available devices."""
 
     if cv2 is None:
-        if logger:
-            logger.warning("OpenCV no está disponible; se omite la auto-detección de cámara.")
+        _log(logger, "warning", "OpenCV no está disponible; se omite la auto-detección de cámara.")
         return None
 
     current_signature = _hardware_signature()
     cached = _load_cached_selection()
     if not force and cached and cached.hardware_signature == current_signature:
-        if logger:
-            logger.info(
+        validated = _validate_cached_selection(cached, logger=logger)
+        if validated:
+            _log(
+                logger,
+                "info",
                 "Selección de cámara reutilizada: backend=%s device=%s pipeline=%s",
-                cached.backend,
-                cached.device or cached.index,
-                cached.pipeline,
+                validated.backend,
+                validated.device or validated.index,
+                validated.pipeline,
             )
-        return cached
+            return validated
+        _log(logger, "warning", "La cámara cacheada no respondió, se reprobará.")
 
     candidates = _list_libcamera_devices() + _list_v4l2_devices()
+    seen_identifiers = {candidate.identifier for candidate in candidates}
+    for fallback in _fallback_candidates():
+        if fallback.identifier not in seen_identifiers:
+            candidates.append(fallback)
+            seen_identifiers.add(fallback.identifier)
+
     if not candidates:
-        if logger:
-            logger.warning("No se detectaron cámaras V4L2/libcamera disponibles.")
+        _log(logger, "error", CAMERA_NOT_FOUND_MESSAGE)
         return None
 
     preferred_str: Optional[str] = None
@@ -518,8 +699,7 @@ def ensure_camera_selection(
 
     best_result: Optional[ProbeResult] = None
     for candidate in candidates:
-        if logger:
-            logger.info("Probing %s (%s)", candidate.identifier, candidate.label)
+        _log(logger, "info", "Probing %s (%s)", candidate.identifier, candidate.label)
         result = _probe_candidate(candidate)
         if not result:
             continue
@@ -532,40 +712,50 @@ def ensure_camera_selection(
             best_result = result
 
     if not best_result or not best_result.success:
-        if logger:
+        if best_result:
             reason = best_result.reason if best_result else "unknown"
-            logger.warning("No se pudo validar ninguna cámara física (%s)", reason)
+            _log(logger, "warning", "No se pudo validar ninguna cámara física (%s)", reason or "unknown")
+        _log(logger, "error", CAMERA_NOT_FOUND_MESSAGE)
         return None
 
     mode = best_result.mode
+    resolved_width = best_result.resolution[0] or mode.width
+    resolved_height = best_result.resolution[1] or mode.height
+    resolved_fps = best_result.fps or float(mode.fps)
+    orientation = best_result.orientation
+    if not orientation and resolved_width and resolved_height:
+        orientation = "portrait" if resolved_height > resolved_width else "landscape"
+
     selection = CameraSelection(
         backend=best_result.backend,
         device=best_result.candidate.path,
         index=best_result.candidate.index,
         pipeline=best_result.pipeline,
-        width=best_result.resolution[0] or mode.width,
-        height=best_result.resolution[1] or mode.height,
-        fps=best_result.fps or float(mode.fps),
+        width=resolved_width,
+        height=resolved_height,
+        fps=resolved_fps,
         latency_ms=best_result.latency_ms,
-        orientation=best_result.orientation,
+        orientation=orientation,
         kind=best_result.candidate.kind,
-        mode_name=mode.label,
+        mode_name=f"{resolved_width}x{resolved_height}@{int(round(resolved_fps or mode.fps))}",
         hardware_signature=current_signature,
         probed_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     )
 
+    selection = _annotate_selection(selection, origin="probe", verified=True)
     _save_selection(selection)
-    if logger:
-        logger.info(
-            "Cámara seleccionada: backend=%s device=%s pipeline=%s (%sx%s @ %.2f fps, %.1f ms)",
-            selection.backend,
-            selection.device or selection.index,
-            selection.pipeline or "<v4l2>",
-            selection.width,
-            selection.height,
-            selection.fps,
-            selection.latency_ms,
-        )
+    _log(
+        logger,
+        "info",
+        "Cámara seleccionada: backend=%s device=%s pipeline=%s (%sx%s @ %.2f fps, %.1f ms)",
+        selection.backend,
+        selection.device or selection.index,
+        selection.pipeline or "<v4l2>",
+        selection.width,
+        selection.height,
+        selection.fps,
+        selection.latency_ms,
+    )
     return selection
 
 
@@ -613,10 +803,19 @@ def parse_resolution(value: str) -> Tuple[int, int]:
     return int(match.group(1)), int(match.group(2))
 
 
+def get_cached_selection() -> Optional[CameraSelection]:
+    cached = _load_cached_selection()
+    if not cached:
+        return None
+    return _annotate_selection(cached, origin="cache", verified=False)
+
+
 __all__ = [
     "CameraSelection",
     "list_sources",
     "ensure_camera_selection",
     "probe_specific_device",
     "parse_resolution",
+    "get_cached_selection",
+    "CAMERA_NOT_FOUND_MESSAGE",
 ]
