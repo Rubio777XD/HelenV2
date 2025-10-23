@@ -16,27 +16,36 @@ body.tutorial-body{
   display: flex;
   justify-content: center;
   align-items: center;
+  min-height: 100svh;
+  padding: clamp(32px, 6vh, 72px) 0;
 }
 
 .tutorial-container .right-panel{
   width: min(96%, var(--tutorial-max-width));
   margin: 0 auto;
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  flex: 1 1 auto;
 }
 
 .tutorial-content{
-  width: 100%;
+  width: min(96%, var(--content-max, 1240px));
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: clamp(28px, 4vh, 36px);
+  gap: clamp(32px, 5vh, 44px);
   align-items: center;
   justify-content: center;
-  min-height: clamp(520px, 68vh, 620px);
-  padding: 24px 0 36px;
+  min-height: min(720px, 90svh);
+  flex: 1 1 auto;
 }
 
 .tutorial-view{
   display: none;
-  width: 100%;
+  width: min(100%, var(--content-max, 1240px));
+  margin: 0 auto;
   flex: 1 1 auto;
   flex-direction: column;
   align-items: center;
@@ -188,8 +197,9 @@ body.tutorial-body{
 }
 
 .tutorial-flow{
-  align-items: stretch;
-  max-width: var(--tutorial-flow-max);
+  align-items: center;
+  width: 100%;
+  max-width: min(100%, var(--content-max, 1240px));
   margin: 0 auto;
   text-align: center;
 }
@@ -215,15 +225,23 @@ body.tutorial-body{
   width: 100%;
   display: flex;
   justify-content: center;
-  padding-block: clamp(12px, 2vh, 18px);
+  align-items: stretch;
+  padding: 0;
 }
 
 .step-visual{
   width: min(100%, var(--tutorial-stage-max));
+  min-height: clamp(420px, 64vh, 520px);
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, var(--card-top), var(--card-bot));
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-tile);
+  padding: clamp(32px, 4vw, 48px) clamp(36px, 6vw, 56px);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(16px, 3vh, 24px);
+  justify-content: center;
+  gap: clamp(18px, 3vh, 26px);
   text-align: center;
 }
 
@@ -287,7 +305,7 @@ body.tutorial-body{
 .flow-controls{
   display: flex;
   justify-content: center;
-  margin-top: clamp(8px, 1.8vh, 14px);
+  margin-top: clamp(16px, 2vh, 20px);
 }
 
 .flow-controls.is-hidden{

@@ -4,6 +4,9 @@
 const DISPLAY_MODE_STORAGE_KEY = 'helen:display-mode';
 const DEFAULT_DISPLAY_MODE = 'windows';
 let currentDisplayMode = DEFAULT_DISPLAY_MODE;
+const MODE_API_BASE = '/mode';
+const MODE_GET_URL = `${MODE_API_BASE}/get`;
+const MODE_SET_URL = `${MODE_API_BASE}/set`;
 
 const normalizeDisplayMode = (value) => (value === 'raspberry' ? 'raspberry' : DEFAULT_DISPLAY_MODE);
 
@@ -65,6 +68,46 @@ const readStoredDisplayMode = () => {
   }
 };
 
+const fetchBackendDisplayMode = () => {
+  if (typeof fetch !== 'function') {
+    return Promise.resolve(null);
+  }
+  return fetch(MODE_GET_URL, { cache: 'no-store' })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return response.json();
+    })
+    .catch((error) => {
+      console.warn('[Helen] No se pudo sincronizar el modo con el backend:', error);
+      return null;
+    });
+};
+
+const persistDisplayModeToBackend = (mode) => {
+  if (typeof fetch !== 'function') {
+    return Promise.resolve(null);
+  }
+  return fetch(MODE_SET_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+    cache: 'no-store',
+  })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return response.json();
+    })
+    .then((data) => (data && typeof data.mode === 'string' ? normalizeDisplayMode(data.mode) : null))
+    .catch((error) => {
+      console.warn('[Helen] No se pudo actualizar el modo en el backend:', error);
+      return null;
+    });
+};
+
 const setDisplayMode = (mode) => {
   const normalized = applyDisplayMode(mode);
   if (typeof localStorage !== 'undefined') {
@@ -74,12 +117,43 @@ const setDisplayMode = (mode) => {
       console.warn('[Helen] No se pudo persistir el modo de visualización:', error);
     }
   }
+  persistDisplayModeToBackend(normalized).then((backendMode) => {
+    if (!backendMode) {
+      return;
+    }
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(DISPLAY_MODE_STORAGE_KEY, backendMode);
+      } catch (error) {
+        console.warn('[Helen] No se pudo sincronizar el modo almacenado:', error);
+      }
+    }
+    if (backendMode !== currentDisplayMode) {
+      applyDisplayMode(backendMode);
+    }
+  });
   return normalized;
 };
 
 const ensureDisplayMode = () => {
   const stored = readStoredDisplayMode();
   applyDisplayMode(stored, { silent: true });
+  fetchBackendDisplayMode().then((snapshot) => {
+    if (!snapshot || typeof snapshot.active !== 'string') {
+      return;
+    }
+    const backendMode = normalizeDisplayMode(snapshot.active);
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(DISPLAY_MODE_STORAGE_KEY, backendMode);
+      } catch (error) {
+        console.warn('[Helen] No se pudo sincronizar el modo almacenado:', error);
+      }
+    }
+    if (backendMode !== currentDisplayMode) {
+      applyDisplayMode(backendMode);
+    }
+  });
   return stored;
 };
 

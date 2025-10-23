@@ -889,7 +889,7 @@ body.force-ambient::after{
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 9998;
+  z-index: 0;
   opacity: 0;
   transition: opacity .24s ease;
 }
@@ -898,7 +898,7 @@ body.force-ambient::after{
 
 .activation-ring__halo{
   position: absolute;
-  inset: clamp(18px, 5vw, 68px);
+  inset: clamp(22px, 6vw, 84px);
   border-radius: clamp(20px, 4vw, 54px);
   border: 2px solid transparent;
   box-shadow: 0 0 0 2px transparent;
