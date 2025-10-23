@@ -529,730 +529,747 @@ body.wifi-modal-open{ overflow:hidden }
 
 /* ===================== MODO RASPBERRY (7") ===================== */
 body[data-mode="raspberry"]{
-  --mode-font-scale: 1.14;
-  --mode-icon-scale: 1.12;
-  --mode-card-padding-scale: 1.18;
-  --mode-card-gap-scale: .74;
-  --mode-outer-gutter: 12px;
-  --mode-inner-padding: 30px;
-  --mode-touch-target: 52px;
-}
-
-body[data-mode="raspberry"] .container{
-  padding: 28px var(--mode-outer-gutter) 24px;
-}
-
-body[data-mode="raspberry"] .back-button{
-  width: 52px;
-  height: 52px;
-}
-
-body[data-mode="raspberry"] .back-button i{
-  font-size: 20px;
-}
-
-body[data-mode="raspberry"] .tutorial-container .right-panel{
-  width: min(99%, var(--tutorial-max-width, 1240px));
-  padding: 0 var(--mode-outer-gutter);
-}
-
-body[data-mode="raspberry"] .home-hero{
-  padding: 32px var(--mode-outer-gutter) 24px;
-}
-
-body[data-mode="raspberry"] .home-layout{
-  max-width: 1180px;
-  grid-template-columns: minmax(0, 1.16fr) minmax(0, .92fr);
-  gap: 28px;
-  align-items: stretch;
-}
-
-body[data-mode="raspberry"] .home-left{
-  gap: 28px;
-}
-
-body[data-mode="raspberry"] .home-time .clock{
-  font-size: clamp(82px, 16vw, 156px);
-  letter-spacing: -1.4px;
-}
-
-body[data-mode="raspberry"] .date-section{
-  font-size: clamp(20px, 4vw, 26px);
-  margin-top: 12px;
-}
-
-body[data-mode="raspberry"] .weather-card{
-  padding: 36px calc(var(--mode-inner-padding) * 1.1);
-  gap: 24px;
-}
-
-body[data-mode="raspberry"] .weather-card__left{
-  gap: 22px;
-}
-
-body[data-mode="raspberry"] .weather-card__icon{
-  width: 92px;
-  height: 92px;
-  border-radius: 24px;
-}
-
-body[data-mode="raspberry"] .weather-card__icon .weather-icon{
-  font-size: 40px;
-}
-
-body[data-mode="raspberry"] .weather-card__meta .status{
-  font-size: clamp(26px, 4vw, 34px);
-}
-
-body[data-mode="raspberry"] .weather-card__meta .location{
-  font-size: 18px;
-}
-
-body[data-mode="raspberry"] .weather-card__right{
-  gap: 10px;
-}
-
-body[data-mode="raspberry"] .weather-card__right .temperature{
-  font-size: clamp(60px, 8vw, 78px);
-}
-
-body[data-mode="raspberry"] .weather-card__right .feels-like{
-  font-size: 17px;
-  gap: 10px;
-}
-
-body[data-mode="raspberry"] .weather-card__right .feels-like i{
-  font-size: 18px;
-}
-
-body[data-mode="raspberry"] .weather-card__divider{
-  margin: 22px 0 16px;
-}
-
-body[data-mode="raspberry"] .weather-card__metrics{
-  gap: 22px;
-}
-
-body[data-mode="raspberry"] .metric__label{
-  font-size: 16px;
-}
-
-body[data-mode="raspberry"] .metric__value{
-  font-size: 24px;
-}
-
-body[data-mode="raspberry"] .home-cards{
-  gap: calc(24px * var(--mode-card-gap-scale));
-}
-
-body[data-mode="raspberry"] .dash-card{
-  min-height: 196px;
-  padding: calc(26px * var(--mode-card-padding-scale)) calc(24px * 1.08);
-}
-
-body[data-mode="raspberry"] .dash-card__icon{
-  width: 92px;
-  height: 92px;
-  border-radius: 24px;
-}
-
-body[data-mode="raspberry"] .dash-card__icon i{
-  font-size: 36px;
-}
-
-body[data-mode="raspberry"] .dash-card__title{
-  font-size: clamp(22px, 3.4vw, 26px);
-}
-
-body[data-mode="raspberry"] .dash-card__subtitle{
-  font-size: clamp(16px, 2.4vw, 18px);
-}
-
-body[data-mode="raspberry"] .quick-nav{
-  gap: calc(24px * var(--mode-card-gap-scale));
-  padding: 0 8px;
-  grid-auto-rows: 228px;
-}
-
-body[data-mode="raspberry"] .qcard{
-  min-height: 228px;
-  padding: calc(32px * var(--mode-card-padding-scale)) 22px;
-  gap: 16px;
-}
-
-body[data-mode="raspberry"] .qspan-2{
-  min-height: 228px;
-  height: auto;
-}
-
-body[data-mode="raspberry"] .qcard__icon{
-  width: 100px;
-  height: 100px;
-  border-radius: 24px;
-  font-size: 40px;
-}
-
-body[data-mode="raspberry"] .qcard__title{
-  font-size: clamp(22px, 3.4vw, 28px);
-}
-
-body[data-mode="raspberry"] .qcard__subtitle{
-  font-size: clamp(16px, 2.6vw, 18px);
-}
-
-body[data-mode="raspberry"] .mode-status{
-  font-size: clamp(18px, 2.8vw, 24px);
-}
-
-body[data-mode="raspberry"] .tutorial-title{
-  font-size: clamp(42px, 5vw, 58px);
-}
-
-body[data-mode="raspberry"] .tutorial-subtitle,
-body[data-mode="raspberry"] .flow-subtitle{
-  font-size: clamp(18px, 3vw, 22px);
-}
-
-body[data-mode="raspberry"] .step-text{
-  font-size: clamp(24px, 3.4vw, 28px);
-}
-
-body[data-mode="raspberry"] .step-status,
-body[data-mode="raspberry"] .flow-footnote{
-  font-size: clamp(16px, 2.6vw, 20px);
-}
-
-body[data-mode="raspberry"] .tutorial-button,
-body[data-mode="raspberry"] .mode-toggle{
-  min-height: var(--mode-touch-target);
-  padding: 18px 36px;
-  font-size: clamp(18px, 2.6vw, 22px);
-}
-
-body[data-mode="raspberry"] .tutorial-card{
-  min-height: 240px;
-  padding: calc(28px * var(--mode-card-padding-scale)) 30px;
-  gap: 18px;
-}
-
-body[data-mode="raspberry"] .tutorial-menu__cards{
-  width: 100%;
-  max-width: none;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-}
-
-body[data-mode="raspberry"] .tutorial-card .qcard__icon{
-  width: 100px;
-  height: 100px;
-  font-size: 40px;
-}
-
-body[data-mode="raspberry"] .tutorial-card__title{
-  font-size: clamp(22px, 3.4vw, 28px);
-}
-
-body[data-mode="raspberry"] .tutorial-card__subtitle{
-  font-size: clamp(16px, 2.6vw, 20px);
-}
-
-body[data-mode="raspberry"] .tutorial-card__cta{
-  font-size: 14px;
-  letter-spacing: .35px;
-}
-
-body[data-mode="raspberry"] .flow-stage{
+  --raspberry-max-width: 1024px;
+  --raspberry-min-height: 480px;
+  --raspberry-max-height: 600px;
+  --raspberry-safe-top: clamp(12px, 4svh, 20px);
+  --raspberry-safe-bottom: clamp(16px, 5svh, 26px);
+  --raspberry-safe-horizontal: clamp(10px, 3vw, 18px);
+  --raspberry-gap-xs: clamp(6px, 1.6vw, 10px);
+  --raspberry-gap-sm: clamp(8px, 2.2vw, 12px);
+  --raspberry-gap-md: clamp(12px, 3vw, 18px);
+  --raspberry-gap-lg: clamp(16px, 3.8vw, 24px);
+  --raspberry-card-radius: 22px;
+  --raspberry-card-padding: clamp(14px, 3.6vw, 22px);
+  --raspberry-touch-target: 44px;
+  --raspberry-font-xs: clamp(12px, 2.6vw, 15px);
+  --raspberry-font-sm: clamp(13px, 2.8vw, 17px);
+  --raspberry-font-md: clamp(15px, 3.4vw, 20px);
+  --raspberry-font-lg: clamp(18px, 4.4vw, 24px);
+  --raspberry-font-xl: clamp(24px, 7.2vw, 34px);
+  --raspberry-font-xxl: clamp(34px, 10.4vw, 62px);
+  --raspberry-scale: 1;
+  min-height: 100svh;
+  overflow: hidden;
   padding: 0;
 }
 
-body[data-mode="raspberry"] .step-visual{
-  width: min(100%, 560px);
-  min-height: clamp(440px, 72vh, 580px);
-  padding: 42px 52px;
-  gap: 24px;
-  position: relative;
-  z-index: 1;
+body[data-mode="raspberry"] .raspberry-fit-root{
+  box-sizing: border-box;
+  width: min(var(--raspberry-max-width), 100vw);
+  margin: 0 auto;
+  padding: var(--raspberry-safe-top) var(--raspberry-safe-horizontal) var(--raspberry-safe-bottom);
+  display: flex;
+  flex-direction: column;
+  gap: var(--raspberry-gap-md);
+  min-height: clamp(var(--raspberry-min-height), 100svh, var(--raspberry-max-height));
 }
 
-body[data-mode="raspberry"] .step-ring{
-  width: min(140px, 26vh);
-  height: min(140px, 26vh);
-  margin-bottom: 8px;
-  z-index: 0;
+body[data-mode="raspberry"][data-raspberry-scaling="active"]{
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
 }
 
-body[data-mode="raspberry"] .step-digit,
-body[data-mode="raspberry"] .step-check{
-  z-index: 1;
+body[data-mode="raspberry"][data-raspberry-scaling="active"] .raspberry-fit-root{
+  transform: scale(var(--raspberry-scale));
+  transform-origin: top center;
 }
 
-body[data-mode="raspberry"] .tutorial-container{
-  padding: 32px 0;
+body[data-mode="raspberry"] .back-button{
+  width: clamp(44px, 9vw, 52px);
+  height: clamp(44px, 9vw, 52px);
+  border-radius: 14px;
 }
 
-body[data-mode="raspberry"] .tutorial-content{
-  gap: 40px;
-  min-height: min(760px, 92svh);
+body[data-mode="raspberry"] .back-button i{
+  font-size: clamp(18px, 4vw, 22px);
 }
 
-body[data-mode="raspberry"] .tutorial-view{
-  gap: 28px;
+body[data-mode="raspberry"] .wifi-button-container{
+  top: max(var(--raspberry-safe-top), 12px);
+  right: max(var(--raspberry-safe-horizontal), 12px);
 }
 
-body[data-mode="raspberry"] .flow-controls{
-  margin-top: 22px;
+body[data-mode="raspberry"] .wifi-button{
+  width: clamp(46px, 8vw, 52px);
+  height: clamp(46px, 8vw, 52px);
 }
 
-body[data-mode="raspberry"] .flow-return{
-  min-width: min(360px, 94%);
+body[data-mode="raspberry"] .wifi-icon{
+  font-size: clamp(20px, 4vw, 24px);
 }
 
-body[data-mode="raspberry"] .info-wrap{
-  padding: 28px var(--mode-outer-gutter);
-  gap: 24px;
+/* ====================== Inicio ====================== */
+body[data-mode="raspberry"] .home-hero{
+  flex: 1 1 auto;
+  padding: 0;
+  min-height: auto;
+  justify-content: flex-start;
+  align-items: stretch;
 }
 
-body[data-mode="raspberry"] .info-header{
-  width: min(1180px, 98vw);
-  margin: 0 auto 12px;
-  gap: 16px;
+body[data-mode="raspberry"] .home-layout{
+  width: 100%;
+  max-width: none;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--raspberry-gap-md);
+  align-items: start;
+  min-height: 0;
 }
 
-body[data-mode="raspberry"] .info-header h1,
-body[data-mode="raspberry"] .title-col h1{
-  font-size: clamp(42px, 5vw, 58px);
+body[data-mode="raspberry"] .home-left{
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: var(--raspberry-gap-md);
+  min-height: 0;
 }
 
-body[data-mode="raspberry"] .subtitle{
-  font-size: clamp(16px, 2.6vw, 20px);
+body[data-mode="raspberry"] .home-time .clock{
+  font-size: clamp(58px, 12vw, 88px);
+  letter-spacing: -1px;
+  line-height: 1;
 }
 
-body[data-mode="raspberry"] .info-grid,
-body[data-mode="raspberry"] .tech-grid,
-body[data-mode="raspberry"] .team-grid{
-  gap: calc(24px * var(--mode-card-gap-scale));
+body[data-mode="raspberry"] .home-time .date-section{
+  font-size: var(--raspberry-font-md);
+  margin-top: 6px;
+  line-height: 1.2;
 }
 
-body[data-mode="raspberry"] .info-grid{
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+body[data-mode="raspberry"] .weather-card{
+  padding: var(--raspberry-card-padding);
+  gap: var(--raspberry-gap-md);
+  align-items: stretch;
 }
 
-body[data-mode="raspberry"] .panel{
-  padding: 26px 24px;
+body[data-mode="raspberry"] .weather-card__left{
+  gap: var(--raspberry-gap-sm);
+  align-items: center;
 }
 
-body[data-mode="raspberry"] .panel p{
-  font-size: clamp(16px, 2.6vw, 20px);
-  line-height: 1.72;
+body[data-mode="raspberry"] .weather-card__icon{
+  width: clamp(64px, 12vw, 80px);
+  height: clamp(64px, 12vw, 80px);
+  border-radius: 20px;
 }
 
-body[data-mode="raspberry"] .tech-pill{
-  padding: 18px 22px;
-  font-size: 18px;
+body[data-mode="raspberry"] .weather-card__icon .weather-icon{
+  font-size: clamp(28px, 6vw, 36px);
 }
 
-body[data-mode="raspberry"] .team-card{
-  padding: 22px;
-  gap: 16px;
+body[data-mode="raspberry"] .weather-card__meta .status{
+  font-size: var(--raspberry-font-lg);
 }
 
-body[data-mode="raspberry"] .devices-layout{
-  max-width: 1180px;
-  padding: 20px var(--mode-outer-gutter) 32px;
+body[data-mode="raspberry"] .weather-card__meta .location{
+  font-size: var(--raspberry-font-sm);
 }
 
-body[data-mode="raspberry"] .devices-topbar{
-  margin-bottom: 22px;
-  gap: 20px;
+body[data-mode="raspberry"] .weather-card__right{
+  gap: var(--raspberry-gap-xs);
 }
 
-body[data-mode="raspberry"] .page-title{
-  font-size: clamp(28px, 4vw, 42px);
+body[data-mode="raspberry"] .weather-card__right .temperature{
+  font-size: clamp(40px, 10vw, 60px);
+  line-height: 1;
 }
 
-body[data-mode="raspberry"] .page-subtitle{
-  font-size: 18px;
+body[data-mode="raspberry"] .weather-card__right .feels-like{
+  font-size: var(--raspberry-font-sm);
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
-body[data-mode="raspberry"] .add-device-btn{
-  height: var(--mode-touch-target);
-  padding: 0 22px;
-  font-size: 16px;
-  gap: 12px;
+body[data-mode="raspberry"] .weather-card__right .feels-like i{
+  font-size: clamp(16px, 3.6vw, 20px);
 }
 
-body[data-mode="raspberry"] .add-device-btn i{
-  font-size: 20px;
+body[data-mode="raspberry"] .weather-card__divider{
+  margin: 16px 0 12px;
 }
 
-body[data-mode="raspberry"] .empty-state{
-  margin-top: 24px;
+body[data-mode="raspberry"] .weather-card__metrics{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--raspberry-gap-sm);
 }
 
-body[data-mode="raspberry"] .empty-icon{
-  width: 128px;
-  height: 128px;
-  margin: 0 auto 18px;
+body[data-mode="raspberry"] .metric__label{
+  font-size: var(--raspberry-font-xs);
 }
 
-body[data-mode="raspberry"] .empty-icon i{
-  font-size: 44px;
+body[data-mode="raspberry"] .metric__value{
+  font-size: var(--raspberry-font-md);
 }
 
-body[data-mode="raspberry"] .empty-title{
-  font-size: 28px;
+body[data-mode="raspberry"] .home-cards{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--raspberry-gap-sm);
 }
 
-body[data-mode="raspberry"] .empty-text{
-  font-size: 18px;
+body[data-mode="raspberry"] .dash-card{
+  min-height: clamp(120px, 32vw, 150px);
+  padding: calc(var(--raspberry-card-padding) * .95);
+  gap: var(--raspberry-gap-sm);
 }
 
-body[data-mode="raspberry"] .benefits{
-  gap: calc(22px * var(--mode-card-gap-scale));
+body[data-mode="raspberry"] .dash-card__icon{
+  width: clamp(60px, 13vw, 76px);
+  height: clamp(60px, 13vw, 76px);
+  border-radius: 18px;
 }
 
-body[data-mode="raspberry"] .benefit-card{
-  padding: 26px 24px;
+body[data-mode="raspberry"] .dash-card__icon i{
+  font-size: clamp(26px, 6vw, 34px);
 }
 
-body[data-mode="raspberry"] .benefit-icon{
-  width: 74px;
-  height: 74px;
-  font-size: 30px;
+body[data-mode="raspberry"] .dash-card__title{
+  font-size: var(--raspberry-font-lg);
 }
 
-body[data-mode="raspberry"] .device-list{
-  gap: calc(22px * var(--mode-card-gap-scale));
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+body[data-mode="raspberry"] .dash-card__subtitle{
+  font-size: var(--raspberry-font-xs);
 }
 
-body[data-mode="raspberry"] .device-card{
-  padding: 22px;
-  gap: 16px;
+body[data-mode="raspberry"] .quick-nav{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(120px, 1fr);
+  gap: var(--raspberry-gap-sm);
+  padding: 0;
+  align-content: stretch;
+  min-height: 0;
 }
 
-body[data-mode="raspberry"] .device-icon{
-  width: 68px;
-  height: 68px;
-  font-size: 30px;
+body[data-mode="raspberry"] .quick-nav .qcard{
+  padding: calc(var(--raspberry-card-padding) * .9);
+  gap: var(--raspberry-gap-sm);
 }
 
-body[data-mode="raspberry"] .device-status{
-  padding: 12px 16px;
+body[data-mode="raspberry"] .quick-nav .qcard__icon{
+  width: clamp(56px, 13vw, 72px);
+  height: clamp(56px, 13vw, 72px);
+  border-radius: 18px;
+  font-size: clamp(28px, 7vw, 36px);
 }
 
-body[data-mode="raspberry"] .device-status-text{
-  font-size: 16px;
+body[data-mode="raspberry"] .quick-nav .qcard__title{
+  font-size: var(--raspberry-font-lg);
 }
 
-body[data-mode="raspberry"] .status-badge{
-  font-size: 14px;
+body[data-mode="raspberry"] .quick-nav .qcard__subtitle{
+  font-size: var(--raspberry-font-xs);
+  white-space: normal;
+}
+
+body[data-mode="raspberry"] .quick-nav .qspan-2{
+  grid-column: 1 / -1;
+  min-height: clamp(108px, 26vw, 140px);
+}
+
+body[data-mode="raspberry"] .mode-status{
+  font-size: var(--raspberry-font-sm);
+  margin-top: var(--raspberry-gap-xs);
+}
+
+/* ====================== Clima ====================== */
+body[data-mode="raspberry"] .container{
+  padding: 0;
+}
+
+body[data-mode="raspberry"] .weather-wrap{
+  width: 100%;
+  margin: 0;
+  gap: var(--raspberry-gap-md);
+}
+
+body[data-mode="raspberry"] .weather-header{
+  grid-template-columns: minmax(0, 1fr);
+  align-items: flex-start;
+  gap: var(--raspberry-gap-sm);
+}
+
+body[data-mode="raspberry"] .weather-header h1{
+  font-size: var(--raspberry-font-xl);
+}
+
+body[data-mode="raspberry"] .location-row{
+  font-size: var(--raspberry-font-sm);
+}
+
+body[data-mode="raspberry"] .change-city{
+  justify-self: flex-start;
+}
+
+body[data-mode="raspberry"] .change-city .custom-select-container{
+  padding: 6px 12px;
+}
+
+body[data-mode="raspberry"] .current-panel{
+  padding: clamp(14px, 3vw, 18px);
+  grid-template-columns: auto 1fr;
+  gap: var(--raspberry-gap-sm);
+}
+
+body[data-mode="raspberry"] .current-left{
+  gap: var(--raspberry-gap-sm);
+}
+
+body[data-mode="raspberry"] .weather-badge{
+  width: clamp(56px, 12vw, 72px);
+  height: clamp(56px, 12vw, 72px);
+}
+
+body[data-mode="raspberry"] .weather-badge .weather-icon{
+  font-size: clamp(24px, 5.6vw, 30px);
+}
+
+body[data-mode="raspberry"] .current-main .temperature{
+  font-size: clamp(36px, 9vw, 54px);
+}
+
+body[data-mode="raspberry"] .current-main .status{
+  font-size: var(--raspberry-font-sm);
+}
+
+body[data-mode="raspberry"] .current-right{
+  font-size: var(--raspberry-font-xs);
+  margin-left: 0;
+  text-align: left;
+  display: grid;
+  gap: 2px;
+}
+
+body[data-mode="raspberry"] .current-right p{
+  margin: 0;
+}
+
+body[data-mode="raspberry"] .current-stats{
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--raspberry-gap-sm);
+}
+
+body[data-mode="raspberry"] .stat i{
+  font-size: clamp(16px, 3.6vw, 20px);
+}
+
+body[data-mode="raspberry"] .stat strong{
+  font-size: var(--raspberry-font-sm);
+}
+
+body[data-mode="raspberry"] .stat span{
+  font-size: var(--raspberry-font-xs);
+}
+
+body[data-mode="raspberry"] .section-title{
+  font-size: var(--raspberry-font-md);
+  margin: var(--raspberry-gap-sm) 0 var(--raspberry-gap-xs);
+}
+
+body[data-mode="raspberry"] .hourly{
+  padding: clamp(10px, 2.6vw, 14px);
+}
+
+body[data-mode="raspberry"] .forecast-row{
+  gap: var(--raspberry-gap-xs);
+}
+
+body[data-mode="raspberry"] .forecast-item{
+  min-width: clamp(80px, 18vw, 92px);
+  padding: clamp(8px, 2.4vw, 12px);
+}
+
+body[data-mode="raspberry"] .daily{
+  padding: clamp(10px, 2.6vw, 14px);
+}
+
+body[data-mode="raspberry"] .daily .forecast-row{
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--raspberry-gap-sm);
+}
+
+body[data-mode="raspberry"] .daily .forecast-item{
+  padding: clamp(10px, 2.8vw, 16px);
+}
+
+body[data-mode="raspberry"] .pill-btn{
+  padding: 8px 12px;
+  font-size: var(--raspberry-font-xs);
+}
+
+/* ====================== Reloj ====================== */
+body[data-mode="raspberry"] .clock-page{
+  display: flex;
+  flex-direction: column;
+  gap: var(--raspberry-gap-md);
+}
+
+body[data-mode="raspberry"] .clock{
+  width: 100%;
+  margin: 0;
+  padding: clamp(16px, 3.4vw, 22px);
+  border-radius: var(--raspberry-card-radius);
+}
+
+body[data-mode="raspberry"] .city-selector{
+  margin-bottom: var(--raspberry-gap-xs);
+}
+
+body[data-mode="raspberry"] .custom-select-container{
+  width: clamp(220px, 40vw, 280px);
+}
+
+body[data-mode="raspberry"] .custom-select{
+  padding: 8px 34px 8px 12px;
+  font-size: var(--raspberry-font-xs);
+}
+
+body[data-mode="raspberry"] .select-icon{
+  right: 10px;
+}
+
+body[data-mode="raspberry"] .clock-item{
+  font-size: clamp(48px, 12vw, 96px);
+  margin: var(--raspberry-gap-xs) 0;
+}
+
+body[data-mode="raspberry"] .date-item{
+  font-size: var(--raspberry-font-sm);
+  margin-bottom: var(--raspberry-gap-xs);
+}
+
+body[data-mode="raspberry"] .toggle-format-btn{
+  padding: 10px 14px;
+  font-size: var(--raspberry-font-xs);
+}
+
+body[data-mode="raspberry"] .clock-functions{
+  width: 100%;
+  margin: 0;
+}
+
+body[data-mode="raspberry"] .functions-grid{
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--raspberry-gap-sm);
+}
+
+body[data-mode="raspberry"] .clock .qcard{
+  height: clamp(140px, 34vh, 170px);
+  gap: var(--raspberry-gap-xs);
+}
+
+body[data-mode="raspberry"] .clock .qcard-icon{
+  width: clamp(48px, 12vw, 64px);
+  height: clamp(48px, 12vw, 64px);
+}
+
+body[data-mode="raspberry"] .clock .qcard-title{
+  font-size: var(--raspberry-font-lg);
+}
+
+body[data-mode="raspberry"] .clock .qcard-subtitle{
+  font-size: var(--raspberry-font-xs);
+}
+
+body[data-mode="raspberry"] .clock .back-home-btn{
+  top: calc(var(--raspberry-safe-top) / 2 + 8px);
+  left: var(--raspberry-safe-horizontal);
   padding: 8px 14px;
 }
 
-body[data-mode="raspberry"] .device-actions{
-  gap: 12px;
+/* ====================== Dispositivos ====================== */
+body[data-mode="raspberry"] .devices-layout{
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--raspberry-gap-md);
 }
 
-body[data-mode="raspberry"] .device-actions .btn{
-  padding: 12px 18px;
-  font-size: 16px;
+body[data-mode="raspberry"] .devices-topbar{
+  flex-wrap: wrap;
+  gap: var(--raspberry-gap-sm);
+}
+
+body[data-mode="raspberry"] .page-title{
+  font-size: var(--raspberry-font-xl);
+}
+
+body[data-mode="raspberry"] .page-subtitle{
+  font-size: var(--raspberry-font-sm);
+}
+
+body[data-mode="raspberry"] .add-device-btn{
+  height: var(--raspberry-touch-target);
+  padding: 0 clamp(14px, 3.6vw, 18px);
+  font-size: var(--raspberry-font-xs);
+}
+
+body[data-mode="raspberry"] .empty-state{
+  margin-top: 0;
+  padding: clamp(16px, 3.4vw, 24px);
+}
+
+body[data-mode="raspberry"] .empty-icon{
+  width: clamp(70px, 16vw, 90px);
+  height: clamp(70px, 16vw, 90px);
+}
+
+body[data-mode="raspberry"] .benefits{
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--raspberry-gap-sm);
+}
+
+body[data-mode="raspberry"] .device-list{
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--raspberry-gap-sm);
+}
+
+body[data-mode="raspberry"] .device-card{
+  padding: clamp(14px, 3.2vw, 18px);
+  min-height: clamp(130px, 30vh, 160px);
+  gap: var(--raspberry-gap-sm);
+}
+
+body[data-mode="raspberry"] .device-icon{
+  width: clamp(48px, 10vw, 60px);
+  height: clamp(48px, 10vw, 60px);
+  font-size: clamp(24px, 6vw, 30px);
+}
+
+body[data-mode="raspberry"] .device-status{
+  gap: var(--raspberry-gap-xs);
+}
+
+body[data-mode="raspberry"] .device-status-text,
+body[data-mode="raspberry"] .status-badge{
+  font-size: var(--raspberry-font-xs);
+}
+
+body[data-mode="raspberry"] .device-actions{
+  gap: var(--raspberry-gap-xs);
+}
+
+body[data-mode="raspberry"] .device-pagination{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--raspberry-gap-xs);
+  margin-top: var(--raspberry-gap-xs);
+}
+
+body[data-mode="raspberry"] .device-pagination button{
+  min-width: clamp(44px, 10vw, 60px);
+  padding: 8px 12px;
+}
+
+body[data-mode="raspberry"] .device-pagination .page-indicator{
+  font-size: var(--raspberry-font-xs);
+  color: var(--fg-soft);
 }
 
 body[data-mode="raspberry"] .modal{
-  width: min(600px, 94vw);
-  padding: 28px 26px;
+  width: min(92vw, 420px);
+  padding: clamp(16px, 4vw, 24px);
 }
 
 body[data-mode="raspberry"] .modal-title{
-  font-size: 24px;
+  font-size: var(--raspberry-font-lg);
 }
 
 body[data-mode="raspberry"] .modal-buttons{
-  gap: 14px;
+  gap: var(--raspberry-gap-xs);
 }
 
 body[data-mode="raspberry"] .modal-button{
-  min-height: var(--mode-touch-target);
-  padding: 0 22px;
-  font-size: 16px;
+  min-height: var(--raspberry-touch-target);
+  font-size: var(--raspberry-font-sm);
 }
 
 body[data-mode="raspberry"] .edit-form{
-  gap: 20px;
+  gap: var(--raspberry-gap-sm);
 }
 
 body[data-mode="raspberry"] .form-group label{
-  font-size: 16px;
-}
-
-body[data-mode="raspberry"] .name-preview{
-  padding: 16px;
-  font-size: 18px;
+  font-size: var(--raspberry-font-xs);
 }
 
 body[data-mode="raspberry"] .room-selector,
 body[data-mode="raspberry"] .type-selector,
 body[data-mode="raspberry"] .icon-selector{
-  gap: 12px;
+  gap: var(--raspberry-gap-xs);
 }
 
 body[data-mode="raspberry"] .room-option,
 body[data-mode="raspberry"] .type-option,
 body[data-mode="raspberry"] .icon-option{
-  padding: 14px;
-  font-size: 16px;
+  min-height: var(--raspberry-touch-target);
+  padding: 10px;
+  font-size: var(--raspberry-font-xs);
 }
 
-body[data-mode="raspberry"] .weather-wrap{
-  width: min(1180px, 98vw);
-  margin: 28px auto 14px;
-  padding: 0 var(--mode-outer-gutter);
+/* ====================== Ajustes / Tutorial / Ayuda ====================== */
+body[data-mode="raspberry"] .tutorial-container,
+body[data-mode="raspberry"] .settings-content,
+body[data-mode="raspberry"] .help-page,
+body[data-mode="raspberry"] .info-wrap{
+  padding: 0;
+  gap: var(--raspberry-gap-md);
 }
 
-body[data-mode="raspberry"] .weather-header{
-  margin-bottom: 18px;
-  gap: 16px;
+body[data-mode="raspberry"] .tutorial-header,
+body[data-mode="raspberry"] .settings-title,
+body[data-mode="raspberry"] .help-header,
+body[data-mode="raspberry"] .info-header{
+  gap: var(--raspberry-gap-sm);
+  flex-wrap: wrap;
 }
 
-body[data-mode="raspberry"] .weather-header h1{
-  font-size: clamp(30px, 4.2vw, 44px);
+body[data-mode="raspberry"] .tutorial-title,
+body[data-mode="raspberry"] .settings-title h1,
+body[data-mode="raspberry"] .help-header h1,
+body[data-mode="raspberry"] .info-header h1{
+  font-size: var(--raspberry-font-xl);
 }
 
-body[data-mode="raspberry"] .change-city .custom-select-container{
-  transform: translateY(2px);
+body[data-mode="raspberry"] .settings-subtitle,
+body[data-mode="raspberry"] .help-header .subtitle,
+body[data-mode="raspberry"] .info-header .subtitle{
+  font-size: var(--raspberry-font-sm);
+  margin-left: clamp(48px, 12vw, 60px);
 }
 
-body[data-mode="raspberry"] .current-panel{
-  padding: 28px 28px;
-  gap: 20px;
+body[data-mode="raspberry"] .tutorial-menu__cards,
+body[data-mode="raspberry"] .settings-buttons,
+body[data-mode="raspberry"] .info-grid,
+body[data-mode="raspberry"] .topics{
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--raspberry-gap-sm);
 }
 
-body[data-mode="raspberry"] .current-main .temperature{
-  font-size: clamp(60px, 8vw, 84px);
+body[data-mode="raspberry"] .tutorial-card,
+body[data-mode="raspberry"] .settings-button,
+body[data-mode="raspberry"] .panel,
+body[data-mode="raspberry"] .topic-card,
+body[data-mode="raspberry"] .about-card{
+  width: 100%;
+  min-height: clamp(120px, 30vh, 150px);
+  padding: calc(var(--raspberry-card-padding) * .95);
+  gap: var(--raspberry-gap-xs);
 }
 
-body[data-mode="raspberry"] .current-main .status{
-  font-size: 18px;
+body[data-mode="raspberry"] .tutorial-card .qcard__icon,
+body[data-mode="raspberry"] .settings-button > i{
+  width: clamp(56px, 12vw, 68px);
+  height: clamp(56px, 12vw, 68px);
+  font-size: clamp(26px, 6vw, 32px);
+  margin-bottom: var(--raspberry-gap-xs);
 }
 
-body[data-mode="raspberry"] .current-right p{
-  font-size: 16px;
+body[data-mode="raspberry"] .tutorial-card__title,
+body[data-mode="raspberry"] .settings-button-title,
+body[data-mode="raspberry"] .topic-title{
+  font-size: var(--raspberry-font-lg);
 }
 
-body[data-mode="raspberry"] .current-stats{
-  gap: 18px;
-  padding-top: 14px;
+body[data-mode="raspberry"] .tutorial-card__subtitle,
+body[data-mode="raspberry"] .tutorial-card__cta,
+body[data-mode="raspberry"] .settings-button-subtitle,
+body[data-mode="raspberry"] .panel p,
+body[data-mode="raspberry"] .topic-sub{
+  font-size: var(--raspberry-font-xs);
 }
 
-body[data-mode="raspberry"] .stat i{
-  font-size: 20px;
+body[data-mode="raspberry"] .flow-stage{
+  min-height: clamp(200px, 46vh, 280px);
 }
 
-body[data-mode="raspberry"] .stat strong{
-  font-size: 18px;
+body[data-mode="raspberry"] .step-text{
+  font-size: var(--raspberry-font-lg);
 }
 
-body[data-mode="raspberry"] .stat span{
-  font-size: 14px;
+body[data-mode="raspberry"] .step-status,
+body[data-mode="raspberry"] .flow-footnote{
+  font-size: var(--raspberry-font-sm);
 }
 
-body[data-mode="raspberry"] .hourly{
-  padding: 16px 18px;
+body[data-mode="raspberry"] .flow-controls{
+  gap: var(--raspberry-gap-xs);
 }
 
-body[data-mode="raspberry"] .forecast-item{
-  min-width: 96px;
-  padding: 12px;
+body[data-mode="raspberry"] .tutorial-button,
+body[data-mode="raspberry"] .mode-toggle,
+body[data-mode="raspberry"] .flow-return{
+  font-size: var(--raspberry-font-sm);
 }
 
-body[data-mode="raspberry"] .forecast-item .temperature{
-  font-size: 15px;
+body[data-mode="raspberry"] .tech-grid,
+body[data-mode="raspberry"] .team-grid{
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--raspberry-gap-xs);
 }
 
-body[data-mode="raspberry"] .daily{
-  padding: 18px 20px;
+body[data-mode="raspberry"] .tech-pill{
+  font-size: var(--raspberry-font-xs);
+  padding: 6px 10px;
 }
 
-body[data-mode="raspberry"] .daily .forecast-row{
-  gap: 18px;
+body[data-mode="raspberry"] .team-card{
+  padding: clamp(10px, 2.6vw, 16px);
 }
 
-body[data-mode="raspberry"] .pill-btn{
-  min-height: var(--mode-touch-target);
-  padding: 12px 18px;
-  font-size: 16px;
+body[data-mode="raspberry"] .help-footer .version,
+body[data-mode="raspberry"] .settings-version{
+  font-size: var(--raspberry-font-xs);
 }
 
-body[data-mode="raspberry"] .pill-btn i{
-  font-size: 18px;
-}
-
-body[data-mode="raspberry"] .clock{
-  width: min(1180px, 98vw);
-  margin: 40px auto 24px;
-  padding: 36px 34px 32px;
-}
-
-body[data-mode="raspberry"] .city-selector{
-  margin-bottom: 16px;
-}
-
-body[data-mode="raspberry"] .custom-select{
-  padding: 14px 48px 14px 18px;
-  font-size: 16px;
-  min-height: var(--mode-touch-target);
-}
-
-body[data-mode="raspberry"] .select-icon{
-  right: 16px;
-}
-
-body[data-mode="raspberry"] .clock-item{
-  font-size: clamp(68px, 15vw, 160px);
-}
-
-body[data-mode="raspberry"] .date-item{
-  font-size: 22px;
-}
-
-body[data-mode="raspberry"] .toggle-format-btn{
-  min-height: var(--mode-touch-target);
-  padding: 12px 22px;
-  font-size: 16px;
-}
-
-body[data-mode="raspberry"] .clock-functions{
-  width: min(1180px, 98vw);
-  margin: 0 auto 24px;
-}
-
-body[data-mode="raspberry"] .functions-grid{
-  gap: calc(26px * var(--mode-card-gap-scale));
-}
-
-body[data-mode="raspberry"] .clock .qcard{
-  min-height: 220px;
-}
-
-body[data-mode="raspberry"] .clock .qcard-icon{
-  width: 78px;
-  height: 78px;
-}
-
-body[data-mode="raspberry"] .clock .qcard-title{
-  font-size: 22px;
-}
-
-body[data-mode="raspberry"] .clock .qcard-subtitle{
-  font-size: 16px;
-}
-
-body[data-mode="raspberry"] .clock .back-home-btn{
-  min-height: var(--mode-touch-target);
-  padding: 10px 20px;
-  font-size: 16px;
-}
-
-body[data-mode="raspberry"] .wifi-button{
-  width: 60px;
-  height: 60px;
-}
-
-body[data-mode="raspberry"] .wifi-icon{
-  font-size: 26px;
-}
-
+/* ====================== WiFi modal ====================== */
 body[data-mode="raspberry"] .wifi-modal-content{
-  width: min(520px, 96vw);
-  padding: 28px 26px;
+  width: min(92vw, 420px);
+  padding: clamp(16px, 3.8vw, 22px);
 }
 
 body[data-mode="raspberry"] .wifi-modal-header h2{
-  font-size: 22px;
+  font-size: var(--raspberry-font-lg);
 }
 
 body[data-mode="raspberry"] .buttons-wifi{
-  gap: 14px;
+  gap: var(--raspberry-gap-xs);
 }
 
-body[data-mode="raspberry"] .refresh-button{
-  min-height: var(--mode-touch-target);
-  padding: 12px 18px;
-  font-size: 16px;
-}
-
-body[data-mode="raspberry"] .close-button{
-  width: var(--mode-touch-target);
-  height: var(--mode-touch-target);
-  border-radius: 16px;
-  font-size: 26px;
+body[data-mode="raspberry"] .refresh-button,
+body[data-mode="raspberry"] .close-button,
+body[data-mode="raspberry"] .connect-button{
+  font-size: var(--raspberry-font-sm);
 }
 
 body[data-mode="raspberry"] .wifi-list{
-  margin-bottom: 20px;
-  max-height: 320px;
+  max-height: clamp(220px, 52vh, 280px);
 }
 
 body[data-mode="raspberry"] .wifi-item{
-  padding: 16px;
-  font-size: 16px;
-  border-radius: 16px;
-  min-height: var(--mode-touch-target);
+  padding: 12px;
+  font-size: var(--raspberry-font-sm);
 }
 
 body[data-mode="raspberry"] .password-input{
-  padding: 16px;
-  font-size: 16px;
+  padding: 12px;
+  font-size: var(--raspberry-font-sm);
 }
 
-body[data-mode="raspberry"] .connect-button{
-  min-height: var(--mode-touch-target);
-  font-size: 16px;
-}
-
-body[data-mode="raspberry"] .mode-toggle-group{
-  gap: 16px;
-}
-
-body[data-mode="raspberry"] .settings-buttons{
-  gap: calc(28px * var(--mode-card-gap-scale));
-  margin: 32px auto 0;
-  padding: 0 8px;
-  justify-content: center;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-}
-
-body[data-mode="raspberry"] .settings-button{
-  min-height: calc((var(--card-h, 270px)) * 1.2);
-  padding: calc(28px * var(--mode-card-padding-scale)) 34px;
-  width: 100%;
-}
-
-body[data-mode="raspberry"] .settings-button > i{
-  width: 96px;
-  height: 96px;
-  font-size: 38px;
-}
-
-body[data-mode="raspberry"] .settings-button-title{
-  font-size: clamp(22px, 3.4vw, 28px);
-}
-
-body[data-mode="raspberry"] .settings-button-subtitle{
-  font-size: clamp(16px, 2.6vw, 18px);
-}
-
-body[data-mode="raspberry"] .mode-status{
-  font-size: clamp(18px, 2.8vw, 24px);
-}
-
+/* ====================== Botones ====================== */
 body[data-mode="raspberry"] button,
 body[data-mode="raspberry"] .btn,
 body[data-mode="raspberry"] .pill-btn,
 body[data-mode="raspberry"] .room-option,
 body[data-mode="raspberry"] .type-option,
 body[data-mode="raspberry"] .icon-option{
-  min-height: var(--mode-touch-target);
+  min-height: var(--raspberry-touch-target);
+  font-size: var(--raspberry-font-sm);
 }
 @keyframes helenPop { from { transform: translateY(6px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
 

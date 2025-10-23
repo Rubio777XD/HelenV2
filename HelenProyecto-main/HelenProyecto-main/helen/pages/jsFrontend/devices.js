@@ -7,6 +7,9 @@ let nextDeviceId = 1;
 let selectedRoom = '';
 let selectedType = '';
 let devices = [];
+let currentPage = 1;
+
+const DEVICES_PER_PAGE = 4;
 
 const STORAGE_KEY = 'helen:devices:v1';
 
@@ -71,10 +74,12 @@ function loadDevicesFromStorage() {
     });
     devices = mapped;
     nextDeviceId = maxId + 1 || 1;
+    currentPage = 1;
   } catch (error) {
     console.warn('[Dispositivos] No se pudo parsear dispositivos almacenados:', error);
     devices = [];
     nextDeviceId = 1;
+    currentPage = 1;
   }
 }
 
@@ -92,8 +97,15 @@ function renderDevices() {
   const list = qs('#deviceList');
   if (!list) return;
   list.innerHTML = '';
+  const total = Math.max(1, Math.ceil(devices.length / DEVICES_PER_PAGE));
+  if (currentPage > total) {
+    currentPage = total;
+  }
 
-  devices.forEach((device) => {
+  const start = (currentPage - 1) * DEVICES_PER_PAGE;
+  const visible = devices.slice(start, start + DEVICES_PER_PAGE);
+
+  visible.forEach((device) => {
     const name = device.name || [device.room, device.type].filter(Boolean).join(' - ') || 'Dispositivo';
     const statusText = device.isOn ? 'Encendido' : 'Apagado';
     const badgeClass = device.isOn ? 'status-on' : 'status-off';
@@ -132,6 +144,10 @@ function renderDevices() {
   });
 
   updateUIState();
+  renderPagination();
+  if (window.HelenRaspberryFit && typeof window.HelenRaspberryFit.refresh === 'function') {
+    window.HelenRaspberryFit.refresh();
+  }
 }
 
 // ================== Init ==================
@@ -187,7 +203,54 @@ function updateUIState() {
     list.style.display = 'none';
     if (empty) empty.style.display = 'block';
     if (subtitle) subtitle.textContent = 'No hay dispositivos conectados aún';
+    currentPage = 1;
   }
+}
+
+function renderPagination() {
+  const container = qs('#devicePagination');
+  if (!container) return;
+
+  const total = Math.max(1, Math.ceil(devices.length / DEVICES_PER_PAGE));
+
+  if (devices.length <= DEVICES_PER_PAGE) {
+    container.innerHTML = '';
+    container.setAttribute('hidden', 'hidden');
+    return;
+  }
+
+  container.removeAttribute('hidden');
+  container.innerHTML = '';
+
+  const prev = document.createElement('button');
+  prev.type = 'button';
+  prev.textContent = 'Anterior';
+  prev.disabled = currentPage <= 1;
+  prev.addEventListener('click', () => {
+    if (currentPage > 1) {
+      currentPage -= 1;
+      renderDevices();
+    }
+  });
+
+  const next = document.createElement('button');
+  next.type = 'button';
+  next.textContent = 'Siguiente';
+  next.disabled = currentPage >= total;
+  next.addEventListener('click', () => {
+    if (currentPage < total) {
+      currentPage += 1;
+      renderDevices();
+    }
+  });
+
+  const indicator = document.createElement('span');
+  indicator.className = 'page-indicator';
+  indicator.textContent = `Página ${currentPage} de ${total}`;
+
+  container.appendChild(prev);
+  container.appendChild(indicator);
+  container.appendChild(next);
 }
 
 // ================== Eliminar ==================
@@ -402,6 +465,7 @@ function addNewDevice() {
   });
 
   saveDevicesToStorage();
+  currentPage = Math.max(1, Math.ceil(devices.length / DEVICES_PER_PAGE));
   renderDevices();
   hideAddModal();
 }

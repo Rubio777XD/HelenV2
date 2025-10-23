@@ -3,8 +3,21 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
-PYTHON_BIN="${PYTHON:-python3}"
+DEFAULT_VENV_PYTHON="${PROJECT_ROOT}/.venv/bin/python"
 PORT="${HELEN_PORT:-5000}"
+
+if [[ -n "${PYTHON:-}" ]]; then
+    PYTHON_BIN="${PYTHON}"
+elif [[ -x "${DEFAULT_VENV_PYTHON}" ]]; then
+    PYTHON_BIN="${DEFAULT_VENV_PYTHON}"
+else
+    PYTHON_BIN="python3"
+fi
+
+if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+    echo "No se encontró ${PYTHON_BIN}. Ajusta la variable PYTHON o ejecuta setup_pi.sh primero." >&2
+    exit 1
+fi
 
 MODEL_FILE="/proc/device-tree/model"
 if [[ -z "${DEVICE_MODEL:-}" && -r "${MODEL_FILE}" ]]; then
@@ -21,18 +34,17 @@ case "${DEVICE_MODEL,,}" in
     *)
         DEFAULT_POLL_INTERVAL=""
         ;;
-endcase
+esac
 
 POLL_INTERVAL="${POLL_INTERVAL:-${DEFAULT_POLL_INTERVAL}}"
 
-if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
-    echo "No se encontró ${PYTHON_BIN}. Ajusta la variable PYTHON antes de ejecutar este script." >&2
-    exit 1
-fi
+LOG_DIR="${PROJECT_ROOT}/reports/logs/pi"
+mkdir -p "${LOG_DIR}"
+RUN_ID="$(date '+%Y%m%d-%H%M%S')"
+BACKEND_LOG="${LOG_DIR}/backend-${RUN_ID}.log"
+CHROMIUM_LOG="${LOG_DIR}/chromium-${RUN_ID}.log"
 
-mkdir -p "${PROJECT_ROOT}/reports/logs"
-BACKEND_LOG="${PROJECT_ROOT}/reports/logs/backend-pi.log"
-CHROMIUM_LOG="${PROJECT_ROOT}/reports/logs/chromium.log"
+echo "[HELEN] Los logs se guardarán en ${LOG_DIR}"
 
 echo "Iniciando backend de HELEN (logs en ${BACKEND_LOG})"
 BACKEND_CMD=("${PYTHON_BIN}" -m backendHelen.server --host 0.0.0.0 --port "${PORT}")
@@ -62,8 +74,49 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Espera breve para que el backend exponga /health antes de abrir Chromium.
-sleep 4
+wait_for_backend() {
+    local timeout="${HELEN_BACKEND_WAIT:-90}"
+    local deadline=$((SECONDS + timeout))
+    local health_url="http://127.0.0.1:${PORT}/health"
+
+    while (( SECONDS < deadline )); do
+        if command -v curl >/dev/null 2>&1; then
+            if curl --silent --max-time 2 --fail "${health_url}" >/dev/null; then
+                return 0
+            fi
+        elif command -v wget >/dev/null 2>&1; then
+            if wget -q -O- --timeout=2 "${health_url}" >/dev/null; then
+                return 0
+            fi
+        else
+            if HEALTH_URL="${health_url}" "${PYTHON_BIN}" - <<'PY'
+import os
+import sys
+import urllib.request
+
+url = os.environ.get("HEALTH_URL")
+try:
+    with urllib.request.urlopen(url, timeout=2):
+        pass
+except Exception:
+    sys.exit(1)
+PY
+            then
+                return 0
+            fi
+        fi
+
+        sleep 2
+    done
+
+    return 1
+}
+
+if ! wait_for_backend; then
+    echo "[HELEN] El backend no respondió en el tiempo esperado." >&2
+    wait "${BACKEND_PID}"
+    exit 1
+fi
 
 if [[ -n "${HELEN_NO_UI:-}" ]]; then
     echo "Variable HELEN_NO_UI detectada; se omitirá el kiosko."

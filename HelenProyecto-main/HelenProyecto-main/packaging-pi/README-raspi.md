@@ -52,11 +52,11 @@ bash packaging-pi/setup_pi.sh
 ```
 
 El script:
-- Instala bibliotecas del sistema (`libatlas-base-dev`, `libopenblas-dev`, `libportaudio2`, `libjpeg-dev`, `libtiff5`, `libcamera0`, `libcamera-apps`, librerías FFmpeg disponibles y Chromium).
-- Actualiza `pip`, `setuptools` y `wheel`.
-- Instala las dependencias Python listadas en `packaging-pi/requirements-pi.txt` (NumPy, SciPy, scikit-learn, XGBoost, MediaPipe, OpenCV, Flask, Flask-SocketIO, etc.).
+- Instala bibliotecas del sistema actuales (`libatlas-base-dev`, `libopenblas-dev`, `libportaudio2`, `libjpeg-dev`, `libtiff-dev`, `libcamera0.5`, `rpicam-apps-core`, `libavcodec-extra`, `libavcodec-dev`, `libavformat-dev`, `libswscale-dev` y el paquete disponible de Chromium).
+- Crea un entorno virtual aislado en `.venv/` (usa `python3 -m venv`), actualiza `pip`, `setuptools` y `wheel` dentro de él e instala `packaging-pi/requirements-pi.txt` sin tocar los paquetes del sistema.
+- Registra la salida completa en `reports/logs/pi/setup-*.log` para facilitar auditorías.
 
-Si tu entorno usa un intérprete alternativo, exporta `PYTHON=/ruta/a/python3.11` antes de ejecutar el script.
+Si tu entorno usa un intérprete alternativo, exporta `PYTHON=/ruta/a/python3.11` antes de ejecutar el script. Después de la instalación activa el entorno con `source .venv/bin/activate` si quieres trabajar manualmente.
 
 ## 4. Ejecutar HELEN manualmente
 
@@ -67,7 +67,8 @@ bash packaging-pi/run_pi.sh
 ```
 
 El script detecta si ejecutas una Pi 4 o Pi 5 y ajusta automáticamente el intervalo de inferencia (`--poll-interval`) a 0.050 s (Pi 4, ≈20 fps efectivos) o 0.040 s (Pi 5, ≈25 fps). También:
-- Lanza `python3 -m backendHelen.server` en segundo plano (logs en `reports/logs/backend-pi.log`).
+- Usa el intérprete de `.venv/bin/python` (o el indicado por `PYTHON`) para lanzar `backendHelen.server` en segundo plano y deja los logs en `reports/logs/pi/backend-*.log`.
+- Espera a que `http://127.0.0.1:5000/health` responda antes de abrir Chromium y guarda los logs de navegador en `reports/logs/pi/chromium-*.log`.
 - Abre Chromium en modo kiosko apuntando a `http://localhost:5000` y deshabilita temporalmente el protector de pantalla.
 - Permite personalizar parámetros mediante variables de entorno:
   - `HELEN_CAMERA_INDEX` para seleccionar otra cámara.
