@@ -151,9 +151,12 @@ class ClassThreshold:
     release: float
 
 
+LEGACY_CLIMA_THRESHOLD = ClassThreshold(enter=0.8, release=0.7)
+UPDATED_CLIMA_THRESHOLD = ClassThreshold(enter=0.74, release=0.64)
+
 DEFAULT_CLASS_THRESHOLDS: Dict[str, ClassThreshold] = {
     "Start": ClassThreshold(enter=0.75, release=0.65),
-    "Clima": ClassThreshold(enter=0.8, release=0.7),
+    "Clima": UPDATED_CLIMA_THRESHOLD,
     "Reloj": ClassThreshold(enter=0.78, release=0.68),
     "Inicio": ClassThreshold(enter=0.76, release=0.66),
 }
@@ -179,6 +182,10 @@ class ConsensusConfig:
 
 
 DEFAULT_CONSENSUS_CONFIG = ConsensusConfig()
+
+CLIMA_CONSENSUS_OVERRIDE = ConsensusConfig(window_size=4, required_votes=2)
+
+CLIMA_POST_START_DELAY = 0.4
 
 ACTIVATION_DELAY = 0.8
 
@@ -347,9 +354,19 @@ class ConsensusTracker:
             self._votes.append(ConsensusVote(label=label, score=score, timestamp=timestamp))
 
     # ------------------------------------------------------------------
-    def evaluate(self, label: str, threshold: float) -> ConsensusResult:
+    def evaluate(
+        self,
+        label: str,
+        threshold: float,
+        *,
+        window_size: Optional[int] = None,
+    ) -> ConsensusResult:
         with self._lock:
             votes = list(self._votes)
+
+        if window_size is not None and window_size > 0:
+            limit = max(1, int(window_size))
+            votes = votes[-limit:]
 
         matching = [vote for vote in votes if vote.label == label]
         passing = [vote for vote in matching if vote.score >= threshold]
@@ -609,6 +626,7 @@ class GestureMetrics:
         consensus: ConsensusConfig,
         dataset_info: Dict[str, Any],
         latency_stats: Dict[str, float],
+        label_consensus: Optional[Dict[str, ConsensusConfig]] = None,
     ) -> Dict[str, Any]:
         with self._lock:
             samples = list(self._samples)
@@ -650,13 +668,20 @@ class GestureMetrics:
 
         suggestions = [suggestion.__dict__ for suggestion in self.threshold_suggestions(thresholds)]
 
+        consensus_block: Dict[str, Any] = {
+            "window_size": consensus.window_size,
+            "required_votes": consensus.required_votes,
+        }
+        if label_consensus:
+            consensus_block["overrides"] = {
+                label: {"window_size": cfg.window_size, "required_votes": cfg.required_votes}
+                for label, cfg in label_consensus.items()
+            }
+
         return {
             "thresholds": {label: {"enter": th.enter, "release": th.release} for label, th in thresholds.items()},
             "global_min_score": GLOBAL_MIN_SCORE,
-            "consensus": {
-                "window_size": consensus.window_size,
-                "required_votes": consensus.required_votes,
-            },
+            "consensus": consensus_block,
             "durations_s": {
                 "cooldown": COOLDOWN_SECONDS,
                 "listening_window": LISTENING_WINDOW_SECONDS,
@@ -681,6 +706,17 @@ class GestureMetrics:
         lines.append("- Ventana de consenso: {window} frames (requiere {votes})".format(
             window=report["consensus"]["window_size"], votes=report["consensus"]["required_votes"]
         ))
+        overrides = report.get("consensus", {}).get("overrides")
+        if overrides:
+            lines.append("  - Overrides por clase:")
+            for label, data in sorted(overrides.items()):
+                lines.append(
+                    "    * {label}: {votes} votos en {window} frames".format(
+                        label=label,
+                        votes=data.get("required_votes"),
+                        window=data.get("window_size"),
+                    )
+                )
         lines.append("- Cooldown tras 'Start': {0:.0f} ms".format(COOLDOWN_SECONDS * 1000))
         lines.append("- Ventana de escucha C/R/I: {0:.1f} s".format(LISTENING_WINDOW_SECONDS))
         lines.append("- Debounce de comandos: {0:.0f} ms".format(COMMAND_DEBOUNCE_SECONDS * 1000))
@@ -767,9 +803,14 @@ class GestureMetrics:
         consensus: ConsensusConfig,
         dataset_info: Dict[str, Any],
         latency_stats: Dict[str, float],
+        label_consensus: Optional[Dict[str, ConsensusConfig]] = None,
     ) -> None:
         report = self.generate_report(
-            thresholds=thresholds, consensus=consensus, dataset_info=dataset_info, latency_stats=latency_stats
+            thresholds=thresholds,
+            consensus=consensus,
+            dataset_info=dataset_info,
+            latency_stats=latency_stats,
+            label_consensus=label_consensus,
         )
         markdown = self.to_markdown(report)
 
@@ -882,9 +923,39 @@ class LandmarkGeometryVerifier:
             return False, "geometry_start_pattern"
 
         if canonical == "Clima":
-            extended_count = sum(1 for finger in ("index", "middle", "ring", "pinky") if is_extended(finger, 0.9))
-            if extended_count >= 3 and thumb_index_distance >= 0.05 and palm_spread >= 0.18:
+            finger_names = ("index", "middle", "ring", "pinky")
+            strong_extended = sum(1 for finger in finger_names if is_extended(finger, 0.85))
+            relaxed_extended = sum(
+                1 for finger in finger_names if finger_states.get(finger, {}).get("curl", 0.0) >= 120.0
+            )
+            arc_span = self._distance(index_tip, pinky_tip)
+
+            curvature_ok = (
+                thumb_index_distance >= 0.045
+                and palm_spread >= 0.165
+                and arc_span >= 0.15
+                and index_middle_distance >= 0.035
+            )
+
+            if curvature_ok and (
+                strong_extended >= 3 or (strong_extended >= 2 and relaxed_extended >= 3)
+            ):
                 return True, None
+
+            if curvature_ok and relaxed_extended >= 3:
+                curls = [finger_states.get(finger, {}).get("curl", 0.0) for finger in finger_names]
+                average_curl = statistics.fmean(curls) if curls else 0.0
+                if average_curl >= 135.0:
+                    return True, None
+
+            if (
+                thumb_index_distance >= 0.042
+                and palm_spread >= 0.155
+                and arc_span >= 0.145
+                and relaxed_extended >= 3
+            ):
+                return True, None
+
             return False, "geometry_clima_pattern"
 
         if canonical == "Reloj":
@@ -916,6 +987,7 @@ class GestureDecisionEngine:
         consensus: ConsensusConfig = DEFAULT_CONSENSUS_CONFIG,
         global_min_score: float = GLOBAL_MIN_SCORE,
         geometry_verifier: Optional[LandmarkGeometryVerifier] = None,
+        per_label_consensus: Optional[Dict[str, ConsensusConfig]] = None,
     ) -> None:
         self._metrics = metrics
         base_thresholds = dict(DEFAULT_CLASS_THRESHOLDS)
@@ -926,6 +998,15 @@ class GestureDecisionEngine:
         self._consensus = ConsensusTracker(consensus)
         self._global_min_score = float(global_min_score)
         self._geometry_verifier = geometry_verifier
+        overrides: Dict[str, ConsensusConfig] = {}
+        if per_label_consensus:
+            for label, override in per_label_consensus.items():
+                if not override:
+                    continue
+                canonical = GestureMetrics._canonical(label)
+                if canonical:
+                    overrides[canonical] = override
+        self._per_label_consensus = overrides
 
         self._state = "idle"
         self._cooldown_until = 0.0
@@ -941,6 +1022,12 @@ class GestureDecisionEngine:
     def _reset_consensus(self) -> None:
         self._consensus.reset()
         self._dominant_label = None
+
+    # ------------------------------------------------------------------
+    def _consensus_override(self, label: Optional[str]) -> Optional[ConsensusConfig]:
+        if not label:
+            return None
+        return self._per_label_consensus.get(label)
 
     # ------------------------------------------------------------------
     def _update_state(self, timestamp: float) -> None:
@@ -1003,7 +1090,12 @@ class GestureDecisionEngine:
             self._dominant_label = None
             return None
 
-        result = self._consensus.evaluate(self._dominant_label, thresholds.release)
+        override = self._consensus_override(self._dominant_label)
+        result = self._consensus.evaluate(
+            self._dominant_label,
+            thresholds.release,
+            window_size=override.window_size if override else None,
+        )
         if result.average < thresholds.release:
             self._dominant_label = None
             return None
@@ -1026,6 +1118,7 @@ class GestureDecisionEngine:
             canonical_hint = GestureMetrics._canonical(hint_label)
             score = float(prediction.score)
             state = self._state
+            consensus_override = self._consensus_override(canonical_label)
 
             payload: Dict[str, Any] = {
                 "latency_ms": latency_ms,
@@ -1071,10 +1164,17 @@ class GestureDecisionEngine:
             result = self._consensus.evaluate(
                 canonical_label,
                 thresholds.enter if thresholds else self._global_min_score,
+                window_size=consensus_override.window_size if consensus_override else None,
             )
 
             support = result.votes
             window_ms = result.span_ms
+            required_votes = (
+                consensus_override.required_votes if consensus_override else self._consensus_config.required_votes
+            )
+            consensus_window = (
+                consensus_override.window_size if consensus_override else self._consensus_config.window_size
+            )
 
             if thresholds and result.average >= thresholds.enter:
                 self._dominant_label = canonical_label
@@ -1087,6 +1187,8 @@ class GestureDecisionEngine:
                     "consensus_support": support,
                     "consensus_total": result.total,
                     "consensus_span_ms": window_ms,
+                    "votes_required": required_votes,
+                    "consensus_window": consensus_window,
                 }
             )
 
@@ -1125,6 +1227,27 @@ class GestureDecisionEngine:
 
             if thresholds is None:
                 reason = "not_tracked"
+                self._record(
+                    label=canonical_label,
+                    score=score,
+                    accepted=False,
+                    reason=reason,
+                    state=state,
+                    hint_label=canonical_hint,
+                    support=support,
+                    window_ms=window_ms,
+                    timestamp=timestamp,
+                )
+                payload["decision_reason"] = reason
+                return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
+
+            if (
+                canonical_label == "Clima"
+                and state == "listening"
+                and self._last_activation_at
+                and (timestamp - self._last_activation_at) < CLIMA_POST_START_DELAY
+            ):
+                reason = "post_start_delay"
                 self._record(
                     label=canonical_label,
                     score=score,
@@ -1236,7 +1359,7 @@ class GestureDecisionEngine:
                 payload["decision_reason"] = reason
                 return DecisionOutcome(False, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
 
-            passes_votes = support >= self._consensus_config.required_votes
+            passes_votes = support >= required_votes
             passes_average = result.average >= thresholds.enter
 
             if not passes_votes and not passes_average:
@@ -1271,7 +1394,7 @@ class GestureDecisionEngine:
             payload.update(
                 {
                     "consensus_average": result.average,
-                    "votes_required": self._consensus_config.required_votes,
+                    "votes_required": required_votes,
                 }
             )
             payload["decision_reason"] = reason
@@ -1301,6 +1424,10 @@ class GestureDecisionEngine:
     @property
     def consensus_config(self) -> ConsensusConfig:
         return self._consensus_config
+
+    # ------------------------------------------------------------------
+    def consensus_overrides(self) -> Dict[str, ConsensusConfig]:
+        return dict(self._per_label_consensus)
 
 ACTIVATION_ALIASES = {
     # Mantener sincronizado con ``ACTIVATION_ALIASES`` en
@@ -2179,6 +2306,41 @@ class CameraGestureStream:
         }
 
     # ------------------------------------------------------------------
+    def expand_last_roi_for_clima(self) -> None:
+        if not self._last_roi:
+            return
+
+        roi = dict(self._last_roi)
+        if roi.get("expanded_for_clima"):
+            return
+
+        width = int(roi.get("width") or 0)
+        height = int(roi.get("height") or 0)
+        if width <= 0 or height <= 0:
+            return
+
+        margin_x = max(1, int(round(width * 0.05)))
+        margin_top = max(1, int(round(height * 0.06)))
+        margin_bottom = max(1, int(round(height * 0.03)))
+
+        roi["x1"] = max(0, int(roi["x1"]) - margin_x)
+        roi["x2"] = min(width - 1, int(roi["x2"]) + margin_x)
+        roi["y1"] = max(0, int(roi["y1"]) - margin_top)
+        roi["y2"] = min(height - 1, int(roi["y2"]) + margin_bottom)
+
+        pixel_width = max(0, int(roi["x2"]) - int(roi["x1"]))
+        pixel_height = max(0, int(roi["y2"]) - int(roi["y1"]))
+        total_pixels = float(width * height) if width and height else 0.0
+        if pixel_width and pixel_height:
+            pixel_area = float(pixel_width * pixel_height)
+            roi["pixel_area"] = pixel_area
+            roi["pixel_coverage"] = (pixel_area / total_pixels) if total_pixels else 0.0
+            roi["normalized_area"] = roi["pixel_coverage"]
+
+        roi["expanded_for_clima"] = True
+        self._last_roi = roi
+
+    # ------------------------------------------------------------------
     def _register_quality_check(self, valid: bool, reason: Optional[str]) -> None:
         if self._metrics:
             self._metrics.register_quality_check(valid, reason)
@@ -2532,7 +2694,12 @@ class HelenRuntime:
 
         self.feature_normalizer = FeatureNormalizer(dataset_path)
         self.geometry_verifier = self._create_geometry_verifier()
-        self.decision_engine = GestureDecisionEngine(metrics=self.metrics, geometry_verifier=self.geometry_verifier)
+        self.decision_engine = GestureDecisionEngine(
+            metrics=self.metrics,
+            geometry_verifier=self.geometry_verifier,
+            per_label_consensus={"Clima": CLIMA_CONSENSUS_OVERRIDE},
+        )
+        self._log_clima_tuning()
 
         classifier, classifier_meta = self._create_classifier()
         self.classifier = classifier
@@ -2554,6 +2721,31 @@ class HelenRuntime:
         self.last_prediction_at: Optional[float] = None
         self.last_heartbeat = 0.0
         self.last_error: Optional[str] = None
+
+    # ------------------------------------------------------------------
+    def _log_clima_tuning(self) -> None:
+        try:
+            thresholds = self.decision_engine.thresholds().get("Clima") or UPDATED_CLIMA_THRESHOLD
+            override = self.decision_engine.consensus_overrides().get("Clima")
+            override_votes = (
+                override.required_votes if override else DEFAULT_CONSENSUS_CONFIG.required_votes
+            )
+            override_window = (
+                override.window_size if override else DEFAULT_CONSENSUS_CONFIG.window_size
+            )
+            LOGGER.info(
+                "Ajuste 'C': threshold enter %.2f→%.2f; release %.2f→%.2f; consenso %s/%s→%s/%s",
+                LEGACY_CLIMA_THRESHOLD.enter,
+                thresholds.enter,
+                LEGACY_CLIMA_THRESHOLD.release,
+                thresholds.release,
+                DEFAULT_CONSENSUS_CONFIG.required_votes,
+                DEFAULT_CONSENSUS_CONFIG.window_size,
+                override_votes,
+                override_window,
+            )
+        except Exception as error:
+            LOGGER.debug("No se pudo registrar los ajustes de Clima: %s", error)
 
     # ------------------------------------------------------------------
     def _create_geometry_verifier(self) -> Optional[LandmarkGeometryVerifier]:
@@ -2678,7 +2870,18 @@ class HelenRuntime:
 
     # ------------------------------------------------------------------
     def push_prediction(self, event: Dict[str, Any]) -> None:
+        label = str(event.get("gesture") or event.get("character") or "")
+        if label == "Clima":
+            expand_roi = getattr(self.stream, "expand_last_roi_for_clima", None)
+            if callable(expand_roi):
+                try:
+                    expand_roi()
+                except Exception as error:
+                    LOGGER.debug("No se pudo expandir el ROI para Clima: %s", error)
+
+        previous_event: Optional[Dict[str, Any]]
         with self.lock:
+            previous_event = self.last_prediction
             self.last_prediction = event
             self.last_prediction_at = time.time()
             self.last_heartbeat = time.time()
@@ -2686,6 +2889,19 @@ class HelenRuntime:
 
         LOGGER.debug("Broadcasting event: %s", event)
         self.event_stream.broadcast(event)
+
+        previous_label = ""
+        if previous_event:
+            previous_label = str(previous_event.get("gesture") or previous_event.get("character") or "")
+
+        if label == "Clima" and previous_label == "Start":
+            poll_interval = float(getattr(self.config, "poll_interval_s", DEFAULT_POLL_INTERVAL_S) or DEFAULT_POLL_INTERVAL_S)
+            approx_fps = 1.0 / max(poll_interval, 1e-3)
+            LOGGER.info(
+                "Secuencia H→C confirmada (latencia %.1f ms, ~%.1f fps)",
+                float(event.get("latency_ms", 0.0)),
+                approx_fps,
+            )
 
     # ------------------------------------------------------------------
     def receive_external_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -2742,6 +2958,7 @@ class HelenRuntime:
                 consensus=self.decision_engine.consensus_config,
                 dataset_info=dataset_info,
                 latency_stats=latency_stats,
+                label_consensus=self.decision_engine.consensus_overrides(),
             )
             LOGGER.info("Reporte de métricas actualizado en %s", report_path)
         except Exception as error:  # pragma: no cover - escritura opcional

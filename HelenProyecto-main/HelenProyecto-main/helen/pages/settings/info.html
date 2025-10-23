@@ -47,10 +47,10 @@
           <span class="qcard__subtitle">Nuestro equipo de trabajo</span>
         </a>
 
-        <a class="qcard" href="#contacto">
-          <span class="qcard__icon" aria-hidden="true"><i class="bi bi-envelope"></i></span>
-          <span class="qcard__title">Contacto</span>
-          <span class="qcard__subtitle">Ponte en contacto con nosotros</span>
+        <a class="qcard" href="#display-mode">
+          <span class="qcard__icon" aria-hidden="true"><i class="bi bi-tablet-landscape"></i></span>
+          <span class="qcard__title">Modo Raspberry</span>
+          <span class="qcard__subtitle">Optimiza HELEN para pantallas táctiles</span>
         </a>
       </div>
     </section>
@@ -197,62 +197,39 @@
       </div>
     </section>
 
-    <!-- =============== CONTACTO =============== -->
-    <section id="contacto" class="info-view" data-title="Contacto">
+    <!-- =============== MODO RASPBERRY =============== -->
+    <section id="display-mode" class="info-view" data-title="Modo Raspberry">
       <header class="info-header">
         <button class="back-button" onclick="window.location.href='#menu'">
           <i class="bi bi-arrow-left"></i>
         </button>
         <div class="title-col">
-          <h1>Contacto</h1>
-          <p class="subtitle">Detalles y recursos adicionales</p>
+          <h1>Modo Raspberry (7&quot;)</h1>
+          <p class="subtitle">Adapta HELEN para pantallas táctiles compactas</p>
         </div>
       </header>
 
-      <div class="panel">
-        <p>¿Tienes preguntas o sugerencias? Escríbenos:</p>
+      <div class="panel mode-panel">
+        <p>
+          Ajusta el tamaño de tipografía y los espacios táctiles para aprovechar pantallas Raspberry Pi de 7&quot;.
+          El modo se guarda automáticamente y puede cambiarse en cualquier momento.
+        </p>
 
-        <div class="contact-grid">
-          <a class="contact-card" href="mailto:christian.huerta@upaep.edu.mx">
-            <div class="contact-icon">📧</div>
-            <div class="contact-meta">
-              <h3>Email Principal</h3>
-              <p>christian.huerta@upaep.edu.mx</p>
-            </div>
-          </a>
-
-          <a class="contact-card" href="mailto:juancarlos.sanchez@upaep.mx">
-            <div class="contact-icon">🛠️</div>
-            <div class="contact-meta">
-              <h3>Soporte Técnico</h3>
-              <p>juancarlos.sanchez@upaep.mx</p>
-            </div>
-          </a>
-
-          <a class="contact-card" href="mailto:walter.calzada@upaep.edu.mx">
-            <div class="contact-icon">🤝</div>
-            <div class="contact-meta">
-              <h3>Colaboraciones</h3>
-              <p>walter.calzada@upaep.edu.mx</p>
-            </div>
-          </a>
-
-          <a class="contact-card" href="mailto:jose.reynoso@upaep.edu.mx">
-            <div class="contact-icon">ℹ️</div>
-            <div class="contact-meta">
-              <h3>Información General</h3>
-              <p>jose.reynoso@upaep.edu.mx</p>
-            </div>
-          </a>
-
-          <a class="contact-card" href="mailto:rubio.isaac@uabc.edu.mx">
-            <div class="contact-icon">⭐</div>
-            <div class="contact-meta">
-              <h3>Coordinación / UX–Backend</h3>
-              <p>rubio.isaac@uabc.edu.mx</p>
-            </div>
-          </a>
+        <div class="mode-toggle-group">
+          <div class="mode-status" data-mode-status aria-live="polite">Modo actual: Windows</div>
+          <button class="mode-toggle" type="button" data-mode-toggle>Cambiar a modo Raspberry (7&quot;)</button>
         </div>
+
+        <p class="mode-note">El modo seleccionado se aplicará a toda la interfaz, sin depender del tamaño de la pantalla.</p>
+      </div>
+
+      <div class="panel mode-details">
+        <h2>Qué cambia en el modo Raspberry</h2>
+        <ul class="mode-benefits">
+          <li>Tipografía ampliada aproximadamente un 12&nbsp;% para mejorar la lectura.</li>
+          <li>Botones y tarjetas con alturas táctiles de al menos 44&nbsp;px.</li>
+          <li>Márgenes laterales reducidos para aprovechar pantallas de 800×480 / 1024×600.</li>
+        </ul>
       </div>
     </section>
   </main>
@@ -270,11 +247,49 @@
     (function () {
       const views = [...document.querySelectorAll('.info-view')];
       const title = (v) => v?.dataset?.title || 'Información';
+      const modeStatus = document.querySelector('[data-mode-status]');
+      const modeButton = document.querySelector('[data-mode-toggle]');
+      const modeHelper = window.HelenDisplayMode;
+
+      const updateModeUI = (mode) => {
+        const normalized = (mode || '').toLowerCase() === 'raspberry' ? 'raspberry' : 'windows';
+        if (modeStatus) {
+          modeStatus.textContent = `Modo actual: ${normalized === 'raspberry' ? 'Raspberry (7")' : 'Windows'}`;
+        }
+        if (modeButton) {
+          modeButton.textContent = normalized === 'raspberry'
+            ? 'Cambiar a modo Windows'
+            : 'Cambiar a modo Raspberry (7")';
+        }
+      };
+
+      if (modeButton && modeHelper) {
+        modeButton.addEventListener('click', () => {
+          const nextMode = modeHelper.current() === 'raspberry' ? 'windows' : 'raspberry';
+          modeHelper.set(nextMode);
+        });
+      }
+
+      if (typeof window !== 'undefined') {
+        window.addEventListener('helen:display-mode', (event) => {
+          const mode = event?.detail?.mode;
+          updateModeUI(mode);
+        });
+        try {
+          window.dispatchEvent(new CustomEvent('helen:display-mode:request-sync'));
+        } catch (error) {
+          window.dispatchEvent({ type: 'helen:display-mode:request-sync' });
+        }
+      }
+
+      updateModeUI(modeHelper ? modeHelper.current() : 'windows');
+
       function showView(hash) {
         const id = (hash || '#menu').replace('#', '');
         views.forEach(v => v.classList.toggle('is-active', v.id === id));
         document.title = 'HELEN – ' + title(document.getElementById(id));
       }
+
       window.addEventListener('hashchange', () => showView(location.hash));
       showView(location.hash || '#menu');
     })();

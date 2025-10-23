@@ -1,6 +1,111 @@
 // eventConnector.js - Versión modificada
 // Conexión al socket y mejoras en la navegación
 
+const DISPLAY_MODE_STORAGE_KEY = 'helen:display-mode';
+const DEFAULT_DISPLAY_MODE = 'windows';
+let currentDisplayMode = DEFAULT_DISPLAY_MODE;
+
+const normalizeDisplayMode = (value) => (value === 'raspberry' ? 'raspberry' : DEFAULT_DISPLAY_MODE);
+
+const dispatchDisplayModeChange = (mode) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    const event = new CustomEvent('helen:display-mode', { detail: { mode } });
+    window.dispatchEvent(event);
+  } catch (error) {
+    if (typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent({ type: 'helen:display-mode', detail: { mode } });
+    }
+  }
+};
+
+const applyDisplayMode = (mode, options = {}) => {
+  const { silent = false } = options || {};
+  const normalized = normalizeDisplayMode(mode);
+  currentDisplayMode = normalized;
+
+  if (typeof document !== 'undefined') {
+    if (document.documentElement) {
+      document.documentElement.setAttribute('data-mode', normalized);
+    }
+    if (document.body) {
+      document.body.setAttribute('data-mode', normalized);
+    } else if (typeof document.addEventListener === 'function') {
+      document.addEventListener(
+        'DOMContentLoaded',
+        () => {
+          if (document.body) {
+            document.body.setAttribute('data-mode', currentDisplayMode);
+          }
+        },
+        { once: true },
+      );
+    }
+  }
+
+  if (!silent) {
+    dispatchDisplayModeChange(normalized);
+  }
+
+  return normalized;
+};
+
+const readStoredDisplayMode = () => {
+  if (typeof localStorage === 'undefined') {
+    return DEFAULT_DISPLAY_MODE;
+  }
+  try {
+    const stored = localStorage.getItem(DISPLAY_MODE_STORAGE_KEY);
+    return stored ? normalizeDisplayMode(stored) : DEFAULT_DISPLAY_MODE;
+  } catch (error) {
+    console.warn('[Helen] No se pudo leer el modo de visualización:', error);
+    return DEFAULT_DISPLAY_MODE;
+  }
+};
+
+const setDisplayMode = (mode) => {
+  const normalized = applyDisplayMode(mode);
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(DISPLAY_MODE_STORAGE_KEY, normalized);
+    } catch (error) {
+      console.warn('[Helen] No se pudo persistir el modo de visualización:', error);
+    }
+  }
+  return normalized;
+};
+
+const ensureDisplayMode = () => {
+  const stored = readStoredDisplayMode();
+  applyDisplayMode(stored, { silent: true });
+  return stored;
+};
+
+const initialDisplayMode = ensureDisplayMode();
+
+if (typeof window !== 'undefined') {
+  window.HelenDisplayMode = {
+    current: () => currentDisplayMode,
+    set: setDisplayMode,
+    apply: (mode, options) => applyDisplayMode(mode, options),
+    storageKey: DISPLAY_MODE_STORAGE_KEY,
+  };
+
+  window.addEventListener('storage', (event) => {
+    if (event && event.key === DISPLAY_MODE_STORAGE_KEY && event.newValue) {
+      applyDisplayMode(event.newValue);
+    }
+  });
+
+  window.addEventListener('helen:display-mode:request-sync', () => {
+    dispatchDisplayModeChange(currentDisplayMode);
+  });
+
+  dispatchDisplayModeChange(initialDisplayMode);
+}
+
 // Inicializar la conexión al socket (SSE)
 const DEFAULT_SOCKET_URL = 'http://127.0.0.1:5000';
 

@@ -1,5 +1,5 @@
 :root{
-  --tutorial-max-width: clamp(720px, 70vw, 1040px);
+  --tutorial-max-width: var(--content-max, 1240px);
   --tutorial-card-width: clamp(240px, 22vw, 300px);
   --tutorial-card-gap: clamp(20px, 3.4vw, 28px);
   --tutorial-flow-max: clamp(480px, 54vw, 640px);
@@ -9,54 +9,18 @@
 
 body.tutorial-body{
   min-height: 100svh;
+}
+
+.tutorial-container{
+  width: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: clamp(32px, 6vh, 48px) clamp(24px, 6vw, 40px);
-  overflow: hidden;
 }
 
-.tutorial-shell{
-  display: flex;
-  width: min(100%, var(--tutorial-max-width));
-  margin: 0 auto;
-  align-items: stretch;
-  padding: clamp(24px, 4vh, 32px) clamp(24px, 4vw, 36px);
-  border-radius: var(--r-lg);
-  background: linear-gradient(180deg, rgba(16,26,44,.88), rgba(12,20,34,.92));
-  box-shadow: var(--shadow-card);
-  gap: clamp(24px, 3.6vw, 32px);
-}
-
-.tutorial-shell .left-panel{ display: none; }
-
-.tutorial-shell .right-panel{
-  width: 100%;
-  margin: 0;
-}
-
-.container{
-  width: 100%;
-  min-height: 100svh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 36px 20px 28px;
-}
-
-body.tutorial-body .container{
-  min-height: auto;
-  padding: 0;
-}
-
-.right-panel{
+.tutorial-container .right-panel{
   width: min(96%, var(--tutorial-max-width));
   margin: 0 auto;
-}
-
-body.tutorial-body .right-panel{
-  width: 100%;
-  margin: 0;
 }
 
 .tutorial-content{
@@ -66,9 +30,8 @@ body.tutorial-body .right-panel{
   gap: clamp(28px, 4vh, 36px);
   align-items: center;
   justify-content: center;
-  min-height: clamp(460px, 68vh, 580px);
-  max-height: 100%;
-  overflow: hidden;
+  min-height: clamp(520px, 68vh, 620px);
+  padding: 24px 0 36px;
 }
 
 .tutorial-view{

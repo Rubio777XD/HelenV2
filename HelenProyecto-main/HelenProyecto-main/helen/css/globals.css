@@ -518,6 +518,123 @@ body.wifi-modal-open{ overflow:hidden }
 
 /* Entrada/animación */
 .swal2-show.swal-helen { animation: helenPop .18s ease-out; }
+
+/* ===================== MODO RASPBERRY (7") ===================== */
+body[data-mode="raspberry"]{
+  font-size: 105%;
+}
+
+body[data-mode="raspberry"] .container{
+  padding: 32px 16px 24px;
+}
+
+body[data-mode="raspberry"] .tutorial-container .right-panel{
+  width: min(98%, var(--tutorial-max-width, 1240px));
+}
+
+body[data-mode="raspberry"] .home-hero{
+  padding: 56px 24px 44px;
+}
+
+body[data-mode="raspberry"] .home-layout{
+  gap: 40px;
+}
+
+body[data-mode="raspberry"] .home-time .clock{
+  font-size: clamp(68px, 13vw, 140px);
+}
+
+body[data-mode="raspberry"] .date-section{
+  font-size: clamp(18px, 3vw, 22px);
+}
+
+body[data-mode="raspberry"] .weather-card{
+  padding: 32px 40px;
+}
+
+body[data-mode="raspberry"] .weather-card__right .temperature{
+  font-size: clamp(44px, 6.6vw, 60px);
+}
+
+body[data-mode="raspberry"] .dash-card{
+  min-height: 150px;
+  padding: 26px 24px;
+}
+
+body[data-mode="raspberry"] .dash-card__title{
+  font-size: clamp(20px, 3vw, 24px);
+}
+
+body[data-mode="raspberry"] .dash-card__subtitle{
+  font-size: clamp(15px, 2.4vw, 18px);
+}
+
+body[data-mode="raspberry"] .settings-buttons{
+  gap: 32px;
+}
+
+body[data-mode="raspberry"] .settings-button{
+  min-height: calc(var(--card-h, 270px) + 20px);
+  padding: 28px 32px;
+}
+
+body[data-mode="raspberry"] .settings-button-title{
+  font-size: clamp(20px, 3vw, 26px);
+}
+
+body[data-mode="raspberry"] .settings-button-subtitle{
+  font-size: 15px;
+}
+
+body[data-mode="raspberry"] .qcard{
+  min-height: 240px;
+  padding: 32px 20px;
+}
+
+body[data-mode="raspberry"] .qcard__title{
+  font-size: clamp(20px, 3vw, 26px);
+}
+
+body[data-mode="raspberry"] .qcard__subtitle{
+  font-size: 15px;
+}
+
+body[data-mode="raspberry"] .info-wrap{
+  padding: 28px 18px;
+}
+
+body[data-mode="raspberry"] .tutorial-title{
+  font-size: clamp(40px, 5vw, 54px);
+}
+
+body[data-mode="raspberry"] .tutorial-subtitle,
+body[data-mode="raspberry"] .flow-subtitle{
+  font-size: clamp(18px, 2.8vw, 22px);
+}
+
+body[data-mode="raspberry"] .step-text{
+  font-size: clamp(18px, 2.6vw, 22px);
+}
+
+body[data-mode="raspberry"] .step-status,
+body[data-mode="raspberry"] .flow-footnote{
+  font-size: clamp(15px, 2.2vw, 18px);
+}
+
+body[data-mode="raspberry"] .tutorial-button,
+body[data-mode="raspberry"] .mode-toggle{
+  min-height: 52px;
+  padding: 16px 32px;
+  font-size: clamp(16px, 2.4vw, 20px);
+}
+
+body[data-mode="raspberry"] .mode-status{
+  font-size: clamp(18px, 2.6vw, 22px);
+}
+
+body[data-mode="raspberry"] button{
+  min-height: 44px;
+}
 @keyframes helenPop { from { transform: translateY(6px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
 
 /* =================== UTILIDADES =================== */
