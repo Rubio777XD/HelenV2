@@ -88,7 +88,7 @@
 .info-view.is-active{ display:block }
 
 /* ===== Ancho común y centrado para TODO ===== */
-.info-grid, .panel, .tech-grid, .team-grid, .contact-grid{
+.info-grid, .panel, .tech-grid, .team-grid{
   width: min(1200px, 96vw);
   margin: 0 auto;
 }
@@ -216,41 +216,73 @@
 .team-meta h3{ margin: 0 0 4px 0; color:#fff; font-weight:700; letter-spacing:.2px; font-size: clamp(16px, 2.6vw, 18px) }
 .team-meta p{ margin: 0; color: var(--fg-soft); font-size: 14px }
 
-/* =================== CONTACTO =================== */
-.contact-grid{
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0,1fr));
-  gap: 18px; margin-top: 12px;
+/* =================== MODO RASPBERRY =================== */
+.mode-panel{
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
-.contact-card{
-  display: flex; align-items: center; gap: 14px;
-  padding: 18px;
+
+.mode-toggle-group{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mode-status{
+  font-weight: 600;
+  font-size: clamp(16px, 2.4vw, 20px);
+  color: var(--fg-strong);
+}
+
+.mode-toggle{
+  min-height: 48px;
+  padding: 14px 24px;
   border-radius: var(--r-md);
-  background: rgba(15,26,43,.60);
-  border: 1px solid var(--card-border);
+  border: 1px solid rgba(95,225,255,.32);
+  background: linear-gradient(180deg, rgba(95,225,255,.18), rgba(46,107,255,.26));
+  color: #fff;
+  font-size: clamp(14px, 2.2vw, 18px);
+  cursor: pointer;
   box-shadow: var(--shadow-tile);
-  color: inherit; text-decoration: none;
   transition: transform var(--t-fast) ease, border-color var(--t-fast) ease, box-shadow var(--t-fast) ease;
-  overflow: visible;
 }
+
+.mode-toggle:focus-visible{
+  outline: 2px solid rgba(95,225,255,.72);
+  outline-offset: 3px;
+}
+
 @media (hover:hover){
-  .contact-card:hover{ transform: translateY(-3px); border-color: rgba(190,210,230,.22); box-shadow: 0 18px 36px rgba(0,0,0,.28) }
+  .mode-toggle:hover{
+    transform: translateY(-2px);
+    border-color: rgba(190,210,230,.36);
+    box-shadow: 0 18px 36px rgba(0,0,0,.32);
+  }
 }
-.contact-icon{
-  width: 54px; height: 54px; border-radius: 16px;
-  display: grid; place-items: center;
-  background: radial-gradient(60% 60% at 30% 30%, var(--blue-a), var(--blue-b));
-  box-shadow: 0 12px 26px rgba(46,107,255,.35);
-  font-size: 26px; color: #ecf6ff;
+
+.mode-note{
+  margin: 0;
+  color: var(--fg-soft);
+  font-size: clamp(13px, 2vw, 16px);
 }
-.contact-meta h3{ margin: 0 0 4px 0; color:#fff; font-weight:700; letter-spacing:.2px; font-size: 16px }
-.contact-meta p{ margin: 0; color: #76d9ff; font-size: 14px; word-break: break-word }
+
+.mode-benefits{
+  margin: 12px 0 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 12px;
+  list-style: disc;
+  color: var(--fg);
+  font-size: clamp(14px, 2.2vw, 18px);
+}
 
 /* =================== RESPONSIVE =================== */
 @media (max-width: 1020px){
   .info-grid{ grid-template-columns: 1fr }
   .team-grid{ grid-template-columns: 1fr }
-  .contact-grid{ grid-template-columns: 1fr }
   .info-wrap{ justify-content: flex-start }
 }
 @media (max-width: 640px){
@@ -258,9 +290,20 @@
   .panel{ padding: 18px }
 }
 
+@media (max-width: 720px){
+  .mode-toggle-group{
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .mode-toggle{
+    width: 100%;
+    text-align: center;
+  }
+}
+
 /* === FIX ANTI-DESBORDES (agregar al final) =================== */
 /* 1) Los grids internos heredan el ancho del panel (no el global) */
-.panel > :is(.tech-grid, .team-grid, .contact-grid){
+.panel > :is(.tech-grid, .team-grid, .mode-benefits){
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
