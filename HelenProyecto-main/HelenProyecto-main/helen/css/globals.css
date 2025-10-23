@@ -69,6 +69,14 @@ body{
   margin:0;
   font-family: "Roboto", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
   color: var(--fg);
+  --mode-font-scale: 1;
+  --mode-icon-scale: 1;
+  --mode-card-padding-scale: 1;
+  --mode-card-gap-scale: 1;
+  --mode-outer-gutter: 28px;
+  --mode-inner-padding: 24px;
+  --mode-touch-target: 44px;
+  font-size: calc(100% * var(--mode-font-scale, 1));
   background:
     radial-gradient(1200px 600px at 12% 10%, var(--halo-a), transparent 60%),
     radial-gradient(1200px 700px at 88% 92%, var(--halo-b), transparent 60%),
@@ -521,119 +529,730 @@ body.wifi-modal-open{ overflow:hidden }
 
 /* ===================== MODO RASPBERRY (7") ===================== */
 body[data-mode="raspberry"]{
-  font-size: 105%;
+  --mode-font-scale: 1.14;
+  --mode-icon-scale: 1.12;
+  --mode-card-padding-scale: 1.18;
+  --mode-card-gap-scale: .74;
+  --mode-outer-gutter: 12px;
+  --mode-inner-padding: 30px;
+  --mode-touch-target: 52px;
 }
 
 body[data-mode="raspberry"] .container{
-  padding: 32px 16px 24px;
+  padding: 28px var(--mode-outer-gutter) 24px;
+}
+
+body[data-mode="raspberry"] .back-button{
+  width: 52px;
+  height: 52px;
+}
+
+body[data-mode="raspberry"] .back-button i{
+  font-size: 20px;
 }
 
 body[data-mode="raspberry"] .tutorial-container .right-panel{
-  width: min(98%, var(--tutorial-max-width, 1240px));
+  width: min(99%, var(--tutorial-max-width, 1240px));
+  padding: 0 var(--mode-outer-gutter);
 }
 
 body[data-mode="raspberry"] .home-hero{
-  padding: 56px 24px 44px;
+  padding: 32px var(--mode-outer-gutter) 24px;
 }
 
 body[data-mode="raspberry"] .home-layout{
-  gap: 40px;
+  max-width: 1180px;
+  grid-template-columns: minmax(0, 1.16fr) minmax(0, .92fr);
+  gap: 28px;
+  align-items: stretch;
+}
+
+body[data-mode="raspberry"] .home-left{
+  gap: 28px;
 }
 
 body[data-mode="raspberry"] .home-time .clock{
-  font-size: clamp(68px, 13vw, 140px);
+  font-size: clamp(82px, 16vw, 156px);
+  letter-spacing: -1.4px;
 }
 
 body[data-mode="raspberry"] .date-section{
-  font-size: clamp(18px, 3vw, 22px);
+  font-size: clamp(20px, 4vw, 26px);
+  margin-top: 12px;
 }
 
 body[data-mode="raspberry"] .weather-card{
-  padding: 32px 40px;
+  padding: 36px calc(var(--mode-inner-padding) * 1.1);
+  gap: 24px;
+}
+
+body[data-mode="raspberry"] .weather-card__left{
+  gap: 22px;
+}
+
+body[data-mode="raspberry"] .weather-card__icon{
+  width: 92px;
+  height: 92px;
+  border-radius: 24px;
+}
+
+body[data-mode="raspberry"] .weather-card__icon .weather-icon{
+  font-size: 40px;
+}
+
+body[data-mode="raspberry"] .weather-card__meta .status{
+  font-size: clamp(26px, 4vw, 34px);
+}
+
+body[data-mode="raspberry"] .weather-card__meta .location{
+  font-size: 18px;
+}
+
+body[data-mode="raspberry"] .weather-card__right{
+  gap: 10px;
 }
 
 body[data-mode="raspberry"] .weather-card__right .temperature{
-  font-size: clamp(44px, 6.6vw, 60px);
+  font-size: clamp(60px, 8vw, 78px);
+}
+
+body[data-mode="raspberry"] .weather-card__right .feels-like{
+  font-size: 17px;
+  gap: 10px;
+}
+
+body[data-mode="raspberry"] .weather-card__right .feels-like i{
+  font-size: 18px;
+}
+
+body[data-mode="raspberry"] .weather-card__divider{
+  margin: 22px 0 16px;
+}
+
+body[data-mode="raspberry"] .weather-card__metrics{
+  gap: 22px;
+}
+
+body[data-mode="raspberry"] .metric__label{
+  font-size: 16px;
+}
+
+body[data-mode="raspberry"] .metric__value{
+  font-size: 24px;
+}
+
+body[data-mode="raspberry"] .home-cards{
+  gap: calc(24px * var(--mode-card-gap-scale));
 }
 
 body[data-mode="raspberry"] .dash-card{
-  min-height: 150px;
-  padding: 26px 24px;
+  min-height: 196px;
+  padding: calc(26px * var(--mode-card-padding-scale)) calc(24px * 1.08);
+}
+
+body[data-mode="raspberry"] .dash-card__icon{
+  width: 92px;
+  height: 92px;
+  border-radius: 24px;
+}
+
+body[data-mode="raspberry"] .dash-card__icon i{
+  font-size: 36px;
 }
 
 body[data-mode="raspberry"] .dash-card__title{
-  font-size: clamp(20px, 3vw, 24px);
+  font-size: clamp(22px, 3.4vw, 26px);
 }
 
 body[data-mode="raspberry"] .dash-card__subtitle{
-  font-size: clamp(15px, 2.4vw, 18px);
+  font-size: clamp(16px, 2.4vw, 18px);
 }
 
-body[data-mode="raspberry"] .settings-buttons{
-  gap: 32px;
-}
-
-body[data-mode="raspberry"] .settings-button{
-  min-height: calc(var(--card-h, 270px) + 20px);
-  padding: 28px 32px;
-}
-
-body[data-mode="raspberry"] .settings-button-title{
-  font-size: clamp(20px, 3vw, 26px);
-}
-
-body[data-mode="raspberry"] .settings-button-subtitle{
-  font-size: 15px;
+body[data-mode="raspberry"] .quick-nav{
+  gap: calc(24px * var(--mode-card-gap-scale));
+  padding: 0 8px;
+  grid-auto-rows: 228px;
 }
 
 body[data-mode="raspberry"] .qcard{
-  min-height: 240px;
-  padding: 32px 20px;
+  min-height: 228px;
+  padding: calc(32px * var(--mode-card-padding-scale)) 22px;
+  gap: 16px;
+}
+
+body[data-mode="raspberry"] .qspan-2{
+  min-height: 228px;
+  height: auto;
+}
+
+body[data-mode="raspberry"] .qcard__icon{
+  width: 100px;
+  height: 100px;
+  border-radius: 24px;
+  font-size: 40px;
 }
 
 body[data-mode="raspberry"] .qcard__title{
-  font-size: clamp(20px, 3vw, 26px);
+  font-size: clamp(22px, 3.4vw, 28px);
 }
 
 body[data-mode="raspberry"] .qcard__subtitle{
-  font-size: 15px;
+  font-size: clamp(16px, 2.6vw, 18px);
 }
 
-body[data-mode="raspberry"] .info-wrap{
-  padding: 28px 18px;
+body[data-mode="raspberry"] .mode-status{
+  font-size: clamp(18px, 2.8vw, 24px);
 }
 
 body[data-mode="raspberry"] .tutorial-title{
-  font-size: clamp(40px, 5vw, 54px);
+  font-size: clamp(42px, 5vw, 58px);
 }
 
 body[data-mode="raspberry"] .tutorial-subtitle,
 body[data-mode="raspberry"] .flow-subtitle{
-  font-size: clamp(18px, 2.8vw, 22px);
+  font-size: clamp(18px, 3vw, 22px);
 }
 
 body[data-mode="raspberry"] .step-text{
-  font-size: clamp(18px, 2.6vw, 22px);
+  font-size: clamp(24px, 3.4vw, 28px);
 }
 
 body[data-mode="raspberry"] .step-status,
 body[data-mode="raspberry"] .flow-footnote{
-  font-size: clamp(15px, 2.2vw, 18px);
+  font-size: clamp(16px, 2.6vw, 20px);
 }
 
 body[data-mode="raspberry"] .tutorial-button,
 body[data-mode="raspberry"] .mode-toggle{
-  min-height: 52px;
-  padding: 16px 32px;
-  font-size: clamp(16px, 2.4vw, 20px);
-}
-
-body[data-mode="raspberry"] .mode-status{
+  min-height: var(--mode-touch-target);
+  padding: 18px 36px;
   font-size: clamp(18px, 2.6vw, 22px);
 }
 
-body[data-mode="raspberry"] button{
-  min-height: 44px;
+body[data-mode="raspberry"] .tutorial-card{
+  min-height: 240px;
+  padding: calc(28px * var(--mode-card-padding-scale)) 30px;
+  gap: 18px;
+}
+
+body[data-mode="raspberry"] .tutorial-menu__cards{
+  width: 100%;
+  max-width: none;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+body[data-mode="raspberry"] .tutorial-card .qcard__icon{
+  width: 100px;
+  height: 100px;
+  font-size: 40px;
+}
+
+body[data-mode="raspberry"] .tutorial-card__title{
+  font-size: clamp(22px, 3.4vw, 28px);
+}
+
+body[data-mode="raspberry"] .tutorial-card__subtitle{
+  font-size: clamp(16px, 2.6vw, 20px);
+}
+
+body[data-mode="raspberry"] .tutorial-card__cta{
+  font-size: 14px;
+  letter-spacing: .35px;
+}
+
+body[data-mode="raspberry"] .flow-stage{
+  padding: 0;
+}
+
+body[data-mode="raspberry"] .step-visual{
+  width: min(100%, 560px);
+  min-height: clamp(440px, 72vh, 580px);
+  padding: 42px 52px;
+  gap: 24px;
+  position: relative;
+  z-index: 1;
+}
+
+body[data-mode="raspberry"] .step-ring{
+  width: min(140px, 26vh);
+  height: min(140px, 26vh);
+  margin-bottom: 8px;
+  z-index: 0;
+}
+
+body[data-mode="raspberry"] .step-digit,
+body[data-mode="raspberry"] .step-check{
+  z-index: 1;
+}
+
+body[data-mode="raspberry"] .tutorial-container{
+  padding: 32px 0;
+}
+
+body[data-mode="raspberry"] .tutorial-content{
+  gap: 40px;
+  min-height: min(760px, 92svh);
+}
+
+body[data-mode="raspberry"] .tutorial-view{
+  gap: 28px;
+}
+
+body[data-mode="raspberry"] .flow-controls{
+  margin-top: 22px;
+}
+
+body[data-mode="raspberry"] .flow-return{
+  min-width: min(360px, 94%);
+}
+
+body[data-mode="raspberry"] .info-wrap{
+  padding: 28px var(--mode-outer-gutter);
+  gap: 24px;
+}
+
+body[data-mode="raspberry"] .info-header{
+  width: min(1180px, 98vw);
+  margin: 0 auto 12px;
+  gap: 16px;
+}
+
+body[data-mode="raspberry"] .info-header h1,
+body[data-mode="raspberry"] .title-col h1{
+  font-size: clamp(42px, 5vw, 58px);
+}
+
+body[data-mode="raspberry"] .subtitle{
+  font-size: clamp(16px, 2.6vw, 20px);
+}
+
+body[data-mode="raspberry"] .info-grid,
+body[data-mode="raspberry"] .tech-grid,
+body[data-mode="raspberry"] .team-grid{
+  gap: calc(24px * var(--mode-card-gap-scale));
+}
+
+body[data-mode="raspberry"] .info-grid{
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+body[data-mode="raspberry"] .panel{
+  padding: 26px 24px;
+}
+
+body[data-mode="raspberry"] .panel p{
+  font-size: clamp(16px, 2.6vw, 20px);
+  line-height: 1.72;
+}
+
+body[data-mode="raspberry"] .tech-pill{
+  padding: 18px 22px;
+  font-size: 18px;
+}
+
+body[data-mode="raspberry"] .team-card{
+  padding: 22px;
+  gap: 16px;
+}
+
+body[data-mode="raspberry"] .devices-layout{
+  max-width: 1180px;
+  padding: 20px var(--mode-outer-gutter) 32px;
+}
+
+body[data-mode="raspberry"] .devices-topbar{
+  margin-bottom: 22px;
+  gap: 20px;
+}
+
+body[data-mode="raspberry"] .page-title{
+  font-size: clamp(28px, 4vw, 42px);
+}
+
+body[data-mode="raspberry"] .page-subtitle{
+  font-size: 18px;
+}
+
+body[data-mode="raspberry"] .add-device-btn{
+  height: var(--mode-touch-target);
+  padding: 0 22px;
+  font-size: 16px;
+  gap: 12px;
+}
+
+body[data-mode="raspberry"] .add-device-btn i{
+  font-size: 20px;
+}
+
+body[data-mode="raspberry"] .empty-state{
+  margin-top: 24px;
+}
+
+body[data-mode="raspberry"] .empty-icon{
+  width: 128px;
+  height: 128px;
+  margin: 0 auto 18px;
+}
+
+body[data-mode="raspberry"] .empty-icon i{
+  font-size: 44px;
+}
+
+body[data-mode="raspberry"] .empty-title{
+  font-size: 28px;
+}
+
+body[data-mode="raspberry"] .empty-text{
+  font-size: 18px;
+}
+
+body[data-mode="raspberry"] .benefits{
+  gap: calc(22px * var(--mode-card-gap-scale));
+}
+
+body[data-mode="raspberry"] .benefit-card{
+  padding: 26px 24px;
+}
+
+body[data-mode="raspberry"] .benefit-icon{
+  width: 74px;
+  height: 74px;
+  font-size: 30px;
+}
+
+body[data-mode="raspberry"] .device-list{
+  gap: calc(22px * var(--mode-card-gap-scale));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+body[data-mode="raspberry"] .device-card{
+  padding: 22px;
+  gap: 16px;
+}
+
+body[data-mode="raspberry"] .device-icon{
+  width: 68px;
+  height: 68px;
+  font-size: 30px;
+}
+
+body[data-mode="raspberry"] .device-status{
+  padding: 12px 16px;
+}
+
+body[data-mode="raspberry"] .device-status-text{
+  font-size: 16px;
+}
+
+body[data-mode="raspberry"] .status-badge{
+  font-size: 14px;
+  padding: 8px 14px;
+}
+
+body[data-mode="raspberry"] .device-actions{
+  gap: 12px;
+}
+
+body[data-mode="raspberry"] .device-actions .btn{
+  padding: 12px 18px;
+  font-size: 16px;
+}
+
+body[data-mode="raspberry"] .modal{
+  width: min(600px, 94vw);
+  padding: 28px 26px;
+}
+
+body[data-mode="raspberry"] .modal-title{
+  font-size: 24px;
+}
+
+body[data-mode="raspberry"] .modal-buttons{
+  gap: 14px;
+}
+
+body[data-mode="raspberry"] .modal-button{
+  min-height: var(--mode-touch-target);
+  padding: 0 22px;
+  font-size: 16px;
+}
+
+body[data-mode="raspberry"] .edit-form{
+  gap: 20px;
+}
+
+body[data-mode="raspberry"] .form-group label{
+  font-size: 16px;
+}
+
+body[data-mode="raspberry"] .name-preview{
+  padding: 16px;
+  font-size: 18px;
+}
+
+body[data-mode="raspberry"] .room-selector,
+body[data-mode="raspberry"] .type-selector,
+body[data-mode="raspberry"] .icon-selector{
+  gap: 12px;
+}
+
+body[data-mode="raspberry"] .room-option,
+body[data-mode="raspberry"] .type-option,
+body[data-mode="raspberry"] .icon-option{
+  padding: 14px;
+  font-size: 16px;
+}
+
+body[data-mode="raspberry"] .weather-wrap{
+  width: min(1180px, 98vw);
+  margin: 28px auto 14px;
+  padding: 0 var(--mode-outer-gutter);
+}
+
+body[data-mode="raspberry"] .weather-header{
+  margin-bottom: 18px;
+  gap: 16px;
+}
+
+body[data-mode="raspberry"] .weather-header h1{
+  font-size: clamp(30px, 4.2vw, 44px);
+}
+
+body[data-mode="raspberry"] .change-city .custom-select-container{
+  transform: translateY(2px);
+}
+
+body[data-mode="raspberry"] .current-panel{
+  padding: 28px 28px;
+  gap: 20px;
+}
+
+body[data-mode="raspberry"] .current-main .temperature{
+  font-size: clamp(60px, 8vw, 84px);
+}
+
+body[data-mode="raspberry"] .current-main .status{
+  font-size: 18px;
+}
+
+body[data-mode="raspberry"] .current-right p{
+  font-size: 16px;
+}
+
+body[data-mode="raspberry"] .current-stats{
+  gap: 18px;
+  padding-top: 14px;
+}
+
+body[data-mode="raspberry"] .stat i{
+  font-size: 20px;
+}
+
+body[data-mode="raspberry"] .stat strong{
+  font-size: 18px;
+}
+
+body[data-mode="raspberry"] .stat span{
+  font-size: 14px;
+}
+
+body[data-mode="raspberry"] .hourly{
+  padding: 16px 18px;
+}
+
+body[data-mode="raspberry"] .forecast-item{
+  min-width: 96px;
+  padding: 12px;
+}
+
+body[data-mode="raspberry"] .forecast-item .temperature{
+  font-size: 15px;
+}
+
+body[data-mode="raspberry"] .daily{
+  padding: 18px 20px;
+}
+
+body[data-mode="raspberry"] .daily .forecast-row{
+  gap: 18px;
+}
+
+body[data-mode="raspberry"] .pill-btn{
+  min-height: var(--mode-touch-target);
+  padding: 12px 18px;
+  font-size: 16px;
+}
+
+body[data-mode="raspberry"] .pill-btn i{
+  font-size: 18px;
+}
+
+body[data-mode="raspberry"] .clock{
+  width: min(1180px, 98vw);
+  margin: 40px auto 24px;
+  padding: 36px 34px 32px;
+}
+
+body[data-mode="raspberry"] .city-selector{
+  margin-bottom: 16px;
+}
+
+body[data-mode="raspberry"] .custom-select{
+  padding: 14px 48px 14px 18px;
+  font-size: 16px;
+  min-height: var(--mode-touch-target);
+}
+
+body[data-mode="raspberry"] .select-icon{
+  right: 16px;
+}
+
+body[data-mode="raspberry"] .clock-item{
+  font-size: clamp(68px, 15vw, 160px);
+}
+
+body[data-mode="raspberry"] .date-item{
+  font-size: 22px;
+}
+
+body[data-mode="raspberry"] .toggle-format-btn{
+  min-height: var(--mode-touch-target);
+  padding: 12px 22px;
+  font-size: 16px;
+}
+
+body[data-mode="raspberry"] .clock-functions{
+  width: min(1180px, 98vw);
+  margin: 0 auto 24px;
+}
+
+body[data-mode="raspberry"] .functions-grid{
+  gap: calc(26px * var(--mode-card-gap-scale));
+}
+
+body[data-mode="raspberry"] .clock .qcard{
+  min-height: 220px;
+}
+
+body[data-mode="raspberry"] .clock .qcard-icon{
+  width: 78px;
+  height: 78px;
+}
+
+body[data-mode="raspberry"] .clock .qcard-title{
+  font-size: 22px;
+}
+
+body[data-mode="raspberry"] .clock .qcard-subtitle{
+  font-size: 16px;
+}
+
+body[data-mode="raspberry"] .clock .back-home-btn{
+  min-height: var(--mode-touch-target);
+  padding: 10px 20px;
+  font-size: 16px;
+}
+
+body[data-mode="raspberry"] .wifi-button{
+  width: 60px;
+  height: 60px;
+}
+
+body[data-mode="raspberry"] .wifi-icon{
+  font-size: 26px;
+}
+
+body[data-mode="raspberry"] .wifi-modal-content{
+  width: min(520px, 96vw);
+  padding: 28px 26px;
+}
+
+body[data-mode="raspberry"] .wifi-modal-header h2{
+  font-size: 22px;
+}
+
+body[data-mode="raspberry"] .buttons-wifi{
+  gap: 14px;
+}
+
+body[data-mode="raspberry"] .refresh-button{
+  min-height: var(--mode-touch-target);
+  padding: 12px 18px;
+  font-size: 16px;
+}
+
+body[data-mode="raspberry"] .close-button{
+  width: var(--mode-touch-target);
+  height: var(--mode-touch-target);
+  border-radius: 16px;
+  font-size: 26px;
+}
+
+body[data-mode="raspberry"] .wifi-list{
+  margin-bottom: 20px;
+  max-height: 320px;
+}
+
+body[data-mode="raspberry"] .wifi-item{
+  padding: 16px;
+  font-size: 16px;
+  border-radius: 16px;
+  min-height: var(--mode-touch-target);
+}
+
+body[data-mode="raspberry"] .password-input{
+  padding: 16px;
+  font-size: 16px;
+}
+
+body[data-mode="raspberry"] .connect-button{
+  min-height: var(--mode-touch-target);
+  font-size: 16px;
+}
+
+body[data-mode="raspberry"] .mode-toggle-group{
+  gap: 16px;
+}
+
+body[data-mode="raspberry"] .settings-buttons{
+  gap: calc(28px * var(--mode-card-gap-scale));
+  margin: 32px auto 0;
+  padding: 0 8px;
+  justify-content: center;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+body[data-mode="raspberry"] .settings-button{
+  min-height: calc((var(--card-h, 270px)) * 1.2);
+  padding: calc(28px * var(--mode-card-padding-scale)) 34px;
+  width: 100%;
+}
+
+body[data-mode="raspberry"] .settings-button > i{
+  width: 96px;
+  height: 96px;
+  font-size: 38px;
+}
+
+body[data-mode="raspberry"] .settings-button-title{
+  font-size: clamp(22px, 3.4vw, 28px);
+}
+
+body[data-mode="raspberry"] .settings-button-subtitle{
+  font-size: clamp(16px, 2.6vw, 18px);
+}
+
+body[data-mode="raspberry"] .mode-status{
+  font-size: clamp(18px, 2.8vw, 24px);
+}
+
+body[data-mode="raspberry"] button,
+body[data-mode="raspberry"] .btn,
+body[data-mode="raspberry"] .pill-btn,
+body[data-mode="raspberry"] .room-option,
+body[data-mode="raspberry"] .type-option,
+body[data-mode="raspberry"] .icon-option{
+  min-height: var(--mode-touch-target);
 }
 @keyframes helenPop { from { transform: translateY(6px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
 

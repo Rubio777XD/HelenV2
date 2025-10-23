@@ -3243,9 +3243,11 @@ class HelenRuntime:
         }
 
         stream_status = getattr(self.stream, "status", lambda: {})()
+        mode_snapshot = self.mode_snapshot()
 
         return {
-            "mode": self.mode_snapshot(),
+            "mode": mode_snapshot,
+            "ui_mode": mode_snapshot.get("active", DEFAULT_DISPLAY_MODE),
             "thresholds": thresholds,
             "consensus": consensus_payload,
             "pipeline": {
