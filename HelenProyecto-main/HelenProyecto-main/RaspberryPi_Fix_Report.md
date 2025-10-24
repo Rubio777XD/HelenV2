@@ -2,9 +2,9 @@
 
 ## Resumen de cambios
 - Se actualizaron los scripts de instalación y ejecución para Raspberry Pi OS Bookworm:
-  - `packaging-pi/setup_pi.sh` instala los paquetes actuales (`libcamera0.5`, `rpicam-apps-core`, `libtiff-dev`, familia FFmpeg genérica) y crea un entorno virtual `.venv` donde se instalan las dependencias Python (incluyendo MediaPipe 0.10.11).
-  - `packaging-pi/run_pi.sh` reutiliza `.venv/bin/python`, registra logs por ejecución en `reports/logs/pi/`, espera a que el backend responda en `/health` antes de abrir Chromium en modo kiosko y limpia ambos procesos al salir.
-- `packaging-pi/requirements-pi.txt` fija `mediapipe==0.10.11`, compatible con Python 3.11 en Raspberry Pi.
+  - `packaging-pi/setup_pi.sh` instala los paquetes actuales (`libcamera0.5`, `rpicam-apps-core`, `libtiff-dev`, familia FFmpeg genérica) y crea un entorno virtual `.venv` donde se instalan las dependencias Python (incluyendo MediaPipe 0.10.18).
+  - `packaging-pi/run_pi.sh` reutiliza `.venv/bin/python`, registra logs por ejecución en `reports/logs/pi/`, espera a que el backend responda en `/health` antes de abrir Chromium en modo kiosko, limpia ambos procesos al salir y ahora deja constancia del stack `rpicam`/`picamera2` detectado antes de arrancar.
+- `packaging-pi/requirements-pi.txt` fija `mediapipe==0.10.18`, compatible con Python 3.11 en Raspberry Pi.
 - Se documentó el nuevo flujo en `packaging-pi/README-raspi.md` (paquetes reemplazados, uso de `.venv`, ubicación de logs).
 - Se rediseñó el modo Raspberry en `helen/css/globals.css` con un enfoque fit-first:
   - Límites con `clamp` para tipografías, iconos y paddings.
@@ -15,7 +15,7 @@
 
 ## Dependencias actualizadas
 - APT: `libcamera0.5`, `rpicam-apps-core`, `libtiff-dev`, `libavcodec-extra`, `libavcodec-dev`, `libavformat-dev`, `libswscale-dev`, además de los paquetes existentes.
-- Python (`packaging-pi/requirements-pi.txt`): `mediapipe==0.10.11`.
+- Python (`packaging-pi/requirements-pi.txt`): `mediapipe==0.10.18`.
 
 ## Entorno virtual
 - `.venv/` se crea automáticamente con `python3 -m venv` desde `setup_pi.sh`.

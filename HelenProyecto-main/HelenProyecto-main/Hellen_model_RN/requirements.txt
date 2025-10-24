@@ -24,7 +24,7 @@ markdown-it-py==3.0.0
 MarkupSafe==2.1.5
 matplotlib==3.8.4
 mdurl==0.1.2
-mediapipe==0.10.21
+mediapipe==0.10.18
 memory-profiler==0.61.0
 ml-dtypes==0.3.2
 namex==0.0.8

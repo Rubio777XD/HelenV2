@@ -72,7 +72,7 @@ pip_retry() {
 PACKAGES=(
     "numpy==1.26.4"
     "opencv-python==4.9.0.80"
-    "mediapipe==0.10.21"
+    "mediapipe==0.10.18"
 )
 
 for spec in "${PACKAGES[@]}"; do

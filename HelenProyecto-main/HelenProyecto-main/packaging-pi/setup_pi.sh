@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 PYTHON_BIN="${PYTHON:-python3}"
 VENV_DIR="${PROJECT_ROOT}/.venv"
+export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
 
 if ! command -v apt-get >/dev/null 2>&1; then
     echo "Este script requiere un sistema basado en Debian con apt-get." >&2
@@ -88,6 +89,7 @@ resolve_mediapipe_spec() {
 
     local spec=""
     local extra_index=""
+    local target_version="0.10.18"
 
     case "${arch}" in
         armv7l|armv6l)
@@ -106,21 +108,21 @@ resolve_mediapipe_spec() {
             fi
             case "${minor}" in
                 11)
-                    spec="mediapipe==0.10.21"
+                    spec="mediapipe==${target_version}"
                     ;;
                 10)
-                    echo "[HELEN] Advertencia: Python 3.10 detectado. Se forzará mediapipe==0.10.11 (última versión validada)." >&2
-                    spec="mediapipe==0.10.11"
+                    echo "[HELEN] Advertencia: Python 3.10 detectado. Se forzará mediapipe==${target_version} (validado en ARM64)." >&2
+                    spec="mediapipe==${target_version}"
                     ;;
                 *)
-                    echo "[HELEN] Advertencia: Python ${major}.${minor} no está validado oficialmente. Se intentará mediapipe==0.10.21." >&2
-                    spec="mediapipe==0.10.21"
+                    echo "[HELEN] Advertencia: Python ${major}.${minor} no está validado oficialmente. Se intentará mediapipe==${target_version}." >&2
+                    spec="mediapipe==${target_version}"
                     ;;
             esac
             ;;
         *)
-            echo "[HELEN] Advertencia: arquitectura ${arch} no verificada. Se intentará instalar mediapipe==0.10.21 desde PyPI." >&2
-            spec="mediapipe==0.10.21"
+            echo "[HELEN] Advertencia: arquitectura ${arch} no verificada. Se intentará instalar mediapipe==${target_version} desde PyPI." >&2
+            spec="mediapipe==${target_version}"
             ;;
     esac
 
@@ -138,6 +140,12 @@ APT_PACKAGES=(
     gstreamer1.0-plugins-base
     gstreamer1.0-plugins-good
     gstreamer1.0-plugins-bad
+    ffmpeg
+    libavutil57
+    libavcodec59
+    libavformat59
+    libswscale6
+    libswresample4
     python3-pip
     python3-venv
 )
@@ -149,6 +157,10 @@ else
 fi
 
 if pkg=$(resolve_pkg rpicam-apps-core libcamera-apps); then
+    APT_PACKAGES+=("${pkg}")
+fi
+
+if pkg=$(resolve_pkg python3-picamera2); then
     APT_PACKAGES+=("${pkg}")
 fi
 
@@ -174,6 +186,34 @@ if pkg=$(resolve_pkg chromium-browser chromium); then
     APT_PACKAGES+=("${pkg}")
 else
     echo "[HELEN] Advertencia: no se encontró un paquete de Chromium en los repositorios. Instálalo manualmente." >&2
+fi
+
+DEPRECATED_PACKAGES=(
+    libcamera0
+    libcamera-apps
+    libcamera-apps-lite
+    libcamera-tools
+    libtiff5
+    libavcodec-extra58
+    libavcodec-extra60
+    libavcodec58
+    libavcodec60
+    libavutil56
+    libavformat58
+    libswscale5
+)
+
+REMOVE_LIST=()
+for deprecated in "${DEPRECATED_PACKAGES[@]}"; do
+    if dpkg-query -W -f='${Status}' "${deprecated}" 2>/dev/null | grep -q "install ok installed"; then
+        REMOVE_LIST+=("${deprecated}")
+    fi
+done
+
+if (( ${#REMOVE_LIST[@]} )); then
+    echo "[HELEN] Eliminando paquetes heredados de Bullseye: ${REMOVE_LIST[*]}"
+    "${SUDO}" apt-get remove -y --allow-change-held-packages "${REMOVE_LIST[@]}"
+    "${SUDO}" apt-get autoremove -y --allow-change-held-packages
 fi
 
 echo "[HELEN] Actualizando índices APT"

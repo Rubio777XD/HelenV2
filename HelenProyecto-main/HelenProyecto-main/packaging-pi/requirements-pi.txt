@@ -30,7 +30,7 @@ h11==0.14.0
 # Numerical + vision stack tuned for aarch64
 numpy==1.26.4
 opencv-python==4.9.0.80
-mediapipe==0.10.21
+mediapipe==0.10.18
 
 # Machine-learning add-ons used by the gesture classifier
 scipy==1.13.1
