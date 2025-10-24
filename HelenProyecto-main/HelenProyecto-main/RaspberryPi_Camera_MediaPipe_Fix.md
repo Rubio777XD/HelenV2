@@ -28,10 +28,10 @@ Los registros completos de instalación y comprobaciones viven en `reports/logs/
 ## Auto-probe de cámara (USB / CSI)
 
 - El módulo `backendHelen/camera_probe.py` realiza:
-  - Enumeración de `/dev/video*` (V4L2) y sensores libcamera (`libcamera-hello --list-cameras`).
+  - Enumeración de `/dev/video*` (V4L2) y sensores CSI usando `rpicam-hello --list-cameras` (con fallback a `libcamera-hello` si fuese necesario para compatibilidad).
   - Validación con OpenCV (`cv2.VideoCapture`) tanto para V4L2 como pipelines GStreamer (`libcamerasrc` y `v4l2src`).
   - Medición de latencia al primer frame válido y descarte de fotogramas negros.
-  - Selección prioritaria: 1) CSI/libcamera estable, 2) USB UVC estable, 3) cualquier otro fallback disponible.
+  - Selección prioritaria: 1) CSI/rpicam estable, 2) USB UVC estable, 3) cualquier otro fallback disponible.
   - Cacheo en `reports/config/camera_selection.json` junto con la firma de hardware (para reprobar cuando se cambien dispositivos).
 - El backend invoca automáticamente este módulo durante el arranque. Si la cámara falla, se hace un re-probe con backoff (1s → 3s → 5s) antes de degradar a flujo sintético.
 - Los resultados de cada prueba quedan en `reports/logs/pi/camera-probe-*.json` y aparecen en `/engine/status` bajo `camera_selection`.
