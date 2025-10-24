@@ -42,7 +42,6 @@ PRIMARY_DATASET_NAME = "data.pickle"
 # Verificación temprana de dependencias críticas para la build
 REQUIRED_MODULES = (
     "pickle",
-    "xgboost",
     "mediapipe",
     "socketio",
     "flask",
@@ -72,8 +71,6 @@ MAIN_SCRIPT = (SPEC_DIR / "run_backend.py").resolve()
 # --- Dependencias implícitas ---
 hiddenimports = []
 hiddenimports += safe_collect_submodules("mediapipe")
-hiddenimports += safe_collect_submodules("sklearn")
-hiddenimports += safe_collect_submodules("xgboost")
 hiddenimports += safe_collect_submodules("flask")
 hiddenimports += safe_collect_submodules("backendHelen")
 hiddenimports += safe_collect_submodules("Hellen_model_RN")
@@ -88,17 +85,7 @@ hiddenimports += safe_collect_submodules("simple_websocket")
 hiddenimports += safe_collect_submodules("wsproto")
 hiddenimports += safe_collect_submodules("bidict")
 hiddenimports += safe_collect_submodules("cv2")
-hiddenimports += safe_collect_submodules("sounddevice")
-
-# Forzar submódulos que el pickle del modelo puede requerir:
-hiddenimports += safe_collect_submodules("scipy")
-hiddenimports += safe_collect_submodules("scipy._lib")
-hiddenimports += [
-    "scipy._lib.array_api_compat",
-    "scipy._lib.array_api_compat.numpy",
-    "scipy._lib.array_api_compat.numpy.fft",
-    "numpy.fft",
-]
+hiddenimports += ["numpy.fft"]
 
 # --- Archivos a incluir en Analysis (solo pares src/dest) ---
 _datas = []
@@ -142,36 +129,6 @@ for config_path, destination in _config_targets:
 _binaries = []
 _binaries += collect_dynamic_libs("cv2")         # OpenCV (videoio, codecs)
 _binaries += collect_dynamic_libs("mediapipe")   # MediaPipe (grafo/ops nativas)
-_binaries += collect_dynamic_libs("sounddevice") # PortAudio para micrófono
-_binaries += collect_dynamic_libs("xgboost")     # XGBoost (xgboost.dll) ← ¡clave para el modelo!
-
-# PyInstaller a veces no detecta ``xgboost.dll`` automáticamente. Verifica de forma
-# proactiva que el binario quede empaquetado aunque los hooks fallen.
-try:  # pragma: no cover - solo se ejecuta en el proceso de build
-    import xgboost  # type: ignore
-except Exception:
-    pass
-else:
-    package_dir = pathlib.Path(getattr(xgboost, "__file__", "")).resolve().parent
-    candidates = [
-        package_dir / "lib" / "xgboost.dll",
-        package_dir / "xgboost.dll",
-    ]
-    existing_sources = {pathlib.Path(src).resolve() for src, _ in _binaries}
-    for candidate in candidates:
-        if not candidate.exists():
-            continue
-        resolved = candidate.resolve()
-        if resolved in existing_sources:
-            break
-        try:
-            relative_parent = candidate.parent.relative_to(package_dir)
-        except ValueError:
-            dest_dir = "xgboost"
-        else:
-            dest_dir = str(pathlib.Path("xgboost") / relative_parent)
-        _binaries.append((str(resolved), dest_dir))
-        break
 
 # Directorios completos que deben copiarse intactos
 asset_trees = [Tree(str(FRONTEND_DIR), prefix="helen")]

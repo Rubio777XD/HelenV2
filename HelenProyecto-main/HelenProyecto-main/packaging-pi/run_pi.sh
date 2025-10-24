@@ -37,6 +37,22 @@ case "${DEVICE_MODEL,,}" in
         ;;
 esac
 
+determine_kiosk_mode() {
+    local detected="${HELEN_PI_KIOSK:-}"
+    if [[ -n "${detected}" ]]; then
+        echo "${detected}"
+        return
+    fi
+
+    if [[ "${DEVICE_MODEL,,}" == *"raspberry pi 5"* ]]; then
+        echo "0"
+    else
+        echo "1"
+    fi
+}
+
+HELEN_PI_KIOSK="$(determine_kiosk_mode)"
+
 POLL_INTERVAL="${POLL_INTERVAL:-${DEFAULT_POLL_INTERVAL}}"
 
 LOG_DIR="${PROJECT_ROOT}/reports/logs/pi"
@@ -286,12 +302,11 @@ if command -v xset >/dev/null 2>&1; then
     xset s noblank || true
 fi
 
+URL="http://localhost:${PORT}"
 CHROMIUM_FLAGS=(
     --noerrdialogs
     --disable-session-crashed-bubble
     --disable-component-update
-    --kiosk
-    --app="http://localhost:${PORT}"
     --incognito
     --check-for-update-interval=31536000
     --no-first-run
@@ -300,8 +315,24 @@ CHROMIUM_FLAGS=(
     --autoplay-policy=no-user-gesture-required
 )
 
-echo "Lanzando Chromium en modo kiosko (logs en ${CHROMIUM_LOG})"
-"${CHROMIUM_BIN}" "${CHROMIUM_FLAGS[@]}" >>"${CHROMIUM_LOG}" 2>&1 &
+CHROMIUM_CMD=("${CHROMIUM_BIN}")
+CHROMIUM_CMD+=(${CHROMIUM_FLAGS[@]})
+
+if [[ -n "${HELEN_CHROMIUM_FLAGS:-}" ]]; then
+    # shellcheck disable=SC2206
+    EXTRA_CHROMIUM_FLAGS=(${HELEN_CHROMIUM_FLAGS})
+    CHROMIUM_CMD+=(${EXTRA_CHROMIUM_FLAGS[@]})
+fi
+
+if [[ "${HELEN_PI_KIOSK}" == "0" ]]; then
+    echo "Lanzando Chromium en modo ventana (logs en ${CHROMIUM_LOG})"
+    CHROMIUM_CMD+=("${URL}")
+else
+    echo "Lanzando Chromium en modo kiosko (logs en ${CHROMIUM_LOG})"
+    CHROMIUM_CMD+=(--kiosk "--app=${URL}")
+fi
+
+"${CHROMIUM_CMD[@]}" >>"${CHROMIUM_LOG}" 2>&1 &
 CHROMIUM_PID=$!
 
 wait "${BACKEND_PID}"
