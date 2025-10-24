@@ -41,7 +41,7 @@ from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler
 from pathlib import Path
-from typing import Any, Deque, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple, TYPE_CHECKING
+from typing import Any, Deque, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple, TYPE_CHECKING, Union
 import statistics
 from xml.sax.saxutils import escape
 
@@ -331,6 +331,14 @@ class PiCameraProfile:
     fps: int
     poll_interval: float
     process_every_n: int
+
+
+@dataclass(frozen=True)
+class PlatformRuntimeDefaults:
+    detection_confidence: float
+    tracking_confidence: float
+    poll_interval: float
+    frame_stride: int
 
 
 @dataclass(frozen=True)
@@ -1891,6 +1899,39 @@ RASPBERRY_MODE_PROFILE = PiCameraProfile(
 )
 
 
+WINDOWS_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.72, 0.62, 0.08, 2)
+PI5_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.58, 0.55, 0.04, 3)
+PI4_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.6, 0.55, 0.05, 4)
+GENERIC_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.68, 0.6, 0.1, 3)
+
+
+def _resolve_runtime_defaults(profile: Optional[PiCameraProfile]) -> PlatformRuntimeDefaults:
+    model = ""
+    if PI_CAMERA_PROFILE:
+        model = PI_CAMERA_PROFILE.model
+    elif profile:
+        model = profile.model
+
+    if model.startswith("raspberry-pi-5"):
+        base = PI5_RUNTIME_DEFAULTS
+    elif model.startswith("raspberry-pi-4"):
+        base = PI4_RUNTIME_DEFAULTS
+    elif IS_WINDOWS:
+        base = WINDOWS_RUNTIME_DEFAULTS
+    else:
+        base = GENERIC_RUNTIME_DEFAULTS
+
+    poll_interval = profile.poll_interval if profile else base.poll_interval
+    frame_stride = profile.process_every_n if profile else base.frame_stride
+
+    return PlatformRuntimeDefaults(
+        detection_confidence=base.detection_confidence,
+        tracking_confidence=base.tracking_confidence,
+        poll_interval=poll_interval,
+        frame_stride=max(1, int(frame_stride or base.frame_stride)),
+    )
+
+
 def _command_exists(command: str) -> bool:
     return bool(shutil.which(command))
 
@@ -2232,15 +2273,16 @@ def connect_wifi(ssid: str, password: str) -> Tuple[bool, str]:
 
 @dataclass
 class RuntimeConfig:
-    camera_index: int = 0
-    detection_confidence: float = 0.7
-    tracking_confidence: float = 0.6
-    poll_interval_s: float = DEFAULT_POLL_INTERVAL_S
+    camera_index: Optional[Union[int, str]] = None
+    camera_device: Optional[str] = None
+    detection_confidence: Optional[float] = None
+    tracking_confidence: Optional[float] = None
+    poll_interval_s: Optional[float] = None
     enable_camera: bool = True
     fallback_to_synthetic: bool = True
     model_path: Path = MODEL_PATH
     dataset_path: Path = field(default_factory=_default_dataset_path)
-    process_every_n: int = 3
+    process_every_n: Optional[int] = None
     display_mode: str = DEFAULT_DISPLAY_MODE
     camera_profile: Optional[PiCameraProfile] = None
 
@@ -2259,8 +2301,13 @@ class HealthSnapshot:
     last_prediction_at: Optional[str]
     avg_latency_ms: float
     camera_ok: bool
-    camera_index: Optional[int]
+    camera_index: Optional[Union[int, str]]
+    camera_device: Optional[str]
     camera_backend: Optional[str]
+    camera_resolution: Optional[str]
+    camera_fps: Optional[float]
+    camera_pixel_format: Optional[str]
+    camera_probe_latency_ms: Optional[float]
     camera_last_capture: Optional[str]
     camera_last_error: Optional[str]
     last_error: Optional[str] = None
@@ -2382,7 +2429,7 @@ class CameraGestureStream:
     def __init__(
         self,
         *,
-        camera_index: int = 0,
+        camera_index: Optional[Union[int, str]] = None,
         detection_confidence: float = 0.7,
         tracking_confidence: float = 0.6,
         metrics: Optional[GestureMetrics] = None,
@@ -2395,17 +2442,27 @@ class CameraGestureStream:
             raise RuntimeError("MediaPipe no está instalado. Ejecuta `pip install mediapipe`.")
 
         self._selection = selection
-        if selection and selection.index is not None:
-            camera_index = selection.index
-        self._camera_index = camera_index
+        resolved_index: Optional[Union[int, str]] = camera_index
+        if selection:
+            if selection.index is not None:
+                resolved_index = selection.index
+            elif selection.device:
+                resolved_index = selection.device
+        self._camera_index: Optional[Union[int, str]] = resolved_index
         self._detection_confidence = detection_confidence
         self._tracking_confidence = tracking_confidence
         self._metrics = metrics
-        self._device_path = selection.device if selection and selection.device else None
+        if selection and selection.device:
+            self._device_path: Optional[str] = selection.device
+        elif isinstance(camera_index, str):
+            self._device_path = camera_index
+        else:
+            self._device_path = None
         self._preferred_backend = (selection.backend if selection else None) or "v4l2"
         self._selection_dict = selection.to_dict() if selection else None
         self._probe_latency_ms = selection.latency_ms if selection else None
         self._orientation_hint = selection.orientation if selection else None
+        self._pixel_format = selection.pixel_format if selection else None
 
         self._cap: Optional[Any] = None
         self._hands: Optional[Any] = None
@@ -2441,6 +2498,9 @@ class CameraGestureStream:
     # ------------------------------------------------------------------
     def _configure_capture(self, cap: Any) -> None:
         width, height, fps = self._desired_dimensions()
+        if self._pixel_format:
+            with contextlib.suppress(Exception):
+                camera_probe._apply_pixel_format(cap, self._pixel_format)
         if width > 0 and height > 0:
             with contextlib.suppress(Exception):
                 cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
@@ -2451,14 +2511,15 @@ class CameraGestureStream:
 
     # ------------------------------------------------------------------
     def _attempt_v4l2(self) -> Tuple[Optional[Any], Optional[str]]:
-        target: Any = self._device_path if self._device_path else self._camera_index
-        args: Tuple[Any, ...]
-        if IS_LINUX and hasattr(cv2, "CAP_V4L2"):
-            args = (target, cv2.CAP_V4L2)
-        else:
-            args = (target,)
+        target: Any = self._device_path if self._device_path is not None else self._camera_index
+        if target is None:
+            return None, "No hay cámara seleccionada"
 
-        cap = cv2.VideoCapture(*args)
+        backend_flag = getattr(camera_probe, "DEFAULT_CAPTURE_FLAG", 0)
+        try:
+            cap = cv2.VideoCapture(target, backend_flag) if backend_flag else cv2.VideoCapture(target)
+        except Exception as error:  # pragma: no cover - depende del entorno
+            return None, str(error)
         if not cap or not cap.isOpened():
             if cap:
                 with contextlib.suppress(Exception):
@@ -2471,11 +2532,12 @@ class CameraGestureStream:
         actual_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
 
         LOGGER.info(
-            "Ruta de cámara inicializada: v4l2 (target=%s, %sx%s @ %.2f fps)",
+            "Ruta de cámara inicializada: v4l2 (target=%s, %sx%s @ %.2f fps, formato=%s)",
             target,
             actual_width,
             actual_height,
             actual_fps,
+            self._pixel_format or "<driver>",
         )
         self._capture_backend = "v4l2"
         self._gstreamer_pipeline = None
@@ -2511,6 +2573,7 @@ class CameraGestureStream:
         LOGGER.info("Ruta de cámara inicializada: gstreamer (pipeline=%s)", pipeline)
         self._capture_backend = "gstreamer"
         self._gstreamer_pipeline = pipeline
+        self._pixel_format = "BGR"
         return cap, None
 
     # ------------------------------------------------------------------
@@ -2587,6 +2650,7 @@ class CameraGestureStream:
         self._opened = False
         self._capture_backend = None
         self._gstreamer_pipeline = None
+        self._pixel_format = self._selection.pixel_format if self._selection else None
 
     # ------------------------------------------------------------------
     def next(self, timeout: float = 2.0) -> Tuple[List[float], Optional[str]]:
@@ -2693,6 +2757,7 @@ class CameraGestureStream:
             "preferred_backend": self._preferred_backend,
             "probe_latency_ms": self._probe_latency_ms,
             "orientation_hint": self._orientation_hint,
+            "pixel_format": self._pixel_format,
         }
 
         if self._selection_dict:
@@ -3124,6 +3189,7 @@ class HelenRuntime:
         profile = profile_override if profile_override is not None else _profile_for_mode(active_mode)
         self.config.camera_profile = profile
 
+        self._apply_runtime_defaults(profile)
         self._configure_mode_runtime(active_mode, profile)
         self.session_id = uuid.uuid4().hex
         self.started_at = time.time()
@@ -3173,6 +3239,30 @@ class HelenRuntime:
         self.last_prediction_at: Optional[float] = None
         self.last_heartbeat = 0.0
         self.last_error: Optional[str] = None
+
+    # ------------------------------------------------------------------
+    def _apply_runtime_defaults(self, profile: Optional[PiCameraProfile]) -> None:
+        defaults = _resolve_runtime_defaults(profile)
+
+        detection = self.config.detection_confidence
+        if detection is None:
+            detection = defaults.detection_confidence
+        self.config.detection_confidence = max(0.2, min(float(detection), 0.99))
+
+        tracking = self.config.tracking_confidence
+        if tracking is None:
+            tracking = defaults.tracking_confidence
+        self.config.tracking_confidence = max(0.2, min(float(tracking), 0.99))
+
+        poll_interval = self.config.poll_interval_s
+        if poll_interval is None:
+            poll_interval = defaults.poll_interval
+        self.config.poll_interval_s = max(0.02, float(poll_interval))
+
+        stride = self.config.process_every_n
+        if stride is None:
+            stride = defaults.frame_stride
+        self.config.process_every_n = max(1, int(stride))
 
     # ------------------------------------------------------------------
     def _configure_mode_runtime(self, mode: str, profile: Optional[PiCameraProfile]) -> None:
@@ -3228,10 +3318,12 @@ class HelenRuntime:
 
     # ------------------------------------------------------------------
     def _ensure_camera_selection(self, *, force: bool) -> Optional[CameraSelection]:
-        preferred: Optional[int] = None
-        camera_index = getattr(self.config, "camera_index", None)
-        if isinstance(camera_index, int):
-            preferred = camera_index
+        preferred: Optional[Union[int, str]] = None
+        camera_spec = getattr(self.config, "camera_device", None)
+        if camera_spec is None:
+            camera_spec = getattr(self.config, "camera_index", None)
+        if isinstance(camera_spec, (int, str)) and camera_spec != "":
+            preferred = camera_spec
 
         try:
             selection = camera_probe.ensure_camera_selection(
@@ -3243,8 +3335,13 @@ class HelenRuntime:
             LOGGER.warning("Auto-probe de cámara falló: %s", error)
             return None
 
-        if selection and selection.index is not None:
-            self.config.camera_index = selection.index
+        if selection:
+            if selection.device:
+                self.config.camera_device = selection.device
+            if selection.index is not None:
+                self.config.camera_index = selection.index
+            elif selection.device:
+                self.config.camera_index = selection.device
         return selection
 
     # ------------------------------------------------------------------
@@ -3609,6 +3706,20 @@ class HelenRuntime:
         stream_status = getattr(self.stream, "status", lambda: {})()
         camera_ok = bool(stream_status.get("healthy")) if self.stream_source == "camera" else True
 
+        selection_info = stream_status.get("selection") or {}
+        device_path = stream_status.get("device_path") or selection_info.get("device")
+        camera_index = stream_status.get("camera_index")
+        if camera_index is None and selection_info.get("index") is not None:
+            camera_index = selection_info.get("index")
+        resolution = None
+        width = selection_info.get("width")
+        height = selection_info.get("height")
+        if width and height:
+            resolution = f"{int(width)}x{int(height)}"
+        fps_value = selection_info.get("fps")
+        pixel_format = stream_status.get("pixel_format") or selection_info.get("pixel_format")
+        probe_latency = stream_status.get("probe_latency_ms")
+
         status = "HEALTHY"
         if last_error:
             status = "ERROR"
@@ -3628,8 +3739,13 @@ class HelenRuntime:
             last_prediction_at=_iso_timestamp(last_prediction_at) if last_prediction_at else None,
             avg_latency_ms=round(avg_latency, 3),
             camera_ok=camera_ok,
-            camera_index=stream_status.get("camera_index"),
+            camera_index=camera_index,
+            camera_device=device_path,
             camera_backend=stream_status.get("capture_backend"),
+            camera_resolution=resolution,
+            camera_fps=fps_value,
+            camera_pixel_format=pixel_format,
+            camera_probe_latency_ms=probe_latency,
             camera_last_capture=(
                 _iso_timestamp(stream_status["last_capture"])
                 if stream_status.get("last_capture")
@@ -3847,18 +3963,54 @@ class ThreadingHTTPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 __all__ = ["HelenRuntime", "HelenRequestHandler", "RuntimeConfig", "run", "main"]
 
 
+def _parse_camera_spec(value: Optional[str]) -> Optional[Union[int, str]]:
+    if value is None:
+        return None
+    candidate = value.strip()
+    if not candidate or candidate.lower() == "auto":
+        return None
+    if candidate.isdigit():
+        return int(candidate)
+    try:
+        return int(candidate)
+    except ValueError:
+        return candidate
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="HELEN backend server")
     parser.add_argument("--host", default="0.0.0.0", help="Dirección de enlace del servidor HTTP")
     parser.add_argument("--port", type=int, default=5000, help="Puerto del servidor HTTP")
-    parser.add_argument("--camera-index", type=int, default=0, help="Índice de la cámara de video a utilizar")
-    parser.add_argument("--detection-confidence", type=float, default=0.7, help="Umbral de detección de MediaPipe")
-    parser.add_argument("--tracking-confidence", type=float, default=0.6, help="Umbral de seguimiento de MediaPipe")
-    parser.add_argument("--poll-interval", type=float, default=0.12, help="Intervalo entre inferencias en segundos")
+    parser.add_argument(
+        "--camera",
+        "--camera-index",
+        dest="camera_index",
+        default=None,
+        help="Índice numérico (0,1,2) o ruta /dev/videoX a utilizar. Usa 'auto' para autodetección",
+        metavar="INDEX|PATH",
+    )
+    parser.add_argument(
+        "--detection-confidence",
+        type=float,
+        default=None,
+        help="Umbral de detección de MediaPipe (se infiere según plataforma si se omite)",
+    )
+    parser.add_argument(
+        "--tracking-confidence",
+        type=float,
+        default=None,
+        help="Umbral de seguimiento de MediaPipe (se infiere según plataforma si se omite)",
+    )
+    parser.add_argument(
+        "--poll-interval",
+        type=float,
+        default=None,
+        help="Intervalo entre inferencias en segundos (se ajusta automáticamente por plataforma)",
+    )
     parser.add_argument(
         "--frame-stride",
         type=int,
-        default=3,
+        default=None,
         help="Procesa un frame de cada N muestras para reducir carga (>=1)",
     )
     parser.add_argument("--no-camera", action="store_true", help="Desactiva el uso de cámara física")
@@ -3869,14 +4021,22 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
 
     args = parser.parse_args(argv)
+    camera_spec = _parse_camera_spec(args.camera_index)
+    camera_device = camera_spec if isinstance(camera_spec, str) else None
+
+    frame_stride = args.frame_stride if args.frame_stride is not None else None
+    if frame_stride is not None:
+        frame_stride = max(1, frame_stride)
+
     config = RuntimeConfig(
-        camera_index=args.camera_index,
+        camera_index=camera_spec,
+        camera_device=camera_device,
         detection_confidence=args.detection_confidence,
         tracking_confidence=args.tracking_confidence,
         poll_interval_s=args.poll_interval,
         enable_camera=not args.no_camera,
         fallback_to_synthetic=not args.no_synthetic_fallback,
-        process_every_n=max(1, args.frame_stride),
+        process_every_n=frame_stride,
     )
 
     run(args.host, args.port, config=config)

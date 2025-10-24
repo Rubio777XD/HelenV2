@@ -38,6 +38,19 @@ if not LOGGER.handlers:
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s %(message)s")
 
 
+def _default_capture_flag() -> int:
+    if cv2 is None:
+        return 0
+    if IS_WINDOWS and hasattr(cv2, "CAP_DSHOW"):
+        return int(cv2.CAP_DSHOW)
+    if hasattr(cv2, "CAP_V4L2"):
+        return int(cv2.CAP_V4L2)
+    return 0
+
+
+DEFAULT_CAPTURE_FLAG = _default_capture_flag()
+
+
 def _log(logger: Optional[logging.Logger], level: str, message: str, *args: Any) -> None:
     target = logger if logger is not None else LOGGER
     if not target:
@@ -48,7 +61,10 @@ def _log(logger: Optional[logging.Logger], level: str, message: str, *args: Any)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REPORTS_DIR = REPO_ROOT / "reports"
-LOG_DIR = REPORTS_DIR / "logs" / "pi"
+PLATFORM = platform.system().lower()
+IS_WINDOWS = PLATFORM.startswith("win")
+
+LOG_DIR = REPORTS_DIR / "logs" / ("win" if IS_WINDOWS else "pi")
 CONFIG_DIR = REPORTS_DIR / "config"
 CONFIG_PATH = CONFIG_DIR / "camera_selection.json"
 
@@ -73,10 +89,14 @@ class CameraMode:
 
 
 PREFERRED_MODES: Tuple[CameraMode, ...] = (
+    CameraMode(1280, 720, 30),
+    CameraMode(960, 720, 30),
     CameraMode(640, 480, 30),
     CameraMode(640, 360, 24),
     CameraMode(320, 240, 24),
 )
+
+PIXEL_FORMAT_PREFERENCE: Tuple[str, ...] = ("MJPG", "YUYV", "NV12", "H264")
 
 
 @dataclass
@@ -114,6 +134,7 @@ class ProbeResult:
     orientation: Optional[str] = None
     frames_sampled: int = 0
     pipeline: Optional[str] = None
+    pixel_format: Optional[str] = None
 
     def score(self) -> float:
         base = 0.0
@@ -147,6 +168,7 @@ class CameraSelection:
     mode_name: str
     hardware_signature: str
     probed_at: str
+    pixel_format: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)
@@ -321,16 +343,29 @@ def _list_libcamera_devices() -> List[CameraCandidate]:
 
 def _fallback_candidates() -> List[CameraCandidate]:
     fallbacks: List[CameraCandidate] = []
-    for index in range(2):
-        path = f"/dev/video{index}"
-        if Path(path).exists():
+    if not IS_WINDOWS:
+        for index in range(2):
+            path = f"/dev/video{index}"
+            if Path(path).exists():
+                fallbacks.append(
+                    CameraCandidate(
+                        identifier=f"fallback:{path}",
+                        label=path,
+                        kind="usb",
+                        backend_hint="v4l2",
+                        path=path,
+                        index=index,
+                        metadata={"fallback": True},
+                    )
+                )
+    else:
+        for index in range(5):
             fallbacks.append(
                 CameraCandidate(
-                    identifier=f"fallback:{path}",
-                    label=path,
+                    identifier=f"fallback:win{index}",
+                    label=f"DirectShow index {index}",
                     kind="usb",
                     backend_hint="v4l2",
-                    path=path,
                     index=index,
                     metadata={"fallback": True},
                 )
@@ -391,7 +426,24 @@ def _frame_is_valid(frame: Any) -> bool:
     return mean_value > BLACK_FRAME_MEAN_THRESHOLD or std_dev > BLACK_FRAME_STD_THRESHOLD
 
 
-def _configure_capture(cap: Any, mode: CameraMode) -> None:
+def _apply_pixel_format(cap: Any, pixel_format: Optional[str]) -> bool:
+    if cv2 is None or not pixel_format:
+        return False
+    fourcc_fn = getattr(cv2, "VideoWriter_fourcc", None)
+    if not callable(fourcc_fn):
+        return False
+    try:
+        code = fourcc_fn(*pixel_format)
+    except Exception:
+        return False
+    with contextlib.suppress(Exception):
+        return bool(cap.set(cv2.CAP_PROP_FOURCC, code))
+    return False
+
+
+def _configure_capture(cap: Any, mode: CameraMode, pixel_format: Optional[str] = None) -> None:
+    if pixel_format:
+        _apply_pixel_format(cap, pixel_format)
     with contextlib.suppress(Exception):
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, mode.width)
     with contextlib.suppress(Exception):
@@ -434,40 +486,74 @@ def _probe_with_v4l2(candidate: CameraCandidate, mode: CameraMode) -> ProbeResul
     if target is None:
         return ProbeResult(candidate=candidate, backend="v4l2", mode=mode, success=False, reason="no-target")
 
-    backend_flag = cv2.CAP_V4L2 if hasattr(cv2, "CAP_V4L2") else 0
-    try:
-        cap = cv2.VideoCapture(target, backend_flag) if backend_flag else cv2.VideoCapture(target)
-    except Exception as error:  # pragma: no cover - depends on runtime
-        return ProbeResult(candidate=candidate, backend="v4l2", mode=mode, success=False, reason=str(error))
+    backend_flag = DEFAULT_CAPTURE_FLAG
+    attempts: List[ProbeResult] = []
+    pixel_formats: Tuple[Optional[str], ...] = tuple(PIXEL_FORMAT_PREFERENCE) + (None,)
 
-    if not cap or not cap.isOpened():
-        if cap:
-            with contextlib.suppress(Exception):
-                cap.release()
-        return ProbeResult(candidate=candidate, backend="v4l2", mode=mode, success=False, reason="open-failed")
+    for pixel_format in pixel_formats:
+        try:
+            cap = cv2.VideoCapture(target, backend_flag) if backend_flag else cv2.VideoCapture(target)
+        except Exception as error:  # pragma: no cover - depends on runtime
+            attempts.append(
+                ProbeResult(
+                    candidate=candidate,
+                    backend="v4l2",
+                    mode=mode,
+                    success=False,
+                    reason=str(error),
+                    pixel_format=pixel_format,
+                )
+            )
+            continue
 
-    _configure_capture(cap, mode)
-    success, latency, resolution, fps, frames = _read_frames(cap)
+        if not cap or not cap.isOpened():
+            if cap:
+                with contextlib.suppress(Exception):
+                    cap.release()
+            attempts.append(
+                ProbeResult(
+                    candidate=candidate,
+                    backend="v4l2",
+                    mode=mode,
+                    success=False,
+                    reason="open-failed",
+                    pixel_format=pixel_format,
+                )
+            )
+            continue
 
-    with contextlib.suppress(Exception):
-        cap.release()
+        _configure_capture(cap, mode, pixel_format)
+        success, latency, resolution, fps, frames = _read_frames(cap)
 
-    orientation = None
-    if resolution[0] and resolution[1]:
-        orientation = "portrait" if resolution[1] > resolution[0] else "landscape"
+        with contextlib.suppress(Exception):
+            cap.release()
 
-    return ProbeResult(
-        candidate=candidate,
-        backend="v4l2",
-        mode=mode,
-        success=success,
-        reason=None if success else "no-valid-frame",
-        latency_ms=latency,
-        resolution=resolution,
-        fps=fps,
-        orientation=orientation,
-        frames_sampled=frames,
-    )
+        orientation = None
+        if resolution[0] and resolution[1]:
+            orientation = "portrait" if resolution[1] > resolution[0] else "landscape"
+
+        result = ProbeResult(
+            candidate=candidate,
+            backend="v4l2",
+            mode=mode,
+            success=success,
+            reason=None if success else f"no-valid-frame:{pixel_format or 'default'}",
+            latency_ms=latency,
+            resolution=resolution,
+            fps=fps,
+            orientation=orientation,
+            frames_sampled=frames,
+            pixel_format=pixel_format if success else pixel_format,
+        )
+        attempts.append(result)
+        if success:
+            return result
+
+    if attempts:
+        # Return the last attempt (likely the lowest mode) for logging purposes.
+        return attempts[-1]
+
+    return ProbeResult(candidate=candidate, backend="v4l2", mode=mode, success=False, reason="probe-failed")
 
 
 def _build_gstreamer_pipeline(candidate: CameraCandidate, mode: CameraMode) -> str:
@@ -518,6 +604,7 @@ def _probe_with_gstreamer(candidate: CameraCandidate, mode: CameraMode) -> Probe
         orientation=orientation,
         frames_sampled=frames,
         pipeline=pipeline,
+        pixel_format="BGR" if success else None,
     )
 
 
@@ -620,7 +707,7 @@ def _validate_cached_selection(
                 target = candidate.index
             if target is None:
                 return None
-            backend_flag = cv2.CAP_V4L2 if hasattr(cv2, "CAP_V4L2") else 0
+            backend_flag = DEFAULT_CAPTURE_FLAG
             cap = cv2.VideoCapture(target, backend_flag) if backend_flag else cv2.VideoCapture(target)
     except Exception as error:  # pragma: no cover - depende del entorno
         if logger:
@@ -635,7 +722,8 @@ def _validate_cached_selection(
             logger.debug("La cámara cacheada no se pudo abrir correctamente.")
         return None
 
-    _configure_capture(cap, mode)
+    pixel_format = getattr(candidate, "pixel_format", None)
+    _configure_capture(cap, mode, pixel_format)
     success, latency, resolution, fps_value, frames = _read_frames(cap, timeout=2.5)
     with contextlib.suppress(Exception):
         cap.release()
@@ -750,6 +838,7 @@ def ensure_camera_selection(
         mode_name=f"{resolved_width}x{resolved_height}@{int(round(resolved_fps or mode.fps))}",
         hardware_signature=current_signature,
         probed_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        pixel_format=best_result.pixel_format,
     )
 
     selection = _annotate_selection(selection, origin="probe", verified=True)

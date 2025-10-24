@@ -142,7 +142,6 @@ APT_PACKAGES=(
     gstreamer1.0-plugins-bad
     ffmpeg
     libavutil57
-    libavcodec59
     libavformat59
     libswscale6
     libswresample4
@@ -164,9 +163,6 @@ if pkg=$(resolve_pkg python3-picamera2); then
     APT_PACKAGES+=("${pkg}")
 fi
 
-if pkg=$(resolve_pkg libavcodec-extra); then
-    APT_PACKAGES+=("${pkg}")
-fi
 if pkg=$(resolve_pkg libavcodec-dev); then
     APT_PACKAGES+=("${pkg}")
 fi
@@ -188,6 +184,45 @@ else
     echo "[HELEN] Advertencia: no se encontró un paquete de Chromium en los repositorios. Instálalo manualmente." >&2
 fi
 
+REMOVE_LIST=()
+
+choose_libavcodec_variant() {
+    local variant=""
+    local resolved=""
+    if resolved=$(resolve_pkg libavcodec-extra59); then
+        variant="libavcodec-extra59"
+        resolved="${resolved}"
+    elif resolved=$(resolve_pkg libavcodec59); then
+        variant="libavcodec59"
+        resolved="${resolved}"
+    fi
+
+    if [[ -z "${variant}" ]]; then
+        return
+    fi
+
+    local filtered=()
+    for pkg in "${APT_PACKAGES[@]}"; do
+        case "${pkg}" in
+            libavcodec59|libavcodec-extra59) continue ;;
+        esac
+        filtered+=("${pkg}")
+    done
+    APT_PACKAGES=("${filtered[@]}")
+    APT_PACKAGES+=("${resolved}")
+
+    if [[ "${variant}" == "libavcodec-extra59" ]]; then
+        echo "[HELEN] Se utilizará libavcodec-extra59 para habilitar codecs ampliados." 
+        if dpkg-query -W -f='${Status}' libavcodec59 2>/dev/null | grep -q "install ok installed"; then
+            REMOVE_LIST+=("libavcodec59")
+        fi
+    else
+        echo "[HELEN] Se utilizará libavcodec59 (variante estándar)."
+    fi
+}
+
+choose_libavcodec_variant
+
 DEPRECATED_PACKAGES=(
     libcamera0
     libcamera-apps
@@ -203,7 +238,6 @@ DEPRECATED_PACKAGES=(
     libswscale5
 )
 
-REMOVE_LIST=()
 for deprecated in "${DEPRECATED_PACKAGES[@]}"; do
     if dpkg-query -W -f='${Status}' "${deprecated}" 2>/dev/null | grep -q "install ok installed"; then
         REMOVE_LIST+=("${deprecated}")
