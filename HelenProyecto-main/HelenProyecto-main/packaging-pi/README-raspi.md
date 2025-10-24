@@ -1,6 +1,6 @@
 # HELEN en Raspberry Pi 4/5 (Raspberry Pi OS 64-bit)
 
-Esta guía describe el procedimiento oficial para instalar, configurar y operar HELEN en una Raspberry Pi 4 o 5 con Raspberry Pi OS 64-bit (Bookworm). El flujo instala el backend Flask/Socket.IO, habilita la cámara oficial/libcamera, lanza la interfaz web en Chromium en modo kiosko y registra servicios `systemd` para iniciar todo automáticamente al encender el dispositivo.
+Esta guía describe el procedimiento oficial para instalar, configurar y operar HELEN en una Raspberry Pi 4 o 5 con Raspberry Pi OS 64-bit (Bookworm). El flujo instala el backend Flask/Socket.IO, habilita la cámara oficial mediante el pipeline `rpicamsrc` de GStreamer, lanza la interfaz web en Chromium en modo kiosko y registra servicios `systemd` para iniciar todo automáticamente al encender el dispositivo.
 
 ## 1. Requisitos
 
@@ -9,7 +9,7 @@ Esta guía describe el procedimiento oficial para instalar, configurar y operar 
 - Raspberry Pi 4 Model B (4 GB o más) **o** Raspberry Pi 5.
 - Fuente oficial de 5V/3A (Pi 4) u 5V/5A (Pi 5).
 - Tarjeta microSD UHS-I (32 GB mínimo, 64 GB recomendado).
-- Cámara compatible con libcamera (Camera Module 2/3 o HQ) correctamente conectada.
+- Cámara oficial compatible con `rpicamsrc` (Camera Module 2/3 o HQ) correctamente conectada.
 - Monitor táctil o pantalla HDMI con ratón/teclado (para la instalación inicial).
 - Conectividad Wi-Fi o Ethernet.
 
@@ -37,9 +37,9 @@ Esta guía describe el procedimiento oficial para instalar, configurar y operar 
    - **Interface Options → Camera → Enable**.
    - **Display Options → Screen Blanking → Disable**.
    - Si quieres arranque al escritorio automáticamente: **System Options → Boot / Auto Login → Desktop Autologin** (requerido para el kiosko).
-3. Verifica la cámara con libcamera:
+3. Verifica la cámara con rpicam:
    ```bash
-   libcamera-hello -t 5000
+   rpicam-hello -t 5000
    ```
    Si el comando muestra imagen durante ~5 s, la cámara está lista. Ante errores revisa el cable plano, actualiza el firmware (`sudo rpi-update`) o revisa permisos.
 
@@ -52,7 +52,7 @@ bash packaging-pi/setup_pi.sh
 ```
 
 El script:
-- Instala bibliotecas del sistema actuales (`libatlas-base-dev`, `libopenblas-dev`, `libportaudio2`, `libjpeg-dev`, `libtiff-dev`, `libcamera0.5`, `rpicam-apps-core`, `libavcodec-extra`, `libavcodec-dev`, `libavformat-dev`, `libswscale-dev` y el paquete disponible de Chromium).
+- Instala bibliotecas del sistema actuales (`libatlas-base-dev`, `libopenblas-dev`, `libportaudio2`, `libjpeg-dev`, `libtiff-dev`, `rpicam-apps`, `libavcodec-extra`, `libavcodec-dev`, `libavformat-dev`, `libswscale-dev` y el paquete disponible de Chromium).
 - Crea un entorno virtual aislado en `.venv/` (usa `python3 -m venv`), actualiza `pip`, `setuptools` y `wheel` dentro de él e instala `packaging-pi/requirements-pi.txt` sin tocar los paquetes del sistema.
 - Registra la salida completa en `reports/logs/pi/setup-*.log` para facilitar auditorías.
 
@@ -104,7 +104,7 @@ Detén el script con `Ctrl+C`; ambos procesos se cierran limpiamente.
    ```
    En los logs del backend deberías ver una entrada indicando la ruta de cámara utilizada, por ejemplo:
    - `Ruta de cámara inicializada: v4l2 ...` cuando `cv2.VideoCapture(0)` funciona.
-   - `Ruta de cámara inicializada: gstreamer ...` cuando se usa el pipeline `libcamerasrc`.
+   - `Ruta de cámara inicializada: gstreamer ...` cuando se usa el pipeline `rpicamsrc`.
 
 Tras un reinicio (`sudo reboot`) el backend y Chromium deben iniciar automáticamente en modo kiosko.
 
@@ -119,13 +119,13 @@ Después de habilitar los servicios verifica:
 5. **Alarmas/temporizador/dispositivos**: crea alarmas y dispositivos, recarga la página y valida que el estado persiste (se usa `localStorage`).
 6. **Rendimiento**:
    - Pi 5: objetivo 720p @ 24–25 fps, CPU promedio ≤35 %, temperatura <75 °C. Ajusta `POLL_INTERVAL=0.035` si necesitas más fps.
-   - Pi 4: objetivo 640×360 @ 24 fps, CPU promedio ≤35 %. Puedes reducir la resolución desde `libcamera-hello` (`--width 640 --height 360`) y HELEN la respetará.
+   - Pi 4: objetivo 640×360 @ 24 fps, CPU promedio ≤35 %. Puedes reducir la resolución desde `rpicam-hello` (`--width 640 --height 360`) y HELEN la respetará.
    Monitoriza con `top`, `vcgencmd measure_temp` y `watch -n 5 vcgencmd get_throttled`.
 7. **Logs limpios**: `journalctl -u helen.service` no debe mostrar errores críticos recurrentes. Las advertencias de `absl` quedan en nivel WARNING y no bloquean el flujo.
 
 ## 7. Mantenimiento y solución de problemas
 
-- **Ruta de cámara**: el backend intenta primero V4L2 (`cv2.VideoCapture`) y, si falla, reinicia la captura con un pipeline GStreamer basado en `libcamerasrc`. Revisa `journalctl -u helen.service` para confirmar la ruta y actualiza `libcamera-apps` si persisten errores.
+- **Ruta de cámara**: el backend intenta primero V4L2 (`cv2.VideoCapture`) y, si falla, reinicia la captura con un pipeline GStreamer basado en `rpicamsrc`. Revisa `journalctl -u helen.service` para confirmar la ruta y actualiza `rpicam-apps` si persisten errores.
 - **Chromium no arranca**: verifica que el usuario `pi` inicia sesión en el escritorio y que `DISPLAY=:0` está disponible. Si usas Wayland, añade `--ozone-platform=wayland --enable-features=UseOzonePlatform` al servicio.
 - **Caídas por falta de memoria**: asegúrate de tener espacio de intercambio (por defecto 100 MB). Puedes incrementarlo en `sudo raspi-config` → Performance Options → Overlay File System → swap.
 - **Actualizar dependencias**: vuelve a ejecutar `bash packaging-pi/setup_pi.sh`. El script reinstala solo los paquetes faltantes.

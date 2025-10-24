@@ -6,6 +6,7 @@ PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 DEFAULT_VENV_PYTHON="${PROJECT_ROOT}/.venv/bin/python"
 PORT="${HELEN_PORT:-5000}"
 CAMERA_BOOTSTRAP_LOG="${PROJECT_ROOT}/reports/logs/pi/camera-bootstrap.log"
+DEFAULT_CAMERA_PIPELINE="${HELEN_DEFAULT_CAMERA_INDEX:-rpicamsrc}"
 
 if [[ -n "${PYTHON:-}" ]]; then
     PYTHON_BIN="${PYTHON}"
@@ -78,15 +79,6 @@ if [[ -n "${GST_REGISTRY_1_0:-}" ]]; then
     mkdir -p "$(dirname "${GST_REGISTRY_1_0}")"
 fi
 
-if [[ -z "${LIBCAMERA_RPI_TUNING_FILE:-}" ]]; then
-    for candidate in /usr/share/libcamera/ipa/rpi/*/imx*.json; do
-        if [[ -r "${candidate}" ]]; then
-            export LIBCAMERA_RPI_TUNING_FILE="${candidate}"
-            break
-        fi
-    done
-fi
-
 echo "[HELEN] Los logs se guardarán en ${LOG_DIR}"
 
 bootstrap_camera() {
@@ -100,6 +92,11 @@ bootstrap_camera() {
 
     if [[ -n "${HELEN_SKIP_CAMERA_BOOTSTRAP:-}" ]]; then
         echo "[HELEN] HELEN_SKIP_CAMERA_BOOTSTRAP activo; no se ejecutará camera_probe.ensure_camera_selection." | tee -a "${CAMERA_BOOTSTRAP_LOG}"
+        return 0
+    fi
+
+    if [[ -z "${HELEN_CAMERA_INDEX:-}" && -n "${DEFAULT_CAMERA_PIPELINE}" ]]; then
+        echo "[HELEN] Se usará la canalización por defecto '${DEFAULT_CAMERA_PIPELINE}'; se omite el bootstrap de cámara." | tee -a "${CAMERA_BOOTSTRAP_LOG}"
         return 0
     fi
 
@@ -151,8 +148,15 @@ BACKEND_CMD=("${PYTHON_BIN}" -m backendHelen.server --host 0.0.0.0 --port "${POR
 if [[ -n "${POLL_INTERVAL}" ]]; then
     BACKEND_CMD+=(--poll-interval "${POLL_INTERVAL}")
 fi
-if [[ -n "${HELEN_CAMERA_INDEX:-}" ]]; then
-    BACKEND_CMD+=(--camera-index "${HELEN_CAMERA_INDEX}")
+camera_index="${HELEN_CAMERA_INDEX:-}"
+if [[ -z "${camera_index}" ]]; then
+    camera_index="${DEFAULT_CAMERA_PIPELINE}"
+    if [[ -n "${camera_index}" ]]; then
+        echo "[HELEN] HELEN_CAMERA_INDEX no definido; se forzará '${camera_index}' (pipeline rpicam)."
+    fi
+fi
+if [[ -n "${camera_index}" ]]; then
+    BACKEND_CMD+=(--camera-index "${camera_index}")
 fi
 if [[ -n "${HELEN_BACKEND_EXTRA_ARGS:-}" ]]; then
     # shellcheck disable=SC2206

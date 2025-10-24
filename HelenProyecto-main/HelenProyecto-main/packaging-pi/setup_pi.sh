@@ -142,14 +142,10 @@ APT_PACKAGES=(
     python3-venv
 )
 
-if pkg=$(resolve_pkg libcamera0.5 libcamera0); then
+if pkg=$(resolve_pkg rpicam-apps rpicam-apps-lite rpicam-apps-core); then
     APT_PACKAGES+=("${pkg}")
 else
-    echo "[HELEN] Advertencia: no se encontró un paquete libcamera compatible" >&2
-fi
-
-if pkg=$(resolve_pkg rpicam-apps-core libcamera-apps); then
-    APT_PACKAGES+=("${pkg}")
+    echo "[HELEN] Advertencia: no se encontró un paquete rpicam-apps en los repositorios" >&2
 fi
 
 if pkg=$(resolve_pkg libavcodec-extra); then
@@ -164,12 +160,6 @@ fi
 if pkg=$(resolve_pkg libswscale-dev); then
     APT_PACKAGES+=("${pkg}")
 fi
-if pkg=$(resolve_pkg gstreamer1.0-libcamera gstreamer1.0-plugins-bad); then
-    if [[ " ${APT_PACKAGES[*]} " != *" ${pkg} "* ]]; then
-        APT_PACKAGES+=("${pkg}")
-    fi
-fi
-
 if pkg=$(resolve_pkg chromium-browser chromium); then
     APT_PACKAGES+=("${pkg}")
 else
