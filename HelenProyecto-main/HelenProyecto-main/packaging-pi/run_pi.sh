@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 DEFAULT_VENV_PYTHON="${PROJECT_ROOT}/.venv/bin/python"
 PORT="${HELEN_PORT:-5000}"
+CAMERA_BOOTSTRAP_LOG="${PROJECT_ROOT}/reports/logs/pi/camera-bootstrap.log"
+DEFAULT_CAMERA_PIPELINE="${HELEN_DEFAULT_CAMERA_INDEX:-rpicamsrc}"
 
 if [[ -n "${PYTHON:-}" ]]; then
     PYTHON_BIN="${PYTHON}"
@@ -44,15 +46,117 @@ RUN_ID="$(date '+%Y%m%d-%H%M%S')"
 BACKEND_LOG="${LOG_DIR}/backend-${RUN_ID}.log"
 CHROMIUM_LOG="${LOG_DIR}/chromium-${RUN_ID}.log"
 
+if [[ -z "${OPENCV_VIDEOIO_PRIORITY_LIST:-}" ]]; then
+    export OPENCV_VIDEOIO_PRIORITY_LIST="GSTREAMER,V4L2"
+fi
+
+GST_SEARCH_PATHS=(
+    "/usr/lib/aarch64-linux-gnu/gstreamer-1.0"
+    "/usr/lib/arm-linux-gnueabihf/gstreamer-1.0"
+    "/usr/local/lib/gstreamer-1.0"
+)
+
+if [[ -z "${GST_PLUGIN_PATH:-}" ]]; then
+    for candidate in "${GST_SEARCH_PATHS[@]}"; do
+        if [[ -d "${candidate}" ]]; then
+            if [[ -z "${GST_PLUGIN_PATH:-}" ]]; then
+                GST_PLUGIN_PATH="${candidate}"
+            else
+                GST_PLUGIN_PATH+=":${candidate}"
+            fi
+        fi
+    done
+    if [[ -n "${GST_PLUGIN_PATH:-}" ]]; then
+        export GST_PLUGIN_PATH
+    fi
+fi
+
+if [[ -z "${GST_REGISTRY_1_0:-}" ]]; then
+    export GST_REGISTRY_1_0="${PROJECT_ROOT}/.cache/gstreamer/gstreamer-registry.bin"
+fi
+
+if [[ -n "${GST_REGISTRY_1_0:-}" ]]; then
+    mkdir -p "$(dirname "${GST_REGISTRY_1_0}")"
+fi
+
 echo "[HELEN] Los logs se guardarán en ${LOG_DIR}"
+
+bootstrap_camera() {
+    local result_json
+    local tmp_json
+
+    if [[ -n "${HELEN_CAMERA_INDEX:-}" ]]; then
+        echo "[HELEN] HELEN_CAMERA_INDEX predefinido (${HELEN_CAMERA_INDEX}); se omite auto-detección." | tee -a "${CAMERA_BOOTSTRAP_LOG}"
+        return 0
+    fi
+
+    if [[ -n "${HELEN_SKIP_CAMERA_BOOTSTRAP:-}" ]]; then
+        echo "[HELEN] HELEN_SKIP_CAMERA_BOOTSTRAP activo; no se ejecutará camera_probe.ensure_camera_selection." | tee -a "${CAMERA_BOOTSTRAP_LOG}"
+        return 0
+    fi
+
+    if [[ -z "${HELEN_CAMERA_INDEX:-}" && -n "${DEFAULT_CAMERA_PIPELINE}" ]]; then
+        echo "[HELEN] Se usará la canalización por defecto '${DEFAULT_CAMERA_PIPELINE}'; se omite el bootstrap de cámara." | tee -a "${CAMERA_BOOTSTRAP_LOG}"
+        return 0
+    fi
+
+    if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+        echo "[HELEN] No es posible inicializar la cámara: ${PYTHON_BIN} no está disponible." | tee -a "${CAMERA_BOOTSTRAP_LOG}" >&2
+        return 1
+    fi
+
+    tmp_json="${LOG_DIR}/camera-selection-${RUN_ID}.json"
+    result_json="$(${PYTHON_BIN} <<'PY'
+import json
+import sys
+
+try:
+    from backendHelen import camera_probe
+except Exception as exc:  # pragma: no cover - depende del entorno
+    print(json.dumps({"status": "error", "message": f"camera_probe import failed: {exc}"}))
+    sys.exit(1)
+
+selection = camera_probe.ensure_camera_selection(force=True)
+if not selection:
+    print(json.dumps({"status": "error", "message": "no camera selection"}))
+    sys.exit(2)
+
+payload = selection.to_dict()
+payload["status"] = "ok"
+print(json.dumps(payload))
+PY
+)"
+
+    if [[ "${result_json}" == *'"status": "ok"'* ]]; then
+        printf '%s\n' "${result_json}" | tee "${tmp_json}" >>"${CAMERA_BOOTSTRAP_LOG}"
+        echo "[HELEN] Cámara detectada (bootstrap cache generado)." | tee -a "${CAMERA_BOOTSTRAP_LOG}"
+        return 0
+    fi
+
+    if [[ -z "${result_json}" ]]; then
+        result_json='{"status": "error", "message": "unknown"}'
+    fi
+    printf '%s\n' "${result_json}" | tee -a "${CAMERA_BOOTSTRAP_LOG}" >/dev/null
+    echo "[HELEN] No se pudo validar una cámara física; el backend podría activar el flujo sintético." | tee -a "${CAMERA_BOOTSTRAP_LOG}" >&2
+    return 1
+}
+
+bootstrap_camera || true
 
 echo "Iniciando backend de HELEN (logs en ${BACKEND_LOG})"
 BACKEND_CMD=("${PYTHON_BIN}" -m backendHelen.server --host 0.0.0.0 --port "${PORT}")
 if [[ -n "${POLL_INTERVAL}" ]]; then
     BACKEND_CMD+=(--poll-interval "${POLL_INTERVAL}")
 fi
-if [[ -n "${HELEN_CAMERA_INDEX:-}" ]]; then
-    BACKEND_CMD+=(--camera-index "${HELEN_CAMERA_INDEX}")
+camera_index="${HELEN_CAMERA_INDEX:-}"
+if [[ -z "${camera_index}" ]]; then
+    camera_index="${DEFAULT_CAMERA_PIPELINE}"
+    if [[ -n "${camera_index}" ]]; then
+        echo "[HELEN] HELEN_CAMERA_INDEX no definido; se forzará '${camera_index}' (pipeline rpicam)."
+    fi
+fi
+if [[ -n "${camera_index}" ]]; then
+    BACKEND_CMD+=(--camera-index "${camera_index}")
 fi
 if [[ -n "${HELEN_BACKEND_EXTRA_ARGS:-}" ]]; then
     # shellcheck disable=SC2206
