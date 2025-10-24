@@ -7,7 +7,7 @@ Este documento resume los ajustes introducidos para estabilizar la instalación 
 | Python | MediaPipe | OpenCV | Notas |
 | ------ | --------- | ------ | ----- |
 | 3.11.x (aarch64) | `mediapipe==0.10.18` | `opencv-python==4.9.0.80` | Stack soportado y verificado por `setup_pi.sh`. |
-| 3.10.x (aarch64) | `mediapipe==0.10.11` | `opencv-python==4.9.0.80` | Se admite solo para instalaciones heredadas; se registrará advertencia. |
+| 3.10.x (aarch64) | `mediapipe==0.10.18` | `opencv-python==4.9.0.80` | Permitido para instalaciones heredadas; se advierte migrar a Python 3.11. |
 | ≥3.12 | _No soportado_ | — | El instalador aborta y solicita instalar Python 3.11 (PEP 668 + ruedas ARM64 disponibles). |
 
 - El script `packaging-pi/setup_pi.sh` crea siempre `.venv`, actualiza `pip`, instala `numpy==1.26.4`, `opencv-python==4.9.0.80` y resuelve la versión adecuada de MediaPipe según el intérprete detectado y la arquitectura (`uname -m`).
@@ -20,7 +20,7 @@ Este documento resume los ajustes introducidos para estabilizar la instalación 
    ```bash
    ./packaging-pi/setup_pi.sh
    ```
-2. Si necesitas mantener Python 3.10, exporta `PYTHON=/usr/bin/python3.10` antes de lanzar el script. Se instalará `mediapipe==0.10.11` con advertencia.
+2. Si necesitas mantener Python 3.10, exporta `PYTHON=/usr/bin/python3.10` antes de lanzar el script. Se instalará `mediapipe==0.10.18` con advertencia.
 3. Ante una actualización futura de MediaPipe, edita el bloque `resolve_mediapipe_spec()` en `setup_pi.sh` y vuelve a ejecutar el script.
 
 Los registros completos de instalación y comprobaciones viven en `reports/logs/pi/setup-*.log` y `reports/logs/pi/vision-stack-*.json`.

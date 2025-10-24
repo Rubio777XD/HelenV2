@@ -44,6 +44,7 @@ mkdir -p "${LOG_DIR}"
 RUN_ID="$(date '+%Y%m%d-%H%M%S')"
 BACKEND_LOG="${LOG_DIR}/backend-${RUN_ID}.log"
 CHROMIUM_LOG="${LOG_DIR}/chromium-${RUN_ID}.log"
+touch "${CAMERA_BOOTSTRAP_LOG}"
 
 if [[ -z "${OPENCV_VIDEOIO_PRIORITY_LIST:-}" ]]; then
     export OPENCV_VIDEOIO_PRIORITY_LIST="GSTREAMER,V4L2"
@@ -88,6 +89,43 @@ if [[ -z "${LIBCAMERA_RPI_TUNING_FILE:-}" ]]; then
 fi
 
 echo "[HELEN] Los logs se guardarán en ${LOG_DIR}"
+
+log_camera_stack() {
+    local picamera_output
+    {
+        echo "[HELEN] ===== Verificación del stack de cámara (${RUN_ID}) ====="
+        for tool in rpicam-hello rpicam-vid libcamera-hello; do
+            if command -v "${tool}" >/dev/null 2>&1; then
+                version_output="$("${tool}" --version 2>&1 | head -n 1 | tr -d '\r')"
+                if [[ -n "${version_output}" ]]; then
+                    echo "[HELEN] ${tool}: ${version_output}"
+                else
+                    echo "[HELEN] ${tool}: disponible"
+                fi
+            else
+                echo "[HELEN] ${tool}: no encontrado"
+            fi
+        done
+        if picamera_output="$(${PYTHON_BIN} - <<'PY' 2>&1)"; then
+            printf '%s\n' "${picamera_output}"
+        else
+            echo "[HELEN] picamera2: módulo no disponible"
+            if [[ -n "${picamera_output}" ]]; then
+                printf '%s\n' "${picamera_output}"
+            fi
+        fi
+PY
+from importlib import util
+spec = util.find_spec("picamera2")
+if spec is None:
+    raise ImportError("picamera2 module not found")
+from picamera2 import Picamera2  # noqa: F401  # type: ignore
+print("[HELEN] picamera2: módulo detectado (%s)" % (spec.origin,))
+PY
+    } >>"${CAMERA_BOOTSTRAP_LOG}" 2>&1
+}
+
+log_camera_stack
 
 bootstrap_camera() {
     local result_json
