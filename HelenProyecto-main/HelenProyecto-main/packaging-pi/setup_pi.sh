@@ -133,6 +133,11 @@ APT_PACKAGES=(
     libportaudio2
     libjpeg-dev
     libtiff-dev
+    v4l-utils
+    gstreamer1.0-tools
+    gstreamer1.0-plugins-base
+    gstreamer1.0-plugins-good
+    gstreamer1.0-plugins-bad
     python3-pip
     python3-venv
 )
@@ -158,6 +163,11 @@ if pkg=$(resolve_pkg libavformat-dev); then
 fi
 if pkg=$(resolve_pkg libswscale-dev); then
     APT_PACKAGES+=("${pkg}")
+fi
+if pkg=$(resolve_pkg gstreamer1.0-libcamera gstreamer1.0-plugins-bad); then
+    if [[ " ${APT_PACKAGES[*]} " != *" ${pkg} "* ]]; then
+        APT_PACKAGES+=("${pkg}")
+    fi
 fi
 
 if pkg=$(resolve_pkg chromium-browser chromium); then
@@ -188,8 +198,24 @@ if [[ ! -x "${VENV_PYTHON}" ]]; then
     exit 1
 fi
 
+pip_install() {
+    local -a base=("${VENV_PIP}" install)
+    local -a args=("$@")
+    local -a extras=()
+    if [[ -n "${HELEN_PI_ALLOW_BREAK_SYSTEM_PACKAGES:-}" ]]; then
+        extras+=(--break-system-packages)
+    fi
+
+    if "${base[@]}" --no-cache-dir "${extras[@]}" "${args[@]}"; then
+        return 0
+    fi
+
+    echo "[HELEN] Reintentando con --break-system-packages" >&2
+    "${base[@]}" --no-cache-dir --break-system-packages "${args[@]}"
+}
+
 echo "[HELEN] Actualizando pip y herramientas base"
-"${VENV_PIP}" install --upgrade pip wheel setuptools
+pip_install --upgrade pip wheel setuptools
 
 NUMPY_SPEC="numpy==1.26.4"
 OPENCV_SPEC="opencv-python==4.9.0.80"
@@ -203,21 +229,18 @@ if [[ -z "${MEDIAPIPE_SPEC}" ]]; then
 fi
 
 echo "[HELEN] Instalando stack numérico (${NUMPY_SPEC} ${OPENCV_SPEC})"
-"${VENV_PIP}" install --no-cache-dir "${NUMPY_SPEC}" "${OPENCV_SPEC}"
+pip_install "${NUMPY_SPEC}" "${OPENCV_SPEC}"
 
 echo "[HELEN] Instalando MediaPipe (${MEDIAPIPE_SPEC})"
 if [[ -n "${MEDIAPIPE_EXTRA_INDEX}" ]]; then
     echo "[HELEN] Repositorio adicional: ${MEDIAPIPE_EXTRA_INDEX}"
+    pip_install --extra-index-url "${MEDIAPIPE_EXTRA_INDEX}" "${MEDIAPIPE_SPEC}"
+else
+    pip_install "${MEDIAPIPE_SPEC}"
 fi
-MEDIAPIPE_INSTALL_CMD=("${VENV_PIP}" install --no-cache-dir)
-if [[ -n "${MEDIAPIPE_EXTRA_INDEX}" ]]; then
-    MEDIAPIPE_INSTALL_CMD+=("--extra-index-url" "${MEDIAPIPE_EXTRA_INDEX}")
-fi
-MEDIAPIPE_INSTALL_CMD+=("${MEDIAPIPE_SPEC}")
-"${MEDIAPIPE_INSTALL_CMD[@]}"
 
 echo "[HELEN] Instalando dependencias de Python restantes"
-"${VENV_PIP}" install --no-cache-dir -r "${SCRIPT_DIR}/requirements-pi.txt"
+pip_install -r "${SCRIPT_DIR}/requirements-pi.txt"
 
 if ! "${VENV_PIP}" check; then
     echo "[HELEN] Advertencia: 'pip check' reportó inconsistencias. Revisa la salida anterior." >&2

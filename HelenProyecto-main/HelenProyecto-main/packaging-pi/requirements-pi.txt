@@ -1,4 +1,13 @@
 # Runtime dependencies for HELEN on Raspberry Pi OS (64-bit)
+#
+# This list is tailored for Debian Bookworm on Raspberry Pi 4/5 running
+# Python 3.11 inside a dedicated virtual environment.  The numeric stack
+# (numpy/OpenCV/MediaPipe) is explicitly pinned here so that a single
+# `pip install --break-system-packages -r requirements-pi.txt` invocation
+# can be used in constrained environments where PEP 668 is enforced.
+# When `setup_pi.sh` is used these packages are installed with the same
+# versions.
+
 # Flask + Socket.IO stack
 Flask==3.0.3
 Flask-SocketIO==5.3.6
@@ -19,9 +28,11 @@ click==8.1.7
 h11==0.14.0
 
 # Numerical + vision stack tuned for aarch64
-# Nota: numpy/opencv-python/mediapipe se instalan mediante setup_pi.sh
-#       para garantizar compatibilidad con la versión de Python y la
-#       arquitectura detectada en Raspberry Pi.
+numpy==1.26.4
+opencv-python==4.9.0.80
+mediapipe==0.10.21
+
+# Machine-learning add-ons used by the gesture classifier
 scipy==1.13.1
 scikit-learn==1.4.2
 xgboost==2.1.4
@@ -32,4 +43,3 @@ joblib==1.4.2
 threadpoolctl==3.5.0
 protobuf==4.25.3
 psutil==5.9.8
-
