@@ -16,6 +16,7 @@ import math
 import os
 import platform
 import re
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -291,22 +292,31 @@ def _parse_libcamera_output(text: str) -> List[CameraCandidate]:
     return candidates
 
 
+def _select_camera_list_command() -> Optional[List[str]]:
+    """Return the preferred command to enumerate CSI sensors."""
+
+    for executable in ("rpicam-hello", "libcamera-hello"):
+        if shutil.which(executable):
+            return [executable, "--list-cameras"]
+    return None
+
+
 def _list_libcamera_devices() -> List[CameraCandidate]:
-    commands = [
-        ["libcamera-hello", "--list-cameras"],
-        ["rpicam-hello", "--list-cameras"],
-    ]
-    for cmd in commands:
-        try:
-            result = _run_command(cmd, timeout=4.0)
-        except (OSError, subprocess.TimeoutExpired):
-            continue
-        if result.returncode != 0:
-            continue
-        parsed = _parse_libcamera_output(result.stdout)
-        if parsed:
-            return parsed
-    return []
+    command = _select_camera_list_command()
+    if command is None:
+        return []
+
+    try:
+        result = _run_command(command, timeout=4.0)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+
+    if result.returncode != 0:
+        LOGGER.warning("%s devolvió código %s", command[0], result.returncode)
+        return []
+
+    parsed = _parse_libcamera_output(result.stdout)
+    return parsed
 
 
 def _fallback_candidates() -> List[CameraCandidate]:
@@ -325,7 +335,7 @@ def _fallback_candidates() -> List[CameraCandidate]:
                     metadata={"fallback": True},
                 )
             )
-    if Path("/usr/bin/libcamera-hello").exists() or Path("/usr/bin/rpicam-hello").exists():
+    if Path("/usr/bin/rpicam-hello").exists() or Path("/usr/bin/libcamera-hello").exists():
         fallbacks.append(
             CameraCandidate(
                 identifier="fallback:libcamerasrc",

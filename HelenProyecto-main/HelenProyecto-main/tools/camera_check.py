@@ -108,7 +108,7 @@ def _cmd_list(args: argparse.Namespace) -> int:
             kind = entry.get("kind", "desconocido")
             print(f"  - {target}: {label} [{kind}]")
     if libcamera:
-        print("Fuentes libcamera detectadas:")
+        print("Fuentes rpicam/libcamera detectadas:")
         for entry in libcamera:
             label = entry.get("label", "<sin etiqueta>")
             identifier = entry.get("id") or entry.get("metadata", {}).get("description")
@@ -188,7 +188,7 @@ def _cmd_device(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Diagnóstico rápido de cámaras HELEN")
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--list", action="store_true", help="Enumerar dispositivos V4L2/libcamera disponibles")
+    group.add_argument("--list", action="store_true", help="Enumerar dispositivos V4L2/rpicam disponibles")
     group.add_argument("--auto", action="store_true", help="Ejecutar la autodetección y validar la cámara preferida")
     group.add_argument("--cached", action="store_true", help="Mostrar únicamente la cámara cacheada si existe")
     group.add_argument("--device", help="Ruta (/dev/videoX) o índice numérico a probar manualmente")
