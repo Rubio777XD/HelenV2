@@ -5,13 +5,16 @@ Requires=helen.service
 
 [Service]
 Type=simple
+WorkingDirectory=%h/HelenV2/HelenProyecto-main/HelenProyecto-main
 User=pi
 Group=pi
 Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/pi/.Xauthority
-Environment=HOME=/home/pi
+Environment=XAUTHORITY=%h/.Xauthority
+Environment=HOME=%h
+Environment=HELEN_PI_KIOSK=1
+Environment=HELEN_CHROMIUM_FLAGS=
 ExecStartPre=/bin/sleep 5
-ExecStart=/usr/bin/chromium --noerrdialogs --disable-session-crashed-bubble --disable-infobars --kiosk --app=http://localhost:5000 --incognito --check-for-update-interval=31536000 --no-first-run --disable-pinch --overscroll-history-navigation=0 --autoplay-policy=no-user-gesture-required
+ExecStart=/usr/bin/env bash -lc 'set -e; BIN="$(command -v chromium || command -v chromium-browser)"; if [ -z "$BIN" ]; then echo "Chromium no encontrado" >&2; exit 1; fi; exec "$BIN" --kiosk --app=http://localhost:5000 --incognito --check-for-update-interval=31536000 --no-first-run --disable-session-crashed-bubble --disable-component-update --disable-pinch --overscroll-history-navigation=0 --autoplay-policy=no-user-gesture-required '"'"'${HELEN_CHROMIUM_FLAGS}'"'"''
 Restart=always
 RestartSec=5
 
