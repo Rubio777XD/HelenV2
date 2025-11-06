@@ -98,7 +98,7 @@ Mantén la terminal abierta para revisar mensajes y estadísticas de captura.
 
 1. Ejecuta `chromium-browser --app=http://localhost:5000` o abre la URL manualmente.
 2. Concede permisos de cámara cuando se te soliciten.
-3. Navega a **Configuración → Raspberry Pi** y prueba el selector de color para confirmar que el fondo cambia al instante.
+3. Navega a **Configuración → Personalización** y prueba el selector de color para confirmar que el fondo cambia al instante.
 
 ## 9. Checklist de validación manual
 
@@ -160,7 +160,7 @@ Mantén la terminal abierta para revisar mensajes y estadísticas de captura.
 
 ## 13. Persistencia de preferencias de la UI
 
-Los ajustes de accesibilidad (modo Raspberry, color de fondo) se almacenan en `localStorage`. El backend no necesita
+Los ajustes de accesibilidad (ajuste táctil, temas de color y tipografía) se almacenan en `localStorage`. El backend no necesita
 reiniciarse para aplicar cambios; el selector de color modifica la variable CSS `--bg`, reutilizada en Linux y Windows.
 
 ## 14. Buenas prácticas y contribuciones

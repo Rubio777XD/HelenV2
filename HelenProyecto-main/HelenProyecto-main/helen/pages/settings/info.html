@@ -47,10 +47,10 @@
           <span class="qcard__subtitle">Nuestro equipo de trabajo</span>
         </a>
 
-        <a class="qcard" href="#display-mode">
+        <a class="qcard" href="#personalization">
           <span class="qcard__icon" aria-hidden="true"><i class="bi bi-tablet-landscape"></i></span>
-          <span class="qcard__title">Modo Raspberry</span>
-          <span class="qcard__subtitle">Optimiza HELEN para pantallas táctiles</span>
+          <span class="qcard__title">Personalización</span>
+          <span class="qcard__subtitle">Colores, tipografía y rendimiento global</span>
         </a>
       </div>
     </section>
@@ -197,66 +197,83 @@
       </div>
     </section>
 
-    <!-- =============== MODO RASPBERRY =============== -->
-    <section id="display-mode" class="info-view" data-title="Modo Raspberry">
+    <!-- =============== PERSONALIZACIÓN =============== -->
+    <section id="personalization" class="info-view" data-title="Personalización">
       <header class="info-header">
         <button class="back-button" onclick="window.location.href='#menu'">
           <i class="bi bi-arrow-left"></i>
         </button>
         <div class="title-col">
-          <h1>Modo Raspberry (7&quot;)</h1>
-          <p class="subtitle">Adapta HELEN para pantallas táctiles compactas</p>
+          <h1>Personalización</h1>
+          <p class="subtitle">Configura colores, tipografía y rendimiento global</p>
         </div>
       </header>
 
-      <div class="panel mode-panel">
-        <p>
-          Ajusta el tamaño de tipografía y los espacios táctiles para aprovechar pantallas Raspberry Pi de 7&quot;.
-          El modo se guarda automáticamente y puede cambiarse en cualquier momento.
-        </p>
-
-        <div class="mode-toggle-group">
-          <div class="mode-status" data-mode-status aria-live="polite">Modo actual: Windows</div>
-          <button class="mode-toggle" type="button" data-mode-toggle>Cambiar a modo Raspberry (7&quot;)</button>
+      <div class="panel personalization-panel">
+        <h2>Colores de interfaz</h2>
+        <p>Elige una combinación cromática para todos los módulos de HELEN.</p>
+        <div class="color-picker" role="radiogroup" aria-label="Tema de color" data-theme-color-picker>
+          <button class="color-chip" type="button" role="radio" data-theme="blue" aria-checked="false" tabindex="0">
+            <span class="color-chip__swatch" style="--chip-color: #0b1220"></span>
+            <span class="color-chip__label">Azul</span>
+          </button>
+          <button class="color-chip" type="button" role="radio" data-theme="red" aria-checked="false" tabindex="-1">
+            <span class="color-chip__swatch" style="--chip-color: #200b13"></span>
+            <span class="color-chip__label">Rojo</span>
+          </button>
+          <button class="color-chip" type="button" role="radio" data-theme="green" aria-checked="false" tabindex="-1">
+            <span class="color-chip__swatch" style="--chip-color: #0b2016"></span>
+            <span class="color-chip__label">Verde</span>
+          </button>
+          <button class="color-chip" type="button" role="radio" data-theme="purple" aria-checked="false" tabindex="-1">
+            <span class="color-chip__swatch" style="--chip-color: #1a0b2b"></span>
+            <span class="color-chip__label">Morado</span>
+          </button>
+          <button class="color-chip" type="button" role="radio" data-theme="pink" aria-checked="false" tabindex="-1">
+            <span class="color-chip__swatch" style="--chip-color: #260b1d"></span>
+            <span class="color-chip__label">Rosa</span>
+          </button>
         </div>
-
-        <div class="mode-color">
-          <h2 class="mode-color__title">Color de fondo de HELEN</h2>
-          <p class="mode-color__hint">Elige un color base; los destellos y burbujas seguirán activos.</p>
-          <div class="color-picker" role="radiogroup" aria-label="Color de fondo de HELEN" data-theme-color-picker>
-            <button class="color-chip" type="button" role="radio" data-color="blue" aria-checked="false" tabindex="0">
-              <span class="color-chip__swatch" style="--chip-color: #0b1220"></span>
-              <span class="color-chip__label">Azul</span>
-            </button>
-            <button class="color-chip" type="button" role="radio" data-color="red" aria-checked="false" tabindex="-1">
-              <span class="color-chip__swatch" style="--chip-color: #200b13"></span>
-              <span class="color-chip__label">Rojo</span>
-            </button>
-            <button class="color-chip" type="button" role="radio" data-color="green" aria-checked="false" tabindex="-1">
-              <span class="color-chip__swatch" style="--chip-color: #0b2016"></span>
-              <span class="color-chip__label">Verde</span>
-            </button>
-            <button class="color-chip" type="button" role="radio" data-color="purple" aria-checked="false" tabindex="-1">
-              <span class="color-chip__swatch" style="--chip-color: #1a0b2b"></span>
-              <span class="color-chip__label">Morado</span>
-            </button>
-            <button class="color-chip" type="button" role="radio" data-color="pink" aria-checked="false" tabindex="-1">
-              <span class="color-chip__swatch" style="--chip-color: #260b1d"></span>
-              <span class="color-chip__label">Rosa</span>
-            </button>
-          </div>
-        </div>
-
-        <p class="mode-note">El modo seleccionado se aplicará a toda la interfaz, sin depender del tamaño de la pantalla.</p>
       </div>
 
-      <div class="panel mode-details">
-        <h2>Qué cambia en el modo Raspberry</h2>
-        <ul class="mode-benefits">
-          <li>Tipografía ampliada aproximadamente un 12&nbsp;% para mejorar la lectura.</li>
-          <li>Botones y tarjetas con alturas táctiles de al menos 44&nbsp;px.</li>
-          <li>Márgenes laterales reducidos para aprovechar pantallas de 800×480 / 1024×600.</li>
-        </ul>
+      <div class="panel personalization-panel">
+        <h2>Tamaño de letra</h2>
+        <p>Ajusta la escala base de tipografía para toda la aplicación.</p>
+        <div class="font-scale-picker" role="radiogroup" aria-label="Tamaño de letra" data-font-scale-picker>
+          <button class="font-chip" type="button" role="radio" data-scale="small" aria-checked="false" tabindex="0">
+            <span class="font-chip__title">Pequeña</span>
+            <span class="font-chip__desc">Contenido más compacto</span>
+          </button>
+          <button class="font-chip" type="button" role="radio" data-scale="normal" aria-checked="false" tabindex="-1">
+            <span class="font-chip__title">Normal</span>
+            <span class="font-chip__desc">Equilibrio para escritorio y pantallas táctiles</span>
+          </button>
+          <button class="font-chip" type="button" role="radio" data-scale="large" aria-checked="false" tabindex="-1">
+            <span class="font-chip__title">Grande</span>
+            <span class="font-chip__desc">Texto más legible a distancia</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="panel personalization-panel">
+        <h2>Modo rendimiento</h2>
+        <p>Desactiva animaciones y transiciones cuando necesites priorizar desempeño.</p>
+        <div class="performance-toggle" data-performance-toggle-wrapper>
+          <label class="switch-toggle">
+            <input type="checkbox" data-performance-toggle />
+            <span class="switch-track" aria-hidden="true"></span>
+            <span class="switch-label" data-performance-label>Animaciones activas</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="panel mode-panel">
+        <h2>Ajuste táctil</h2>
+        <p>Amplía tipografía y espacios táctiles para pantallas de 7&quot; y kioskos.</p>
+        <div class="mode-toggle-group">
+          <div class="mode-status" data-mode-status aria-live="polite">Interfaz actual: Estándar</div>
+          <button class="mode-toggle" type="button" data-mode-toggle>Activar ajuste táctil</button>
+        </div>
       </div>
     </section>
   </main>
@@ -277,29 +294,40 @@
       const modeStatus = document.querySelector('[data-mode-status]');
       const modeButton = document.querySelector('[data-mode-toggle]');
       const modeHelper = window.HelenDisplayMode;
+
+      const themeHelper = window.HelenPersonalization && window.HelenPersonalization.theme;
       const colorPicker = document.querySelector('[data-theme-color-picker]');
-      const colorButtons = colorPicker ? Array.from(colorPicker.querySelectorAll('[data-color]')) : [];
-      const backgroundHelper = window.HelenTheme && window.HelenTheme.background;
+      const colorButtons = colorPicker ? Array.from(colorPicker.querySelectorAll('[data-theme]')) : [];
+
+      const fontHelper = window.HelenPersonalization && window.HelenPersonalization.fontScale;
+      const fontPicker = document.querySelector('[data-font-scale-picker]');
+      const fontButtons = fontPicker ? Array.from(fontPicker.querySelectorAll('[data-scale]')) : [];
+
+      const performanceHelper = window.HelenPersonalization && window.HelenPersonalization.performance;
+      const performanceToggle = document.querySelector('[data-performance-toggle]');
+      const performanceLabel = document.querySelector('[data-performance-label]');
 
       const updateModeUI = (mode) => {
         const normalized = (mode || '').toLowerCase() === 'raspberry' ? 'raspberry' : 'windows';
         if (modeStatus) {
-          modeStatus.textContent = `Modo actual: ${normalized === 'raspberry' ? 'Raspberry (7")' : 'Windows'}`;
+          modeStatus.textContent = normalized === 'raspberry'
+            ? 'Interfaz actual: Táctil'
+            : 'Interfaz actual: Estándar';
         }
         if (modeButton) {
           modeButton.textContent = normalized === 'raspberry'
-            ? 'Cambiar a modo Windows'
-            : 'Cambiar a modo Raspberry (7")';
+            ? 'Volver a vista estándar'
+            : 'Activar ajuste táctil';
         }
       };
 
-      const updateColorSelection = (color) => {
+      const updateThemeSelection = (theme) => {
         if (!colorButtons.length) {
           return;
         }
         let hasActive = false;
         colorButtons.forEach((button) => {
-          const isSelected = button.dataset.color === color;
+          const isSelected = button.dataset.theme === theme;
           button.classList.toggle('is-selected', isSelected);
           button.setAttribute('aria-checked', isSelected ? 'true' : 'false');
           button.setAttribute('tabindex', isSelected ? '0' : '-1');
@@ -315,6 +343,38 @@
         }
       };
 
+      const updateFontSelection = (scale) => {
+        if (!fontButtons.length) {
+          return;
+        }
+        let hasActive = false;
+        fontButtons.forEach((button) => {
+          const isSelected = button.dataset.scale === scale;
+          button.classList.toggle('is-selected', isSelected);
+          button.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+          button.setAttribute('tabindex', isSelected ? '0' : '-1');
+          if (isSelected) {
+            hasActive = true;
+          }
+        });
+        if (!hasActive) {
+          const [first] = fontButtons;
+          if (first) {
+            first.setAttribute('tabindex', '0');
+          }
+        }
+      };
+
+      const updatePerformanceUI = (enabled) => {
+        const state = !!enabled;
+        if (performanceToggle) {
+          performanceToggle.checked = state;
+        }
+        if (performanceLabel) {
+          performanceLabel.textContent = state ? 'Animaciones desactivadas' : 'Animaciones activas';
+        }
+      };
+
       if (modeButton && modeHelper) {
         modeButton.addEventListener('click', () => {
           const nextMode = modeHelper.current() === 'raspberry' ? 'windows' : 'raspberry';
@@ -322,16 +382,16 @@
         });
       }
 
-      if (colorPicker && colorButtons.length && backgroundHelper) {
+      if (colorPicker && colorButtons.length && themeHelper) {
         colorButtons.forEach((button) => {
           button.addEventListener('click', () => {
-            const color = button.dataset.color;
-            if (!color) {
+            const theme = button.dataset.theme;
+            if (!theme) {
               return;
             }
-            console.debug('[Helen] Cambio de color de fondo solicitado:', color);
-            const applied = backgroundHelper.set(color);
-            updateColorSelection(applied);
+            console.debug('[Helen] Cambio de tema solicitado:', theme);
+            const applied = themeHelper.set(theme);
+            updateThemeSelection(applied);
           });
 
           button.addEventListener('keydown', (event) => {
@@ -342,13 +402,56 @@
           });
         });
 
-        const initialColor = backgroundHelper.get();
-        updateColorSelection(initialColor);
+        updateThemeSelection(themeHelper.get());
 
-        window.addEventListener('helen:background-color', (event) => {
-          const color = event?.detail?.color;
-          if (color) {
-            updateColorSelection(color);
+        window.addEventListener('helen:theme-color', (event) => {
+          const theme = event?.detail?.theme;
+          if (theme) {
+            updateThemeSelection(theme);
+          }
+        });
+      }
+
+      if (fontPicker && fontButtons.length && fontHelper) {
+        fontButtons.forEach((button) => {
+          button.addEventListener('click', () => {
+            const scale = button.dataset.scale;
+            if (!scale) {
+              return;
+            }
+            console.debug('[Helen] Cambio de tamaño de letra solicitado:', scale);
+            const applied = fontHelper.set(scale);
+            updateFontSelection(applied);
+          });
+
+          button.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              button.click();
+            }
+          });
+        });
+
+        updateFontSelection(fontHelper.get());
+
+        window.addEventListener('helen:font-scale', (event) => {
+          const scale = event?.detail?.scale;
+          if (scale) {
+            updateFontSelection(scale);
+          }
+        });
+      }
+
+      if (performanceToggle && performanceHelper) {
+        performanceToggle.addEventListener('change', () => {
+          performanceHelper.set(performanceToggle.checked);
+        });
+
+        updatePerformanceUI(performanceHelper.get());
+
+        window.addEventListener('helen:performance-mode', (event) => {
+          if (event && typeof event.detail?.enabled === 'boolean') {
+            updatePerformanceUI(event.detail.enabled);
           }
         });
       }
@@ -369,7 +472,7 @@
 
       function showView(hash) {
         const id = (hash || '#menu').replace('#', '');
-        views.forEach(v => v.classList.toggle('is-active', v.id === id));
+        views.forEach((v) => v.classList.toggle('is-active', v.id === id));
         document.title = 'HELEN – ' + title(document.getElementById(id));
       }
 

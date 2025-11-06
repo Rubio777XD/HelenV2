@@ -176,7 +176,7 @@
 
 .benefit-icon.plus {
   background: radial-gradient(60% 60% at 30% 30%, var(--ok-a), var(--ok-b));
-  color: #0b1422
+  color: var(--bg, #0b1422)
 }
 
 .benefit-icon i {
@@ -258,7 +258,7 @@
   border-radius: 999px;
   font-weight: 800;
   font-size: 12px;
-  color: #0b1422;
+  color: var(--bg, #0b1422);
   background: linear-gradient(145deg, var(--ok-a), var(--ok-b));
 }
 
@@ -329,7 +329,7 @@
   background: linear-gradient(145deg, #66e2ff, #2e6bff);
   border: 0;
   font-weight: 800;
-  color: #0b1422
+  color: var(--bg, #0b1422)
 }
 
 .confirm-button {
@@ -426,7 +426,7 @@ body{
   padding: 0 18px;
   border-radius: 999px;
   border: 0;
-  color: #0b1422;
+  color: var(--bg, #0b1422);
   font-weight: 800;
   cursor: pointer;
   background: linear-gradient(135deg, #66e2ff 0%, #2e6bff 72%);
@@ -580,7 +580,7 @@ body{
 }
 .save-button{
   height: 42px; padding: 0 18px; border-radius: 12px; border: 0; cursor: pointer;
-  color: #0b1422; font-weight: 800;
+  color: var(--bg, #0b1422); font-weight: 800;
   background: linear-gradient(135deg, #66e2ff 0%, #2e6bff 72%);
   box-shadow: 0 10px 22px rgba(46,107,255,.32), inset 0 1px 0 rgba(255,255,255,.08);
 }

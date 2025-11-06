@@ -6,9 +6,8 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-function ConvertTo-ArgumentList {
+function Split-ArgumentString {
     param(
-        [Parameter(Mandatory = $true)]
         [string]$Value
     )
 
@@ -16,19 +15,81 @@ function ConvertTo-ArgumentList {
         return @()
     }
 
-    $parseErrors = $null
-    $tokens = [System.Management.Automation.PSParser]::Tokenize($Value, [ref]$parseErrors)
-    if ($parseErrors -and $parseErrors.Count -gt 0) {
-        throw "No se pudieron analizar HELEN_BACKEND_EXTRA_ARGS: $($parseErrors[0].Message)"
+    $builder = New-Object System.Text.StringBuilder
+    $arguments = New-Object System.Collections.Generic.List[string]
+
+    $inSingleQuote = $false
+    $inDoubleQuote = $false
+    $isEscaping = $false
+
+    foreach ($char in $Value.ToCharArray()) {
+        if ($isEscaping) {
+            [void]$builder.Append($char)
+            $isEscaping = $false
+            continue
+        }
+
+        if ($char -eq '"' -and -not $inSingleQuote) {
+            $inDoubleQuote = -not $inDoubleQuote
+            continue
+        }
+
+        if ($char -eq "'" -and -not $inDoubleQuote) {
+            $inSingleQuote = -not $inSingleQuote
+            continue
+        }
+
+        if ($char -eq '`' -and -not $inSingleQuote) {
+            $isEscaping = $true
+            continue
+        }
+
+        if (-not $inSingleQuote -and -not $inDoubleQuote -and [char]::IsWhiteSpace($char)) {
+            if ($builder.Length -gt 0) {
+                $arguments.Add($builder.ToString())
+                [void]$builder.Clear()
+            }
+            continue
+        }
+
+        [void]$builder.Append($char)
     }
 
-    $args = @()
-    foreach ($token in $tokens) {
-        if ($token.Type -eq 'String' -or $token.Type -eq 'CommandArgument') {
-            $args += $token.Content
+    if ($builder.Length -gt 0) {
+        $arguments.Add($builder.ToString())
+    }
+
+    return $arguments.ToArray()
+}
+
+function Join-Arguments {
+    param(
+        [string[]]$Arguments
+    )
+
+    if (-not $Arguments -or $Arguments.Count -eq 0) {
+        return ''
+    }
+
+    $pieces = foreach ($argument in $Arguments) {
+        if ($null -eq $argument) {
+            continue
+        }
+
+        $value = [string]$argument
+        if ($value -eq '') {
+            '""'
+            continue
+        }
+
+        if ($value -match '[\s"`]') {
+            '"' + $value.Replace('"', '`"') + '"'
+        } else {
+            $value
         }
     }
-    return $args
+
+    return ($pieces -join ' ')
 }
 
 function Open-HelenBrowser {
@@ -82,18 +143,43 @@ $originalCameraIndex = $env:HELEN_CAMERA_INDEX
 $originalExtraArgs = $env:HELEN_BACKEND_EXTRA_ARGS
 
 $cameraIndex = if ([string]::IsNullOrWhiteSpace($env:HELEN_CAMERA_INDEX)) { '0' } else { $env:HELEN_CAMERA_INDEX }
-$defaultExtraArgsString = "--camera-backend directshow --camera-width 1280 --camera-height 720 --frame-stride 2 --poll-interval 0.08"
-$combinedExtraArgs = if ([string]::IsNullOrWhiteSpace($env:HELEN_BACKEND_EXTRA_ARGS)) {
-    $defaultExtraArgsString
-} else {
-    "$defaultExtraArgsString $($env:HELEN_BACKEND_EXTRA_ARGS)"
+
+$parsedExtraArgs = Split-ArgumentString -Value $env:HELEN_BACKEND_EXTRA_ARGS
+$effectiveArgsList = New-Object System.Collections.Generic.List[string]
+if ($parsedExtraArgs.Count -gt 0) {
+    $effectiveArgsList.AddRange($parsedExtraArgs)
 }
 
+function Ensure-ArgumentPair {
+    param(
+        [System.Collections.Generic.List[string]]$List,
+        [string]$Name,
+        [string]$DefaultValue
+    )
+
+    for ($i = 0; $i -lt $List.Count; $i++) {
+        $current = $List[$i]
+        if ($current -eq $Name -or ($current -like "$Name=*")) {
+            return
+        }
+    }
+
+    $List.InsertRange(0, @($Name, $DefaultValue))
+}
+
+Ensure-ArgumentPair -List $effectiveArgsList -Name '--poll-interval' -DefaultValue '0.08'
+Ensure-ArgumentPair -List $effectiveArgsList -Name '--frame-stride' -DefaultValue '2'
+Ensure-ArgumentPair -List $effectiveArgsList -Name '--camera-height' -DefaultValue '720'
+Ensure-ArgumentPair -List $effectiveArgsList -Name '--camera-width' -DefaultValue '1280'
+Ensure-ArgumentPair -List $effectiveArgsList -Name '--camera-backend' -DefaultValue 'directshow'
+
+$effectiveArgsArray = $effectiveArgsList.ToArray()
+
 $env:HELEN_CAMERA_INDEX = $cameraIndex
-$env:HELEN_BACKEND_EXTRA_ARGS = $combinedExtraArgs.Trim()
+$env:HELEN_BACKEND_EXTRA_ARGS = Join-Arguments -Arguments $effectiveArgsArray
 
 $backendArgs = @('-m', 'backendHelen.server', '--host', '0.0.0.0', '--port', $Port, '--camera-index', $cameraIndex)
-$backendArgs += ConvertTo-ArgumentList -Value $env:HELEN_BACKEND_EXTRA_ARGS
+$backendArgs += $effectiveArgsArray
 
 Write-Host "[HELEN] Iniciando backend con Python en $VenvPython"
 Write-Host "[HELEN] HELEN_CAMERA_INDEX=$cameraIndex"

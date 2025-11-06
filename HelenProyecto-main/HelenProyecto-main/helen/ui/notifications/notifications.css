@@ -131,7 +131,7 @@ body.helen-global-modal-open{
   font-size: clamp(16px, 2.4vw, 18px);
   font-weight: 700;
   letter-spacing: .3px;
-  color: #0b1422;
+  color: var(--bg, #0b1422);
   background: linear-gradient(135deg, var(--blue-a, #5fe1ff), var(--blue-b, #2e6bff));
   box-shadow: 0 24px 52px rgba(46,107,255,.42);
   cursor: pointer;

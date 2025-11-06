@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 2024-06-03
+
+### Añadido
+- **Interfaz de personalización**: se incorporó control global de tamaño de letra y un modo de rendimiento que desactiva
+  animaciones al activar la clase `perf-mode`. Ambos ajustes se sincronizan vía `localStorage` y respetan
+  `prefers-reduced-motion`.
+
+### Cambiado
+- **Temas dinámicos**: el selector de color ahora aplica presets completos (fondos, superficies, halos y acentos) mediante
+  variables `--helen-*`, lo que garantiza que todas las pantallas adopten el nuevo tema de inmediato.
+- **scripts/helen-run.ps1** y **scripts/run-windows.ps1**: se corrige el manejo de argumentos adicionales con un parser que
+  respeta comillas, se generan listas para `Start-Process` y se preservan los valores por defecto incluso con rutas que
+  contienen espacios.
+- **scripts/run-pi.sh**: apunta al script soportado en `legacy/packaging/linux-rpi/run_pi.sh` para el flujo de kiosko.
+
+### Documentación
+- Guías de Windows y Linux actualizadas para referirse a **Configuración → Personalización** en lugar del modo Raspberry.
+
 ## 2024-05-29
 
 ### Añadido
