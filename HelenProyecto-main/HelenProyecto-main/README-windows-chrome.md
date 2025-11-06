@@ -1,28 +1,108 @@
 # HELEN – Guía completa para ejecutar en Chrome (Windows)
 
-Esta guía describe paso a paso cómo clonar, configurar y ejecutar HELEN en Windows 10/11 utilizando Google Chrome
-(como navegador recomendado) sin recurrir a instaladores o empaquetados. Sigue cada sección en orden para obtener un
-backend funcional y una interfaz web lista para usarse con cámara.
+Esta guía cubre el flujo oficial para poner en marcha HELEN en Windows 10/11 sin instaladores. A partir de esta
+versión, todo el proceso puede automatizarse con un solo comando que prepara el entorno virtual, instala
+dependencias, configura la cámara y abre la interfaz web en Google Chrome.
 
-## 1. Resumen del flujo
+## 1. Inicio rápido (1 comando)
 
-1. Instalar los prerrequisitos del sistema.
-2. Clonar el repositorio y crear un entorno virtual de Python 3.11.
-3. Instalar las dependencias del backend (Flask, MediaPipe, OpenCV, etc.).
-4. Definir las variables de entorno y lanzar `backendHelen.server`.
-5. Abrir `http://localhost:5000` en Google Chrome, conceder permisos de cámara y verificar el estado en `/health`.
+### 1.1 Pre-requisitos mínimos
 
-## 2. ¿Qué es HELEN?
+| Requisito                          | Detalles                                                                 |
+|-----------------------------------|--------------------------------------------------------------------------|
+| Python                            | Python 3.11 instalado y agregado al `PATH` (incluye el *launcher* `py`). |
+| PowerShell                        | PowerShell 7.0 o superior (ejecuta `pwsh -v` para verificar).            |
+| Microsoft VC++ Redistributable    | Paquete 2015-2022 x64 (`vc_redist.x64.exe`).                             |
+| Navegador                         | Google Chrome 124+ (o Microsoft Edge basado en Chromium).                |
+| Hardware                          | Webcam UVC con permisos para el usuario actual.                          |
 
-- **Backend** (`backendHelen/`): servicio Flask + Socket.IO que captura la cámara, procesa gestos con MediaPipe/OpenCV y
-  expone endpoints REST/SSE.
-- **Frontend** (`helen/`): aplicación web servida por el backend, incluye reloj, temporizador, alarmas y controles de
-  accesibilidad. Las preferencias (p. ej. color de fondo) se guardan en `localStorage` y se aplican tanto en Windows como
-  en Raspberry Pi sin pasos adicionales.
+> Reinicia el equipo después de instalar Python y el VC++ Redistributable para garantizar que `PATH` quede
+> actualizado.
 
-## 3. Arquitectura mínima
+### 1.2 Ejecutar HELEN
 
+```powershell
+# Desde la raíz del repositorio
+powershell -ExecutionPolicy Bypass -File .\scripts\helen-run.ps1
 ```
+
+También puedes usar el *wrapper* para equipos sin PowerShell 7:
+
+```cmd
+:: Equivalente en CMD
+scripts\helen-run.bat
+```
+
+#### ¿Qué hace `helen-run.ps1`?
+
+1. Detecta Python 3.11 disponible (`py -3.11`, `python`, etc.).
+2. Crea o actualiza `.venv` con Python 3.11 (reemplaza entornos con versiones distintas).
+3. Ejecuta `pip install --upgrade pip` y `pip install -r requirements.txt`.
+4. Exporta `HELEN_CAMERA_INDEX` (por defecto `0`) y `HELEN_BACKEND_EXTRA_ARGS` con los flags recomendados
+   (`--camera-backend directshow --camera-width 1280 --camera-height 720 --frame-stride 2 --poll-interval 0.08`).
+5. Lanza `scripts/run-windows.ps1`, que inicia `python -m backendHelen.server`, espera a que `/health` responda y
+   abre `http://localhost:5000` en Chrome/Edge.
+6. Deja los logs en `reports\logs\win\backend-*.out.log` y `backend-*.err.log`.
+
+#### Parámetros útiles de `helen-run.ps1`
+
+| Parámetro        | Descripción                                                                                                   | Ejemplo                                         |
+|------------------|---------------------------------------------------------------------------------------------------------------|-------------------------------------------------|
+| `-Port`          | Puerto del backend (por defecto 5000).                                                                        | `-Port 5050`                                    |
+| `-CameraIndex`   | Índice numérico de la cámara (0,1,2).                                                                         | `-CameraIndex 1`                                |
+| `-ExtraArgs`     | Flags adicionales para el backend (se concatenan a `HELEN_BACKEND_EXTRA_ARGS`).                               | `-ExtraArgs "--camera-backend v4l2 --poll-interval 0.1"` |
+| `-SkipBrowser`   | Evita abrir el navegador automáticamente (útil en sesiones remotas).                                          | `-SkipBrowser`                                  |
+
+> `scripts/run-windows.ps1` acepta los mismos puertos y ahora incluye `-SkipBrowser`. Además se asegura de usar
+> DirectShow, resolución 1280x720, `--frame-stride 2` y `--poll-interval 0.08` por defecto.
+
+## 2. Flujo manual (cuando prefieras pasos individuales)
+
+Sigue este camino si deseas comprender o personalizar cada etapa.
+
+### 2.1 Clonar el repositorio y crear el entorno virtual
+
+```powershell
+cd $HOME\Documents
+git clone https://github.com/tu-organizacion/HELEN.git
+cd HELEN\HelenProyecto-main\HelenProyecto-main
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### 2.2 Configurar variables y lanzar el backend
+
+```powershell
+$env:HELEN_CAMERA_INDEX = 0
+$env:HELEN_BACKEND_EXTRA_ARGS = "--camera-backend directshow --camera-width 1280 --camera-height 720 --frame-stride 2 --poll-interval 0.08"
+.\.venv\Scripts\python.exe -m backendHelen.server --host 0.0.0.0 --port 5000
+```
+
+- `--camera-backend directshow` fuerza el uso de DirectShow en Windows (OpenCV `CAP_DSHOW`).
+- `--camera-width/--camera-height` solicitan 1280x720.
+- `--frame-stride` y `--poll-interval` reducen la carga de CPU.
+
+Puedes sobrescribirlos en la línea de comandos:
+
+```powershell
+.\.venv\Scripts\python.exe -m backendHelen.server --host 0.0.0.0 --port 5000 --camera-backend dshow --camera-index 1 --camera-width 960 --camera-height 720 --frame-stride 3
+```
+
+`backendHelen.server` expone `/health`, SSE y sirve la aplicación web desde la misma ruta.
+
+### 2.3 Abrir la interfaz web
+
+1. Visita `http://localhost:5000` en Chrome.
+2. Concede permisos de cámara cuando aparezca el diálogo.
+3. Comprueba que `/health` devuelve `{"status":"HEALTHY","camera_ok":true,...}`.
+4. Cambia el color de fondo desde **Configuración → Raspberry Pi → Color de fondo de HELEN** para verificar que la UI
+   responde inmediatamente.
+
+## 3. Arquitectura y componentes
+
+```text
 +----------------------------+      HTTP / Socket.IO      +------------------------------+
 |  Google Chrome (Frontend)  |  <-----------------------> |  backendHelen.server (Flask)  |
 |  Reloj, temporizador, UI   |                            |  MediaPipe + OpenCV + SSE     |
@@ -32,85 +112,22 @@ backend funcional y una interfaz web lista para usarse con cámara.
         Eventos de usuario                                    Cámara / pipeline de visión
 ```
 
-## 4. Requisitos del sistema
+- **Backend** (`backendHelen/`): Flask + Socket.IO, captura la cámara con OpenCV/MediaPipe y expone APIs REST/SSE.
+- **Frontend** (`helen/`): aplicación web servida por Flask, guarda preferencias en `localStorage` (modo oscuro, color de
+  fondo, etc.).
 
-| Requisito                                   | Detalles                                                                 |
-|---------------------------------------------|--------------------------------------------------------------------------|
-| Sistema operativo                           | Windows 10 u 11 de 64 bits                                              |
-| Python                                      | Python 3.11 instalado y agregado al `PATH`                              |
-| PowerShell                                  | PowerShell 7.0 o superior                                               |
-| Microsoft VC++ Redistributable              | x64 2015-2022 (`vc_redist.x64.exe`)                                      |
-| Navegador                                   | Google Chrome 124+ (o Microsoft Edge basado en Chromium)                |
-| Hardware                                    | Webcam UVC compatible y permisos de cámara para el usuario actual       |
+## 4. Checklist de validación rápida
 
-> Sugerencia: reinicia el sistema después de instalar Python y el VC++ Redistributable para asegurar que el `PATH`
-> quede actualizado.
+1. **Backend activo**: la consola muestra `Running on http://0.0.0.0:5000` sin errores.
+2. **Endpoint de salud**: `curl http://127.0.0.1:5000/health` devuelve `status=HEALTHY` y `camera_ok=true`.
+3. **Video en vivo**: los módulos de cámara muestran imagen y landmarks en tiempo real.
+4. **Temporizador**: inicia, pausa y reinicia sin saltos.
+5. **Color de fondo**: cambiar el color aplica el tema inmediatamente y persiste tras recargar.
+6. **Logs**: existen `reports\logs\win\backend-*.out.log` y `backend-*.err.log` después de ejecutar `run-windows.ps1` o
+   `helen-run.ps1`.
+7. **Cierre limpio**: al presionar `Ctrl+C` el backend se detiene sin `Traceback` inesperados.
 
-## 5. Descargar el repositorio
-
-```powershell
-cd $HOME\Documents
-git clone https://github.com/tu-organizacion/HELEN.git
-cd HELEN\HelenProyecto-main\HelenProyecto-main
-```
-
-## 6. Crear y activar el entorno virtual
-
-Ejecuta los comandos dentro de PowerShell 7 (no en CMD):
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-### Problemas frecuentes al instalar dependencias
-
-- **Error al compilar `mediapipe` u `opencv-python`**: verifica que el VC++ Redistributable esté instalado. Si el error
-  persiste, instala las ruedas precompiladas más recientes con `pip install --force-reinstall mediapipe==0.10.18
-  opencv-python==4.9.0.80`.
-- **`pip` no reconoce el comando**: confirma que estás dentro del entorno virtual (`(venv)` en el prompt). Vuelve a
-  ejecutar `.\.venv\Scripts\activate` si es necesario.
-
-## 7. Ejecutar el backend
-
-Inicia el servidor con las variables de entorno recomendadas para Windows:
-
-```powershell
-$env:HELEN_CAMERA_INDEX = 0
-$env:HELEN_BACKEND_EXTRA_ARGS = "--frame-stride 2 --poll-interval 0.08"
-.\.venv\Scripts\python.exe -m backendHelen.server --host 0.0.0.0 --port 5000
-```
-
-- `HELEN_CAMERA_INDEX`: índice de la cámara (0 = webcam integrada). Cambia a 1/2 si tienes varias cámaras.
-- `HELEN_BACKEND_EXTRA_ARGS`: argumentos adicionales que se pasan al backend. Puedes añadir flags como
-  `--camera-backend directshow` o `--camera-width 1280` según lo necesites.
-
-El servidor queda escuchando en `http://0.0.0.0:5000`. Mantén la consola abierta para observar los logs.
-
-## 8. Abrir el frontend en Chrome
-
-1. Lanza Google Chrome.
-2. Visita `http://localhost:5000`.
-3. Concede permisos de cámara cuando se soliciten.
-4. Verifica que el reloj muestre la hora local, el temporizador responda y el fondo pueda cambiarse desde
-   **Configuración → Raspberry Pi → Color de fondo de HELEN** (el ajuste se aplica inmediatamente en Windows).
-
-## 9. Checklist de validación manual
-
-Marca cada paso una vez completado:
-
-1. **Backend activo**: la consola de PowerShell muestra `Running on http://0.0.0.0:5000` sin errores.
-2. **Endpoint de salud**: `curl http://127.0.0.1:5000/health` devuelve `"status":"HEALTHY"` y `"camera_ok":true`.
-3. **Reloj en la página Home**: refleja la hora del sistema y se actualiza cada segundo.
-4. **Temporizador**: inicia, pausa y reinicia desde la página Clock sin saltos en los segundos.
-5. **Color de fondo**: al elegir un color distinto al azul se actualiza el tema inmediatamente y persiste tras recargar.
-6. **Permisos de cámara**: Chrome muestra video en vivo en los módulos que lo requieren.
-7. **Logs**: existe un archivo `reports\logs\win\backend-*.log` cuando utilizas `scripts\run-windows.ps1`.
-8. **Cierre limpio**: al presionar `Ctrl+C` el backend se detiene sin stack traces inesperados.
-
-## 10. Diagnóstico rápido
+## 5. Diagnósticos y herramientas
 
 - **Endpoint de salud**:
 
@@ -118,81 +135,80 @@ Marca cada paso una vez completado:
   curl http://127.0.0.1:5000/health
   ```
 
-  Debe regresar `status=HEALTHY`, `camera_ok=true` y los datos de la cámara seleccionada.
-
-- **Vista previa de landmarks (opcional)**:
+- **Diagnóstico de cámara (100 frames)**:
 
   ```powershell
   .\.venv\Scripts\python.exe -m backendHelen.diagnostics --frames 100
   ```
 
-  Genera estadísticas de captura sin iniciar la interfaz gráfica.
+- **Logs**: revisa `reports\logs\win\backend-*.out.log` (stdout) y `backend-*.err.log` (stderr). Cada ejecución crea un par
+  nuevo.
 
-## 11. Solución de problemas (8+ casos)
+## 6. Solución de problemas frecuentes
 
-1. **Cámara en negro / `camera_ok:false`**  
-   Ejecuta `Get-PnpDevice -Class Camera` para confirmar el dispositivo. Ajusta `HELEN_CAMERA_INDEX` o exporta
-   `--camera-backend directshow` en `HELEN_BACKEND_EXTRA_ARGS`.
-2. **Permisos de cámara bloqueados en Chrome**  
-   Abre `chrome://settings/content/camera` y habilita el acceso para `http://localhost:5000`.
-3. **Backend no arranca por puerto en uso**  
-   Cambia a `--port 5050` y actualiza la URL en Chrome. Libera el puerto con `Stop-Process -Id (Get-NetTCPConnection -LocalPort 5000).OwningProcess` si es seguro hacerlo.
-4. **Error `ImportError: DLL load failed` en OpenCV**  
-   Reinstala el VC++ Redistributable x64 y luego `pip install --force-reinstall opencv-python==4.9.0.80`.
-5. **`mediapipe` arroja errores de GPU**  
-   Añade `--no-gpu` en `HELEN_BACKEND_EXTRA_ARGS` para forzar CPU y asegúrate de contar con drivers actualizados.
-6. **No se detecta la cámara correcta en laptops con cámara IR**  
-   Cambia `HELEN_CAMERA_INDEX` a 1 o 2. Puedes listar cámaras con `Get-CimInstance Win32_PnPEntity | Where-Object {$_.Service -eq 'usbvideo'}`.
-7. **Chrome no solicita permisos**  
-   Si ya los denegaste, haz clic en el candado de la barra de direcciones y restablece los permisos a "Permitir".
-8. **Lag o CPU alta**  
-   Incrementa `--frame-stride` a 3 o `--poll-interval` a 0.12. Reduce la resolución con
-   `--camera-width 960 --camera-height 720` si es necesario.
-9. **`ModuleNotFoundError` al lanzar `backendHelen.server`**  
-   Asegúrate de activar el entorno virtual antes (`.\.venv\Scripts\activate`).
+1. **Cámara en negro / `camera_ok:false`**
+   - Ejecuta `Get-PnpDevice -Class Camera` para listar webcams.
+   - Cambia `-CameraIndex` o `HELEN_CAMERA_INDEX` a 1/2.
+   - Intenta `-ExtraArgs "--camera-backend v4l2"` o baja resolución `--camera-width 960 --camera-height 720`.
+2. **Permisos de cámara bloqueados en Chrome**
+   - Abre `chrome://settings/content/camera` y permite `http://localhost:5000`.
+   - Restablece permisos desde el candado en la barra de direcciones.
+3. **Puerto 5000 ocupado**
+   - Ejecuta `Get-NetTCPConnection -LocalPort 5000` para identificar el proceso y liberarlo si es seguro.
+   - Lanza HELEN con `-Port 5050` y visita `http://localhost:5050`.
+4. **`ImportError: DLL load failed` en OpenCV**
+   - Reinstala VC++ Redistributable x64.
+   - Forza la reinstalación: `pip install --force-reinstall opencv-python==4.9.0.80` dentro de `.venv`.
+5. **`mediapipe` reporta errores de GPU**
+   - Añade `-ExtraArgs "--no-gpu"` o `--no-gpu` en `HELEN_BACKEND_EXTRA_ARGS` y ejecuta `helen-run.ps1` de nuevo.
+6. **Cámara IR/ToF seleccionada por error**
+   - Cambia `-CameraIndex 1` o `2`.
+   - Usa `Get-CimInstance Win32_PnPEntity | Where-Object {$_.Service -eq 'usbvideo'}` para identificar dispositivos.
+7. **Chrome no solicita permisos**
+   - Elimina permisos previos desde el candado → **Restablecer permisos**.
+8. **CPU alta o lag**
+   - Incrementa `--frame-stride` (por ejemplo `-ExtraArgs "--frame-stride 3"`).
+   - Reduce resolución: `-ExtraArgs "--camera-width 960 --camera-height 720"`.
+9. **`ModuleNotFoundError` al iniciar**
+   - Asegúrate de ejecutar desde `.venv` (`.\.venv\Scripts\activate`).
+10. **Logs vacíos o truncados**
+    - Si usas `helen-run.ps1`, revisa tanto `.out.log` (stdout) como `.err.log` (stderr). Cada script genera archivos
+      separados para evitar colisiones de redirección en PowerShell.
 
-## 12. Rendimiento y calidad
+## 7. Apéndices
 
-- `--frame-stride`: procesa un frame cada *n* capturas (2 por defecto en Windows).
-- `--poll-interval`: controla el tiempo entre lecturas de cámara. Aumentarlo reduce la carga de CPU.
-- Usa iluminación uniforme y coloca la cámara a la altura del rostro para mejores predicciones.
+### 7.1 Dependencias clave
 
-## 13. Persistencia de preferencias de la UI
+| Paquete        | Versión fijada |
+|----------------|----------------|
+| Flask          | 3.0.3          |
+| Flask-SocketIO | 5.3.6          |
+| eventlet       | 0.36.1         |
+| numpy          | 1.26.4         |
+| opencv-python  | 4.9.0.80       |
+| mediapipe      | 0.10.18        |
 
-La interfaz almacena configuraciones como el color de fondo en `localStorage` bajo las llaves `helen:display-mode` y
-`helen:background-color`. El selector de color disponible en Configuración actualiza la variable CSS `--bg`, lo que
-permite que Windows refleje el mismo tema que Raspberry Pi.
+### 7.2 Flags soportados por `backendHelen.server`
 
-## 14. Buenas prácticas y contribuciones
+| Flag                     | Descripción                                                   | Ejemplo                                         |
+|--------------------------|---------------------------------------------------------------|-------------------------------------------------|
+| `--camera-index`         | Índice numérico o ruta DirectShow (string).                   | `--camera-index 1`                              |
+| `--camera-backend`       | Backend (`directshow`, `dshow`, `v4l2`).                      | `--camera-backend directshow`                   |
+| `--camera-width/height`  | Resolución objetivo de captura.                              | `--camera-width 1280 --camera-height 720`       |
+| `--frame-stride`         | Procesa 1 de cada *n* frames para reducir carga.             | `--frame-stride 3`                              |
+| `--poll-interval`        | Intervalo entre lecturas de cámara en segundos.              | `--poll-interval 0.12`                          |
+| `--no-camera`            | Desactiva la cámara física (usa stream sintético).           | `--no-camera`                                   |
+| `--detection-confidence` | Ajusta umbral de detección de MediaPipe.                     | `--detection-confidence 0.6`                    |
+| `--tracking-confidence`  | Ajusta umbral de tracking de MediaPipe.                      | `--tracking-confidence 0.5`                     |
 
-- Sigue el formato de commits estilo `tipo: descripción` (p. ej. `docs: actualizar guía de Windows`).
-- Antes de abrir un PR, ejecuta `scripts/run-windows.ps1` para validar `/health`.
-- Asegúrate de actualizar la documentación correspondiente cada vez que cambien los scripts o variables.
-
-## 15. Apéndice A – Dependencias clave
-
-| Paquete             | Versión fijada |
-|---------------------|----------------|
-| Flask               | 3.0.3          |
-| Flask-SocketIO      | 5.3.6          |
-| eventlet            | 0.36.1         |
-| numpy               | 1.26.4         |
-| opencv-python       | 4.9.0.80       |
-| mediapipe           | 0.10.18        |
-
-## 16. Apéndice B – Flags de cámara útiles
-
-| Flag                     | Descripción                                         | Ejemplo                                       |
-|--------------------------|-----------------------------------------------------|-----------------------------------------------|
-| `--camera-index`         | Selecciona el índice numérico de la cámara.         | `--camera-index 1`                            |
-| `--camera-backend`       | Fuerza un backend específico (`directshow`).        | `--camera-backend directshow`                 |
-| `--camera-width`/`height`| Ajusta la resolución solicitada al dispositivo.     | `--camera-width 1280 --camera-height 720`     |
-| `--frame-stride`         | Salta frames para reducir carga de CPU.             | `--frame-stride 3`                            |
-| `--poll-interval`        | Intervalo entre lecturas de cámara en segundos.     | `--poll-interval 0.12`                        |
-
-## 17. Apéndice C – Mini FAQ
+### 7.3 Preguntas frecuentes
 
 - **¿Puedo usar Edge en lugar de Chrome?** Sí, siempre que sea la versión basada en Chromium.
-- **¿Funciona con múltiples usuarios en Windows?** Cada usuario debe crear su propio `.venv` y otorgar permisos de cámara.
-- **¿Cómo actualizo HELEN?** Ejecuta `git pull`, reactiva el entorno virtual y vuelve a correr `pip install -r requirements.txt`.
-- **¿Hay soporte para GPU dedicada?** MediaPipe corre en CPU por defecto; el soporte GPU en Windows no está habilitado.
+- **¿Necesito reinstalar dependencias en cada ejecución?** No. `helen-run.ps1` verifica `.venv` y sólo reinstala si falta
+  algo. Puedes forzar parámetros adicionales con `-ExtraArgs`.
+- **¿Qué pasa si tengo varias cámaras USB?** Usa `-CameraIndex` para seleccionar la correcta o prueba `0/1/2`. HELEN probará
+  DirectShow primero y registrará sugerencias si la apertura falla.
+- **¿Dónde se guardan los logs?** En `reports\logs\win\backend-YYYYMMDD-HHMMSS.out.log` (stdout) y `.err.log` (stderr).
+
+Mantén sincronizadas estas instrucciones cada vez que cambien los scripts o flags soportados para que HELEN siga siendo un
+proyecto “sin sorpresas” al desplegarse en nuevos equipos Windows.

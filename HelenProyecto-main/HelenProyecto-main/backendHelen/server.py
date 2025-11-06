@@ -2275,6 +2275,9 @@ def connect_wifi(ssid: str, password: str) -> Tuple[bool, str]:
 class RuntimeConfig:
     camera_index: Optional[Union[int, str]] = None
     camera_device: Optional[str] = None
+    camera_backend: Optional[str] = None
+    camera_width: Optional[int] = None
+    camera_height: Optional[int] = None
     detection_confidence: Optional[float] = None
     tracking_confidence: Optional[float] = None
     poll_interval_s: Optional[float] = None
@@ -2435,6 +2438,9 @@ class CameraGestureStream:
         metrics: Optional[GestureMetrics] = None,
         profile: Optional[PiCameraProfile] = None,
         selection: Optional[CameraSelection] = None,
+        forced_backend: Optional[str] = None,
+        width_override: Optional[int] = None,
+        height_override: Optional[int] = None,
     ) -> None:
         if cv2 is None:
             raise RuntimeError("OpenCV no está instalado. Ejecuta `pip install opencv-python`.")
@@ -2442,6 +2448,9 @@ class CameraGestureStream:
             raise RuntimeError("MediaPipe no está instalado. Ejecuta `pip install mediapipe`.")
 
         self._selection = selection
+        self._forced_backend = camera_probe.normalize_backend_name(forced_backend)
+        self._width_override = int(width_override) if width_override else None
+        self._height_override = int(height_override) if height_override else None
         resolved_index: Optional[Union[int, str]] = camera_index
         if selection:
             if selection.index is not None:
@@ -2458,7 +2467,11 @@ class CameraGestureStream:
             self._device_path = camera_index
         else:
             self._device_path = None
-        self._preferred_backend = (selection.backend if selection else None) or "v4l2"
+        backend_candidate = self._forced_backend or (selection.backend if selection else None)
+        backend_candidate = camera_probe.normalize_backend_name(backend_candidate)
+        if not backend_candidate:
+            backend_candidate = "directshow" if camera_probe.IS_WINDOWS else "v4l2"
+        self._preferred_backend = backend_candidate
         self._selection_dict = selection.to_dict() if selection else None
         self._probe_latency_ms = selection.latency_ms if selection else None
         self._orientation_hint = selection.orientation if selection else None
@@ -2483,6 +2496,8 @@ class CameraGestureStream:
 
     # ------------------------------------------------------------------
     def _desired_dimensions(self) -> Tuple[int, int, float]:
+        if self._width_override and self._height_override:
+            return int(self._width_override), int(self._height_override), 0.0
         selection = self._selection
         if selection:
             width = int(getattr(selection, "width", 0) or 0)
@@ -2510,21 +2525,25 @@ class CameraGestureStream:
                 cap.set(cv2.CAP_PROP_FPS, fps)
 
     # ------------------------------------------------------------------
-    def _attempt_v4l2(self) -> Tuple[Optional[Any], Optional[str]]:
+    def _attempt_opencv(self, backend_name: str) -> Tuple[Optional[Any], Optional[str]]:
         target: Any = self._device_path if self._device_path is not None else self._camera_index
         if target is None:
             return None, "No hay cámara seleccionada"
 
-        backend_flag = getattr(camera_probe, "DEFAULT_CAPTURE_FLAG", 0)
+        backend_flag = camera_probe.resolve_backend_flag(backend_name) or camera_probe.DEFAULT_CAPTURE_FLAG
         try:
-            cap = cv2.VideoCapture(target, backend_flag) if backend_flag else cv2.VideoCapture(target)
+            backend_flag_int = int(backend_flag)
+        except Exception:
+            backend_flag_int = 0
+        try:
+            cap = cv2.VideoCapture(target, backend_flag_int) if backend_flag_int else cv2.VideoCapture(target)
         except Exception as error:  # pragma: no cover - depende del entorno
             return None, str(error)
         if not cap or not cap.isOpened():
             if cap:
                 with contextlib.suppress(Exception):
                     cap.release()
-            return None, f"V4L2 no se pudo abrir en {target}"
+            return None, f"{backend_name} no se pudo abrir en {target}"
 
         self._configure_capture(cap)
         actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
@@ -2532,14 +2551,15 @@ class CameraGestureStream:
         actual_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
 
         LOGGER.info(
-            "Ruta de cámara inicializada: v4l2 (target=%s, %sx%s @ %.2f fps, formato=%s)",
+            "Ruta de cámara inicializada: %s (target=%s, %sx%s @ %.2f fps, formato=%s)",
+            backend_name,
             target,
             actual_width,
             actual_height,
             actual_fps,
             self._pixel_format or "<driver>",
         )
-        self._capture_backend = "v4l2"
+        self._capture_backend = backend_name
         self._gstreamer_pipeline = None
         return cap, None
 
@@ -2579,29 +2599,30 @@ class CameraGestureStream:
     # ------------------------------------------------------------------
     def _initialise_capture(self) -> Any:
         errors: List[str] = []
-        preferred_order = ["v4l2", "gstreamer"]
-        if self._preferred_backend == "gstreamer":
-            preferred_order = ["gstreamer", "v4l2"]
+        preferred_order = list(camera_probe.preferred_backend_order(self._preferred_backend))
 
         cap: Optional[Any] = None
         error: Optional[str] = None
         for backend in preferred_order:
-            if backend == "v4l2":
-                cap, error = self._attempt_v4l2()
-            else:
+            if backend == "gstreamer":
                 cap, error = self._attempt_gstreamer()
+            else:
+                cap, error = self._attempt_opencv(backend)
             if cap is not None:
                 break
             if error:
                 errors.append(error)
 
         if cap is None:
-            if error:
-                errors.append(error)
             target = self._device_path if self._device_path else self._camera_index
-            message = "; ".join(errors) if errors else f"No se pudo abrir la cámara {target}"
-            self._last_error = message
-            raise RuntimeError(message)
+            details = "; ".join(errors) if errors else f"No se pudo abrir la cámara {target}"
+            suggestion = (
+                "Sugerencias: prueba índices 0/1/2, cambia el backend con --camera-backend directshow|v4l2 "
+                "o reduce la resolución (--camera-width 960 --camera-height 720)."
+            )
+            LOGGER.error("%s %s", details, suggestion)
+            self._last_error = f"{details}. {suggestion}"
+            raise RuntimeError(self._last_error)
 
         return cap
 
@@ -3330,6 +3351,7 @@ class HelenRuntime:
                 force=force,
                 preferred=preferred,
                 logger=LOGGER,
+                forced_backend=getattr(self.config, "camera_backend", None),
             )
         except Exception as error:  # pragma: no cover - depends on environment
             LOGGER.warning("Auto-probe de cámara falló: %s", error)
@@ -3384,6 +3406,9 @@ class HelenRuntime:
                     metrics=self.metrics,
                     profile=self.config.camera_profile,
                     selection=selection,
+                    forced_backend=self.config.camera_backend,
+                    width_override=self.config.camera_width,
+                    height_override=self.config.camera_height,
                 )
                 target = selection.device if selection and selection.device else self.config.camera_index
                 LOGGER.info("Usando cámara física en %s", target)
@@ -3403,6 +3428,9 @@ class HelenRuntime:
                             metrics=self.metrics,
                             profile=self.config.camera_profile,
                             selection=refreshed,
+                            forced_backend=self.config.camera_backend,
+                            width_override=self.config.camera_width,
+                            height_override=self.config.camera_height,
                         )
                         target = refreshed.device if refreshed.device else refreshed.index
                         LOGGER.info("Cámara reprovisionada automáticamente en %s", target)
@@ -3990,6 +4018,27 @@ def main(argv: Optional[List[str]] = None) -> int:
         metavar="INDEX|PATH",
     )
     parser.add_argument(
+        "--camera-backend",
+        dest="camera_backend",
+        default=None,
+        help="Backend de captura a forzar (directshow, dshow, v4l2)",
+        metavar="NAME",
+    )
+    parser.add_argument(
+        "--camera-width",
+        dest="camera_width",
+        type=int,
+        default=None,
+        help="Ancho deseado de captura en píxeles",
+    )
+    parser.add_argument(
+        "--camera-height",
+        dest="camera_height",
+        type=int,
+        default=None,
+        help="Alto deseado de captura en píxeles",
+    )
+    parser.add_argument(
         "--detection-confidence",
         type=float,
         default=None,
@@ -4024,13 +4073,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     camera_spec = _parse_camera_spec(args.camera_index)
     camera_device = camera_spec if isinstance(camera_spec, str) else None
 
+    backend_preference = camera_probe.normalize_backend_name(args.camera_backend)
+
     frame_stride = args.frame_stride if args.frame_stride is not None else None
     if frame_stride is not None:
         frame_stride = max(1, frame_stride)
 
+    width_override = args.camera_width if args.camera_width and args.camera_width > 0 else None
+    height_override = args.camera_height if args.camera_height and args.camera_height > 0 else None
+
     config = RuntimeConfig(
         camera_index=camera_spec,
         camera_device=camera_device,
+        camera_backend=backend_preference,
+        camera_width=width_override,
+        camera_height=height_override,
         detection_confidence=args.detection_confidence,
         tracking_confidence=args.tracking_confidence,
         poll_interval_s=args.poll_interval,

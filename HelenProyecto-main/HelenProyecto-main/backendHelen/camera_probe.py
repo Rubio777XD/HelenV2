@@ -1,8 +1,8 @@
-"""Camera probing utilities for Raspberry Pi deployments.
+"""Camera probing utilities for HELEN deployments.
 
-This module enumerates V4L2 and libcamera sources, validates them with
-OpenCV, and persists the most reliable option so the backend can start
-without interactive configuration.
+This module enumerates available capture sources (V4L2, libcamera and
+DirectShow), validates them with OpenCV, and persists the most reliable
+option so the backend can start without interactive configuration.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import platform
 import re
 import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,6 +34,12 @@ try:  # pragma: no cover - optional dependency in some CI environments
 except Exception:  # pragma: no cover - handled gracefully at runtime
     np = None  # type: ignore
 
+SYSTEM_NAME = platform.system()
+PLATFORM = SYSTEM_NAME.lower()
+IS_WINDOWS = sys.platform.startswith("win") or SYSTEM_NAME == "Windows"
+IS_LINUX = sys.platform.startswith("linux") or SYSTEM_NAME == "Linux"
+IS_MAC = sys.platform.startswith("darwin") or SYSTEM_NAME == "Darwin"
+
 LOGGER = logging.getLogger("helen.camera_probe")
 if not LOGGER.handlers:
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s %(message)s")
@@ -45,10 +52,91 @@ def _default_capture_flag() -> int:
         return int(cv2.CAP_DSHOW)
     if hasattr(cv2, "CAP_V4L2"):
         return int(cv2.CAP_V4L2)
+    if hasattr(cv2, "CAP_ANY"):
+        return int(getattr(cv2, "CAP_ANY"))
     return 0
 
 
 DEFAULT_CAPTURE_FLAG = _default_capture_flag()
+
+
+def normalize_backend_name(value: Optional[str]) -> Optional[str]:
+    """Return a normalised backend identifier or ``None``."""
+
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    mapping = {
+        "dshow": "directshow",
+        "direct_show": "directshow",
+        "direct-show": "directshow",
+        "directshow": "directshow",
+        "msmf": "directshow",
+        "video4linux": "v4l2",
+        "v4l": "v4l2",
+        "libcamera": "gstreamer",
+        "gst": "gstreamer",
+        "gstreamer": "gstreamer",
+        "any": None,
+        "auto": None,
+    }
+    return mapping.get(normalized, normalized)
+
+
+def resolve_backend_flag(name: Optional[str]) -> Optional[int]:
+    """Map a backend name to the OpenCV capture flag."""
+
+    if cv2 is None:
+        return None
+
+    normalized = normalize_backend_name(name)
+    if normalized is None:
+        if DEFAULT_CAPTURE_FLAG:
+            return int(DEFAULT_CAPTURE_FLAG)
+        return int(getattr(cv2, "CAP_ANY", 0)) if hasattr(cv2, "CAP_ANY") else None
+
+    if normalized == "directshow":
+        if hasattr(cv2, "CAP_DSHOW"):
+            return int(cv2.CAP_DSHOW)
+        if DEFAULT_CAPTURE_FLAG:
+            return int(DEFAULT_CAPTURE_FLAG)
+        return int(getattr(cv2, "CAP_ANY", 0)) if hasattr(cv2, "CAP_ANY") else None
+
+    if normalized == "v4l2":
+        if hasattr(cv2, "CAP_V4L2"):
+            return int(cv2.CAP_V4L2)
+        return int(getattr(cv2, "CAP_ANY", 0)) if hasattr(cv2, "CAP_ANY") else None
+
+    if normalized == "gstreamer":
+        return int(getattr(cv2, "CAP_GSTREAMER", DEFAULT_CAPTURE_FLAG or 0))
+
+    return int(DEFAULT_CAPTURE_FLAG) if DEFAULT_CAPTURE_FLAG else int(getattr(cv2, "CAP_ANY", 0)) if hasattr(cv2, "CAP_ANY") else None
+
+
+def preferred_backend_order(preferred: Optional[str] = None) -> Tuple[str, ...]:
+    """Return a tuple with the preferred backend order for the platform."""
+
+    order: List[str] = []
+    normalized = normalize_backend_name(preferred)
+    if normalized:
+        order.append(normalized)
+    if IS_WINDOWS:
+        order.append("directshow")
+    order.append("v4l2")
+    order.append("gstreamer")
+
+    seen: set[str] = set()
+    deduped: List[str] = []
+    for backend in order:
+        backend_normalized = normalize_backend_name(backend)
+        if not backend_normalized:
+            continue
+        if backend_normalized not in seen:
+            seen.add(backend_normalized)
+            deduped.append(backend_normalized)
+    return tuple(deduped)
 
 
 def _log(logger: Optional[logging.Logger], level: str, message: str, *args: Any) -> None:
@@ -61,8 +149,6 @@ def _log(logger: Optional[logging.Logger], level: str, message: str, *args: Any)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REPORTS_DIR = REPO_ROOT / "reports"
-PLATFORM = platform.system().lower()
-IS_WINDOWS = PLATFORM.startswith("win")
 
 LOG_DIR = REPORTS_DIR / "logs" / ("win" if IS_WINDOWS else "pi")
 CONFIG_DIR = REPORTS_DIR / "config"
@@ -343,7 +429,19 @@ def _list_libcamera_devices() -> List[CameraCandidate]:
 
 def _fallback_candidates() -> List[CameraCandidate]:
     fallbacks: List[CameraCandidate] = []
-    if not IS_WINDOWS:
+    if IS_WINDOWS:
+        for index in range(3):
+            fallbacks.append(
+                CameraCandidate(
+                    identifier=f"fallback:win{index}",
+                    label=f"DirectShow index {index}",
+                    kind="usb",
+                    backend_hint="directshow",
+                    index=index,
+                    metadata={"fallback": True, "platform": "windows"},
+                )
+            )
+    else:
         for index in range(2):
             path = f"/dev/video{index}"
             if Path(path).exists():
@@ -358,18 +456,6 @@ def _fallback_candidates() -> List[CameraCandidate]:
                         metadata={"fallback": True},
                     )
                 )
-    else:
-        for index in range(5):
-            fallbacks.append(
-                CameraCandidate(
-                    identifier=f"fallback:win{index}",
-                    label=f"DirectShow index {index}",
-                    kind="usb",
-                    backend_hint="v4l2",
-                    index=index,
-                    metadata={"fallback": True},
-                )
-            )
     if Path("/usr/bin/rpicam-hello").exists() or Path("/usr/bin/libcamera-hello").exists():
         fallbacks.append(
             CameraCandidate(
@@ -391,7 +477,7 @@ def list_sources() -> Dict[str, List[Dict[str, Any]]]:
     fallback = _fallback_candidates()
     for candidate in fallback:
         description = candidate.describe()
-        if candidate.backend_hint == "v4l2":
+        if candidate.backend_hint in {"v4l2", "directshow"}:
             if not any(entry.get("path") == description.get("path") for entry in v4l2):
                 v4l2.append(description)
         else:
@@ -478,26 +564,41 @@ def _read_frames(cap: Any, *, timeout: float = PROBE_TIMEOUT_S) -> Tuple[bool, f
     return success, latency, resolution, fps, frames
 
 
-def _probe_with_v4l2(candidate: CameraCandidate, mode: CameraMode) -> ProbeResult:
+def _probe_with_opencv(
+    candidate: CameraCandidate,
+    mode: CameraMode,
+    *,
+    backend_name: str,
+    backend_flag: Optional[int] = None,
+    pixel_formats: Optional[Sequence[Optional[str]]] = None,
+) -> ProbeResult:
     if cv2 is None:
-        return ProbeResult(candidate=candidate, backend="v4l2", mode=mode, success=False, reason="opencv-missing")
+        return ProbeResult(candidate=candidate, backend=backend_name, mode=mode, success=False, reason="opencv-missing")
 
     target: Union[str, int, None] = candidate.path if candidate.path else candidate.index
     if target is None:
-        return ProbeResult(candidate=candidate, backend="v4l2", mode=mode, success=False, reason="no-target")
+        return ProbeResult(candidate=candidate, backend=backend_name, mode=mode, success=False, reason="no-target")
 
-    backend_flag = DEFAULT_CAPTURE_FLAG
+    resolved_flag: Optional[int]
+    if backend_flag is not None:
+        resolved_flag = int(backend_flag)
+    else:
+        resolved_flag = resolve_backend_flag(backend_name)
+
     attempts: List[ProbeResult] = []
-    pixel_formats: Tuple[Optional[str], ...] = tuple(PIXEL_FORMAT_PREFERENCE) + (None,)
+    pixel_formats = tuple(pixel_formats) if pixel_formats is not None else tuple(PIXEL_FORMAT_PREFERENCE) + (None,)
 
     for pixel_format in pixel_formats:
         try:
-            cap = cv2.VideoCapture(target, backend_flag) if backend_flag else cv2.VideoCapture(target)
+            if resolved_flag is not None:
+                cap = cv2.VideoCapture(target, resolved_flag)
+            else:
+                cap = cv2.VideoCapture(target)
         except Exception as error:  # pragma: no cover - depends on runtime
             attempts.append(
                 ProbeResult(
                     candidate=candidate,
-                    backend="v4l2",
+                    backend=backend_name,
                     mode=mode,
                     success=False,
                     reason=str(error),
@@ -513,10 +614,10 @@ def _probe_with_v4l2(candidate: CameraCandidate, mode: CameraMode) -> ProbeResul
             attempts.append(
                 ProbeResult(
                     candidate=candidate,
-                    backend="v4l2",
+                    backend=backend_name,
                     mode=mode,
                     success=False,
-                    reason="open-failed",
+                    reason=f"open-failed:{backend_name}",
                     pixel_format=pixel_format,
                 )
             )
@@ -534,7 +635,7 @@ def _probe_with_v4l2(candidate: CameraCandidate, mode: CameraMode) -> ProbeResul
 
         result = ProbeResult(
             candidate=candidate,
-            backend="v4l2",
+            backend=backend_name,
             mode=mode,
             success=success,
             reason=None if success else f"no-valid-frame:{pixel_format or 'default'}",
@@ -550,10 +651,23 @@ def _probe_with_v4l2(candidate: CameraCandidate, mode: CameraMode) -> ProbeResul
             return result
 
     if attempts:
-        # Return the last attempt (likely the lowest mode) for logging purposes.
         return attempts[-1]
 
-    return ProbeResult(candidate=candidate, backend="v4l2", mode=mode, success=False, reason="probe-failed")
+    return ProbeResult(candidate=candidate, backend=backend_name, mode=mode, success=False, reason="probe-failed")
+
+
+def _probe_with_v4l2(candidate: CameraCandidate, mode: CameraMode) -> ProbeResult:
+    return _probe_with_opencv(candidate, mode, backend_name="v4l2")
+
+
+def _probe_with_directshow(candidate: CameraCandidate, mode: CameraMode) -> ProbeResult:
+    return _probe_with_opencv(
+        candidate,
+        mode,
+        backend_name="directshow",
+        backend_flag=resolve_backend_flag("directshow"),
+        pixel_formats=(None,),
+    )
 
 
 def _build_gstreamer_pipeline(candidate: CameraCandidate, mode: CameraMode) -> str:
@@ -608,20 +722,33 @@ def _probe_with_gstreamer(candidate: CameraCandidate, mode: CameraMode) -> Probe
     )
 
 
-def _probe_candidate(candidate: CameraCandidate) -> Optional[ProbeResult]:
+def _probe_candidate(candidate: CameraCandidate, forced_backend: Optional[str] = None) -> Optional[ProbeResult]:
     attempts: List[ProbeResult] = []
-    preferred_backends: Sequence[str]
-    if candidate.backend_hint == "gstreamer":
-        preferred_backends = ("gstreamer", "v4l2")
-    else:
-        preferred_backends = ("v4l2", "gstreamer")
+
+    sequence: List[Optional[str]] = [forced_backend, candidate.backend_hint]
+    sequence.extend(preferred_backend_order(None))
+
+    ordered: List[str] = []
+    seen: set[str] = set()
+    for entry in sequence:
+        normalized = normalize_backend_name(entry)
+        if not normalized:
+            continue
+        if normalized not in seen:
+            seen.add(normalized)
+            ordered.append(normalized)
+
+    if not ordered:
+        ordered = list(preferred_backend_order(None))
 
     for mode in PREFERRED_MODES:
-        for backend in preferred_backends:
-            if backend == "v4l2":
-                result = _probe_with_v4l2(candidate, mode)
-            else:
+        for backend in ordered:
+            if backend == "gstreamer":
                 result = _probe_with_gstreamer(candidate, mode)
+            elif backend == "directshow":
+                result = _probe_with_directshow(candidate, mode)
+            else:
+                result = _probe_with_v4l2(candidate, mode)
             attempts.append(result)
             if result.success:
                 return result
@@ -757,6 +884,7 @@ def ensure_camera_selection(
     force: bool = False,
     preferred: Optional[Union[str, int]] = None,
     logger: Optional[logging.Logger] = None,
+    forced_backend: Optional[str] = None,
 ) -> Optional[CameraSelection]:
     """Return the cached camera selection or probe the available devices."""
 
@@ -798,7 +926,7 @@ def ensure_camera_selection(
     best_result: Optional[ProbeResult] = None
     for candidate in candidates:
         _log(logger, "info", "Probing %s (%s)", candidate.identifier, candidate.label)
-        result = _probe_candidate(candidate)
+        result = _probe_candidate(candidate, forced_backend)
         if not result:
             continue
         if preferred_str and (preferred_str == str(candidate.index) or preferred_str in (candidate.path or "")):
@@ -814,6 +942,12 @@ def ensure_camera_selection(
             reason = best_result.reason if best_result else "unknown"
             _log(logger, "warning", "No se pudo validar ninguna cámara física (%s)", reason or "unknown")
         _log(logger, "error", CAMERA_NOT_FOUND_MESSAGE)
+        if IS_WINDOWS:
+            _log(
+                logger,
+                "info",
+                "Sugerencias: prueba con --camera-index 0/1/2, cambia el backend con --camera-backend directshow|v4l2 o reduce la resolución con --camera-width 960 --camera-height 720.",
+            )
         return None
 
     mode = best_result.mode
@@ -886,13 +1020,24 @@ def probe_specific_device(
             path=str(identifier),
         )
     mode = CameraMode(width=width, height=height, fps=fps)
-    primary = _probe_with_v4l2(candidate, mode)
-    if primary.success:
-        return primary
-    secondary = _probe_with_gstreamer(candidate, mode)
-    if secondary.success:
-        return secondary
-    return secondary if secondary.reason else primary
+    attempts: List[ProbeResult] = []
+    for backend in preferred_backend_order("directshow" if IS_WINDOWS else "v4l2"):
+        if backend == "gstreamer":
+            result = _probe_with_gstreamer(candidate, mode)
+        elif backend == "directshow":
+            result = _probe_with_directshow(candidate, mode)
+        else:
+            result = _probe_with_v4l2(candidate, mode)
+        attempts.append(result)
+        if result.success:
+            return result
+    return attempts[-1] if attempts else ProbeResult(
+        candidate=candidate,
+        backend="directshow" if IS_WINDOWS else "v4l2",
+        mode=mode,
+        success=False,
+        reason="probe-failed",
+    )
 
 
 def parse_resolution(value: str) -> Tuple[int, int]:
@@ -917,4 +1062,7 @@ __all__ = [
     "parse_resolution",
     "get_cached_selection",
     "CAMERA_NOT_FOUND_MESSAGE",
+    "normalize_backend_name",
+    "resolve_backend_flag",
+    "preferred_backend_order",
 ]

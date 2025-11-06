@@ -34,6 +34,7 @@ guardan en `localStorage` para que persistan entre reinicios.
 
 Los únicos scripts mantenidos para automatizar la instalación y ejecución son los que residen en `scripts/`:
 
+- `scripts/helen-run.ps1` / `scripts/helen-run.bat`
 - `scripts/setup-windows.ps1`
 - `scripts/run-windows.ps1`
 - `scripts/setup-pi.sh`
