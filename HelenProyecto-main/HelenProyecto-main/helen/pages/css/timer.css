@@ -134,7 +134,7 @@
 
 /* Primario azul (play/pause) */
 .primary-btn.icon-btn{
-  color: #0b1422;
+  color: var(--bg, #0b1422);
   background: radial-gradient(60% 60% at 30% 30%, var(--blue-a), var(--blue-b));
   box-shadow: 0 16px 34px rgba(46,107,255,.35);
   border-color: rgba(255,255,255,.12);
@@ -451,14 +451,14 @@
   border: 0;
 }
 .cancel-btn{
-  color: #0b1422; background: #fff;
+  color: var(--bg, #0b1422); background: #fff;
   box-shadow: 0 10px 18px rgba(0,0,0,.14) inset;
 }
 @media (hover: hover){
   .cancel-btn:hover{ transform: translateY(-1px); filter: brightness(1.02) }
 }
 .create-btn{
-  color: #0b1422;
+  color: var(--bg, #0b1422);
   background: linear-gradient(135deg, var(--blue-a) 0%, var(--blue-b) 70%);
   box-shadow: 0 14px 30px rgba(46,107,255,.35);
 }

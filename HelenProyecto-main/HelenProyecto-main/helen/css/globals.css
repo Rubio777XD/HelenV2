@@ -11,26 +11,40 @@
 
 /* ------------------ Tokens ------------------ */
 :root{
-  /* Fondo + halos */
-  --bg: #0b1220;
-  --halo-a: rgba(100,160,255,.22);
-  --halo-b: rgba(0,210,255,.16);
-  --halo-c: rgba(0,120,255,.10);
+  /* Paleta dinámica */
+  --helen-theme: blue;
+  --helen-bg: #0b1220;
+  --helen-surface: rgba(18, 28, 46, .92);
+  --helen-surface-alt: rgba(14, 23, 39, .92);
+  --helen-card-border: rgba(160, 190, 220, .14);
+  --helen-text-strong: #eef6ff;
+  --helen-text-primary: #dde8f6;
+  --helen-text-soft: #a9b9cf;
+  --helen-text-muted: #8ea0b8;
+  --helen-accent-strong: #2e6bff;
+  --helen-accent-soft: #5fe1ff;
+  --helen-halo-a: rgba(100,160,255,.22);
+  --helen-halo-b: rgba(0,210,255,.16);
+  --helen-halo-c: rgba(0,120,255,.10);
+  --helen-font-scale: 1;
 
-  /* Tarjetas */
-  --card-top: rgba(18, 28, 46, .92);
-  --card-bot: rgba(14, 23, 39, .92);
-  --card-border: rgba(160, 190, 220, .14);
+  /* Tokens derivados (compatibilidad) */
+  --bg: var(--helen-bg);
+  --halo-a: var(--helen-halo-a);
+  --halo-b: var(--helen-halo-b);
+  --halo-c: var(--helen-halo-c);
 
-  /* Texto */
-  --fg-strong: #eef6ff;
-  --fg: #dde8f6;
-  --fg-soft: #a9b9cf;
-  --muted: #8ea0b8;
+  --card-top: var(--helen-surface);
+  --card-bot: var(--helen-surface-alt);
+  --card-border: var(--helen-card-border);
 
-  /* Azules de acento */
-  --blue-a: #5fe1ff;
-  --blue-b: #2e6bff;
+  --fg-strong: var(--helen-text-strong);
+  --fg: var(--helen-text-primary);
+  --fg-soft: var(--helen-text-soft);
+  --muted: var(--helen-text-muted);
+
+  --blue-a: var(--helen-accent-soft);
+  --blue-b: var(--helen-accent-strong);
 
   /* Elevaciones */
   --shadow-card: 0 26px 60px rgba(0,0,0,.38);
@@ -46,7 +60,7 @@
   --t-med: .25s;
   --activation-ring-duration: 2.6s;
 
-    /* Select base */
+  /* Select base */
   --select-bg: rgba(255,255,255,.06);
   --select-border: var(--card-border);
   --select-fg: var(--fg);
@@ -65,6 +79,9 @@
 /* ----------------- Reset suave ----------------- */
 *{ box-sizing: border-box }
 html,body{ height:100% }
+html{
+  font-size: calc(16px * var(--helen-font-scale, 1));
+}
 body{
   margin:0;
   font-family: "Roboto", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
@@ -104,6 +121,13 @@ body.wifi-modal-open{ overflow:hidden }
 /* Accesibilidad / rendimiento */
 @media (prefers-reduced-motion: reduce){
   *{ animation: none !important; transition: none !important }
+}
+
+html.perf-mode *,
+html.perf-mode *::before,
+html.perf-mode *::after{
+  animation: none !important;
+  transition: none !important;
 }
 
 /* =========================== GLOWS =========================== */
@@ -514,7 +538,7 @@ body.wifi-modal-open{ overflow:hidden }
   padding: 0 22px;
   border: 0;
   font-weight: 800;
-  color: #0b1422;
+  color: var(--bg, #0b1422);
   background: linear-gradient(135deg, #66e2ff 0%, #2e6bff 70%);
   box-shadow:
     0 14px 30px rgba(46,107,255,.35),
@@ -528,7 +552,7 @@ body.wifi-modal-open{ overflow:hidden }
 /* Entrada/animación */
 .swal2-show.swal-helen { animation: helenPop .18s ease-out; }
 
-/* ===================== MODO RASPBERRY (7") ===================== */
+/* ===================== AJUSTE TÁCTIL (7") ===================== */
 body[data-mode="raspberry"]{
   --raspberry-max-width: 1024px;
   --raspberry-min-height: 480px;

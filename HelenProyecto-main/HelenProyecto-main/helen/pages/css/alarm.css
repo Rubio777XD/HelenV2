@@ -366,7 +366,7 @@
   border-color: rgba(190,210,230,.22);
 }
 .day-selectors .day.active{
-  color: #0b1422;
+  color: var(--bg, #0b1422);
   border-color: rgba(120,170,255,.45);
   background: linear-gradient(135deg, var(--blue-a, #5fe1ff) 0%, var(--blue-b, #2e6bff) 80%);
 }
@@ -533,7 +533,7 @@
   padding: 0 22px;
   border: 0;
   font-weight: 800;
-  color: #0b1422;
+  color: var(--bg, #0b1422);
   background: linear-gradient(135deg, #66e2ff 0%, #2e6bff 70%);
   box-shadow:
     0 14px 30px rgba(46,107,255,.35),

@@ -97,7 +97,7 @@ Puedes sobrescribirlos en la línea de comandos:
 1. Visita `http://localhost:5000` en Chrome.
 2. Concede permisos de cámara cuando aparezca el diálogo.
 3. Comprueba que `/health` devuelve `{"status":"HEALTHY","camera_ok":true,...}`.
-4. Cambia el color de fondo desde **Configuración → Raspberry Pi → Color de fondo de HELEN** para verificar que la UI
+4. Cambia el color de fondo desde **Configuración → Personalización** para verificar que la UI
    responde inmediatamente.
 
 ## 3. Arquitectura y componentes

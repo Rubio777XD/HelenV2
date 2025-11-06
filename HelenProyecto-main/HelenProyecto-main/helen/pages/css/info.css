@@ -315,6 +315,101 @@
   outline-offset: 3px;
 }
 
+.personalization-panel{ display: grid; gap: 12px; margin-bottom: 18px; }
+
+.font-scale-picker{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.font-chip{
+  width: 100%;
+  border-radius: var(--r-md);
+  padding: clamp(14px, 2.4vw, 20px);
+  border: 1px solid var(--card-border);
+  background: rgba(15,26,43,.60);
+  box-shadow: var(--shadow-tile);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  cursor: pointer;
+  transition: transform var(--t-fast) ease, border-color var(--t-fast) ease, box-shadow var(--t-fast) ease;
+}
+
+.font-chip__title{
+  font-weight: 600;
+  font-size: clamp(15px, 2.2vw, 18px);
+  color: var(--fg-strong);
+}
+
+.font-chip__desc{
+  font-size: clamp(13px, 2vw, 15px);
+  color: var(--fg-soft);
+}
+
+.font-chip.is-selected,
+.font-chip[aria-checked="true"]{
+  border-color: rgba(190,210,230,.28);
+  box-shadow: 0 24px 52px rgba(0,0,0,.32);
+  transform: translateY(-2px);
+}
+
+.font-chip:focus-visible{
+  outline: 2px solid rgba(95,225,255,.72);
+  outline-offset: 4px;
+}
+
+.performance-toggle{ display: flex; align-items: center; }
+
+.switch-toggle{
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.switch-toggle input{ position: absolute; opacity: 0; pointer-events: none; }
+
+.switch-track{
+  position: relative;
+  width: 54px;
+  height: 30px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.16);
+  border: 1px solid rgba(255,255,255,.18);
+  transition: background-color var(--t-fast) ease, border-color var(--t-fast) ease;
+}
+
+.switch-track::after{
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--fg-strong);
+  box-shadow: 0 4px 10px rgba(0,0,0,.24);
+  transition: transform var(--t-fast) ease;
+}
+
+.switch-toggle input:checked + .switch-track{
+  background: rgba(95,225,255,.24);
+  border-color: rgba(95,225,255,.42);
+}
+
+.switch-toggle input:checked + .switch-track::after{
+  transform: translateX(24px);
+}
+
+.switch-label{
+  font-size: clamp(13px, 2vw, 15px);
+  color: var(--fg);
+}
+
 .mode-toggle:focus-visible{
   outline: 2px solid rgba(95,225,255,.72);
   outline-offset: 3px;

@@ -9,37 +9,30 @@
 
 /* ------------------ Tokens ------------------ */
 :root{
-  /* Fondo + halos */
-  --bg: #0b1220;
-  --halo-a: rgba(100,160,255,.22);
-  --halo-b: rgba(0,210,255,.16);
-  --halo-c: rgba(0,120,255,.10);
+  --bg: var(--helen-bg);
+  --halo-a: var(--helen-halo-a);
+  --halo-b: var(--helen-halo-b);
+  --halo-c: var(--helen-halo-c);
 
-  /* Tarjetas */
-  --card-top: rgba(18, 28, 46, .92);
-  --card-bot: rgba(14, 23, 39, .92);
-  --card-border: rgba(160, 190, 220, .14);
+  --card-top: var(--helen-surface);
+  --card-bot: var(--helen-surface-alt);
+  --card-border: var(--helen-card-border);
 
-  /* Texto */
-  --fg-strong: #eef6ff;
-  --fg: #dde8f6;
-  --fg-soft: #a9b9cf;
-  --muted: #8ea0b8;
+  --fg-strong: var(--helen-text-strong);
+  --fg: var(--helen-text-primary);
+  --fg-soft: var(--helen-text-soft);
+  --muted: var(--helen-text-muted);
 
-  /* Azules de acento */
-  --blue-a: #5fe1ff;
-  --blue-b: #2e6bff;
+  --blue-a: var(--helen-accent-soft);
+  --blue-b: var(--helen-accent-strong);
 
-  /* Elevaciones */
   --shadow-card: 0 26px 60px rgba(0,0,0,.38);
   --shadow-tile: 0 22px 44px rgba(0,0,0,.34);
 
-  /* Radios */
   --r-lg: 26px;
   --r-md: 18px;
   --r-sm: 12px;
 
-  /* Timings */
   --t-fast: .16s;
   --t-med: .25s;
 }

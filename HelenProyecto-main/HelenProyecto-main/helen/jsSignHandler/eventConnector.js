@@ -8,85 +8,403 @@ const MODE_API_BASE = '/mode';
 const MODE_GET_URL = `${MODE_API_BASE}/get`;
 const MODE_SET_URL = `${MODE_API_BASE}/set`;
 
-const BACKGROUND_COLOR_STORAGE_KEY = 'helen:background-color';
-const DEFAULT_BACKGROUND_COLOR = 'blue';
-const BACKGROUND_COLOR_MAP = {
-  blue: { label: 'Azul', value: '#0b1220' },
-  red: { label: 'Rojo', value: '#200b13' },
-  green: { label: 'Verde', value: '#0b2016' },
-  purple: { label: 'Morado', value: '#1a0b2b' },
-  pink: { label: 'Rosa', value: '#260b1d' },
+const THEME_STORAGE_KEY = 'helen.themeColor';
+const LEGACY_THEME_STORAGE_KEY = 'helen:background-color';
+const DEFAULT_THEME = 'blue';
+const THEME_PRESETS = {
+  blue: {
+    label: 'Azul',
+    background: '#0b1220',
+    surface: 'rgba(18, 28, 46, 0.92)',
+    surfaceAlt: 'rgba(14, 23, 39, 0.92)',
+    border: 'rgba(160, 190, 220, 0.14)',
+    accent: '#2e6bff',
+    accentSoft: '#5fe1ff',
+    haloA: 'rgba(100, 160, 255, 0.22)',
+    haloB: 'rgba(0, 210, 255, 0.16)',
+    haloC: 'rgba(0, 120, 255, 0.10)',
+    textStrong: '#eef6ff',
+    text: '#dde8f6',
+    textSoft: '#a9b9cf',
+    textMuted: '#8ea0b8',
+  },
+  red: {
+    label: 'Rojo',
+    background: '#200b13',
+    surface: 'rgba(52, 20, 32, 0.92)',
+    surfaceAlt: 'rgba(40, 16, 26, 0.92)',
+    border: 'rgba(255, 115, 150, 0.18)',
+    accent: '#ff5676',
+    accentSoft: '#ff9bb2',
+    haloA: 'rgba(255, 120, 160, 0.22)',
+    haloB: 'rgba(255, 80, 130, 0.16)',
+    haloC: 'rgba(120, 20, 40, 0.12)',
+    textStrong: '#ffeef3',
+    text: '#ffd8e2',
+    textSoft: '#f7acc4',
+    textMuted: '#d98aa5',
+  },
+  green: {
+    label: 'Verde',
+    background: '#0b2016',
+    surface: 'rgba(18, 46, 32, 0.92)',
+    surfaceAlt: 'rgba(14, 36, 26, 0.92)',
+    border: 'rgba(120, 220, 180, 0.18)',
+    accent: '#2ecc88',
+    accentSoft: '#8df5c6',
+    haloA: 'rgba(110, 240, 190, 0.22)',
+    haloB: 'rgba(46, 200, 150, 0.16)',
+    haloC: 'rgba(16, 70, 46, 0.12)',
+    textStrong: '#e9fff5',
+    text: '#d1f7e6',
+    textSoft: '#9fd3bb',
+    textMuted: '#7aa993',
+  },
+  purple: {
+    label: 'Morado',
+    background: '#1a0b2b',
+    surface: 'rgba(38, 20, 62, 0.92)',
+    surfaceAlt: 'rgba(28, 12, 46, 0.92)',
+    border: 'rgba(180, 150, 255, 0.18)',
+    accent: '#9c6cff',
+    accentSoft: '#d3b8ff',
+    haloA: 'rgba(170, 130, 255, 0.22)',
+    haloB: 'rgba(120, 60, 255, 0.16)',
+    haloC: 'rgba(60, 20, 120, 0.12)',
+    textStrong: '#f0e8ff',
+    text: '#d8ceff',
+    textSoft: '#b8a5e8',
+    textMuted: '#9580c5',
+  },
+  pink: {
+    label: 'Rosa',
+    background: '#260b1d',
+    surface: 'rgba(48, 18, 38, 0.92)',
+    surfaceAlt: 'rgba(36, 12, 28, 0.92)',
+    border: 'rgba(255, 150, 210, 0.18)',
+    accent: '#ff6fb2',
+    accentSoft: '#ffb4d8',
+    haloA: 'rgba(255, 140, 200, 0.22)',
+    haloB: 'rgba(255, 90, 160, 0.16)',
+    haloC: 'rgba(120, 30, 80, 0.12)',
+    textStrong: '#ffeaf5',
+    text: '#ffd0e6',
+    textSoft: '#f5a6cd',
+    textMuted: '#cc82a8',
+  },
 };
 
-let currentBackgroundColor = DEFAULT_BACKGROUND_COLOR;
+let currentTheme = DEFAULT_THEME;
+let shouldPersistThemeMigration = false;
 
-const normalizeBackgroundColor = (color) => (BACKGROUND_COLOR_MAP[color] ? color : DEFAULT_BACKGROUND_COLOR);
+const normalizeThemeKey = (value) => (THEME_PRESETS[value] ? value : DEFAULT_THEME);
 
-const dispatchBackgroundColorChange = (color) => {
+const dispatchThemeChange = (themeKey, preset) => {
   if (typeof window === 'undefined') {
     return;
   }
-  const detail = {
-    color,
-    value: BACKGROUND_COLOR_MAP[color] ? BACKGROUND_COLOR_MAP[color].value : BACKGROUND_COLOR_MAP[DEFAULT_BACKGROUND_COLOR].value,
-  };
+  const detail = { theme: themeKey, preset };
   try {
-    const event = new CustomEvent('helen:background-color', { detail });
-    window.dispatchEvent(event);
+    window.dispatchEvent(new CustomEvent('helen:theme-color', { detail }));
   } catch (error) {
     if (typeof window.dispatchEvent === 'function') {
-      window.dispatchEvent({ type: 'helen:background-color', detail });
+      window.dispatchEvent({ type: 'helen:theme-color', detail });
+    }
+  }
+
+  const legacyDetail = { color: themeKey, value: preset.background };
+  try {
+    window.dispatchEvent(new CustomEvent('helen:background-color', { detail: legacyDetail }));
+  } catch (error) {
+    if (typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent({ type: 'helen:background-color', detail: legacyDetail });
     }
   }
 };
 
-const applyBackgroundColor = (color, options = {}) => {
+const applyTheme = (themeKey, options = {}) => {
   const { silent = false, skipStore = false } = options;
-  const normalized = normalizeBackgroundColor(color);
-  const entry = BACKGROUND_COLOR_MAP[normalized];
-  const value = entry ? entry.value : BACKGROUND_COLOR_MAP[DEFAULT_BACKGROUND_COLOR].value;
-  const previous = currentBackgroundColor;
-  currentBackgroundColor = normalized;
+  const normalized = normalizeThemeKey(themeKey);
+  const preset = THEME_PRESETS[normalized];
+  currentTheme = normalized;
 
   if (typeof document !== 'undefined' && document.documentElement) {
-    document.documentElement.style.setProperty('--bg', value);
-    document.documentElement.setAttribute('data-bg-color', normalized);
-    if (document.body) {
-      document.body.style.setProperty('--bg', value);
-      document.body.setAttribute('data-bg-color', normalized);
-      document.body.style.backgroundColor = value;
-    }
+    const root = document.documentElement;
+    const set = (name, value) => root.style.setProperty(name, value);
+
+    set('--helen-theme', normalized);
+    set('--helen-bg', preset.background);
+    set('--helen-surface', preset.surface);
+    set('--helen-surface-alt', preset.surfaceAlt);
+    set('--helen-card-border', preset.border);
+    set('--helen-text-strong', preset.textStrong);
+    set('--helen-text-primary', preset.text);
+    set('--helen-text-soft', preset.textSoft);
+    set('--helen-text-muted', preset.textMuted);
+    set('--helen-accent-strong', preset.accent);
+    set('--helen-accent-soft', preset.accentSoft);
+    set('--helen-halo-a', preset.haloA);
+    set('--helen-halo-b', preset.haloB);
+    set('--helen-halo-c', preset.haloC);
+
+    set('--bg', preset.background);
+    set('--card-top', preset.surface);
+    set('--card-bot', preset.surfaceAlt);
+    set('--card-border', preset.border);
+    set('--fg-strong', preset.textStrong);
+    set('--fg', preset.text);
+    set('--fg-soft', preset.textSoft);
+    set('--muted', preset.textMuted);
+    set('--blue-a', preset.accentSoft);
+    set('--blue-b', preset.accent);
+
+    root.setAttribute('data-theme', normalized);
+  }
+
+  if (typeof document !== 'undefined' && document.body) {
+    document.body.style.setProperty('--bg', preset.background);
+    document.body.style.backgroundColor = preset.background;
+    document.body.setAttribute('data-theme', normalized);
   }
 
   if (!skipStore && typeof localStorage !== 'undefined') {
     try {
-      localStorage.setItem(BACKGROUND_COLOR_STORAGE_KEY, normalized);
+      localStorage.setItem(THEME_STORAGE_KEY, normalized);
+      localStorage.removeItem(LEGACY_THEME_STORAGE_KEY);
     } catch (error) {
-      console.warn('[Helen] No se pudo guardar el color de fondo:', error);
+      console.warn('[Helen] No se pudo guardar el tema seleccionado:', error);
     }
   }
 
-  if (!silent && normalized !== previous) {
-    dispatchBackgroundColorChange(normalized);
+  if (!silent) {
+    dispatchThemeChange(normalized, preset);
   }
 
   return normalized;
 };
 
-const readStoredBackgroundColor = () => {
+const readStoredTheme = () => {
   if (typeof localStorage === 'undefined') {
-    return DEFAULT_BACKGROUND_COLOR;
+    return DEFAULT_THEME;
   }
   try {
-    const stored = localStorage.getItem(BACKGROUND_COLOR_STORAGE_KEY);
-    return stored ? normalizeBackgroundColor(stored) : DEFAULT_BACKGROUND_COLOR;
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored && THEME_PRESETS[stored]) {
+      return stored;
+    }
+    const legacy = localStorage.getItem(LEGACY_THEME_STORAGE_KEY);
+    if (legacy && THEME_PRESETS[legacy]) {
+      shouldPersistThemeMigration = true;
+      return legacy;
+    }
   } catch (error) {
-    console.warn('[Helen] No se pudo leer el color de fondo almacenado:', error);
-    return DEFAULT_BACKGROUND_COLOR;
+    console.warn('[Helen] No se pudo leer el tema almacenado:', error);
+  }
+  return DEFAULT_THEME;
+};
+
+const initialTheme = applyTheme(readStoredTheme(), { silent: true, skipStore: true });
+
+if (shouldPersistThemeMigration && typeof localStorage !== 'undefined') {
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, initialTheme);
+    localStorage.removeItem(LEGACY_THEME_STORAGE_KEY);
+  } catch (error) {
+    console.warn('[Helen] No se pudo migrar la preferencia de color legacy:', error);
+  }
+}
+
+const FONT_SCALE_STORAGE_KEY = 'helen.fontScale';
+const DEFAULT_FONT_SCALE = 'normal';
+const FONT_SCALE_MAP = {
+  small: { label: 'Pequeña', scale: 0.9 },
+  normal: { label: 'Normal', scale: 1 },
+  large: { label: 'Grande', scale: 1.15 },
+};
+
+let currentFontScale = DEFAULT_FONT_SCALE;
+
+const normalizeFontScale = (value) => (FONT_SCALE_MAP[value] ? value : DEFAULT_FONT_SCALE);
+
+const dispatchFontScaleChange = (scaleKey) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const detail = {
+    scale: scaleKey,
+    value: FONT_SCALE_MAP[scaleKey] ? FONT_SCALE_MAP[scaleKey].scale : FONT_SCALE_MAP[DEFAULT_FONT_SCALE].scale,
+  };
+  try {
+    window.dispatchEvent(new CustomEvent('helen:font-scale', { detail }));
+  } catch (error) {
+    if (typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent({ type: 'helen:font-scale', detail });
+    }
   }
 };
 
-const initialBackgroundColor = applyBackgroundColor(readStoredBackgroundColor(), { silent: true, skipStore: true });
+const applyFontScale = (scaleKey, options = {}) => {
+  const { silent = false, skipStore = false } = options;
+  const normalized = normalizeFontScale(scaleKey);
+  const preset = FONT_SCALE_MAP[normalized];
+  currentFontScale = normalized;
+
+  if (typeof document !== 'undefined' && document.documentElement) {
+    document.documentElement.style.setProperty('--helen-font-scale', String(preset.scale));
+    document.documentElement.setAttribute('data-font-scale', normalized);
+  }
+
+  if (!skipStore && typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(FONT_SCALE_STORAGE_KEY, normalized);
+    } catch (error) {
+      console.warn('[Helen] No se pudo guardar el tamaño de letra:', error);
+    }
+  }
+
+  if (!silent) {
+    dispatchFontScaleChange(normalized);
+  }
+
+  return normalized;
+};
+
+const readStoredFontScale = () => {
+  if (typeof localStorage === 'undefined') {
+    return DEFAULT_FONT_SCALE;
+  }
+  try {
+    const stored = localStorage.getItem(FONT_SCALE_STORAGE_KEY);
+    return stored ? normalizeFontScale(stored) : DEFAULT_FONT_SCALE;
+  } catch (error) {
+    console.warn('[Helen] No se pudo leer el tamaño de letra almacenado:', error);
+    return DEFAULT_FONT_SCALE;
+  }
+};
+
+const initialFontScale = applyFontScale(readStoredFontScale(), { silent: true, skipStore: true });
+
+const PERFORMANCE_MODE_STORAGE_KEY = 'helen.perfMode';
+let hasStoredPerformancePreference = false;
+let currentPerformanceMode = false;
+
+const resolveReducedMotionPreference = () => {
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    try {
+      return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch (error) {
+      console.warn('[Helen] No se pudo consultar prefers-reduced-motion:', error);
+    }
+  }
+  return false;
+};
+
+const parsePerformancePreference = (value) => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
+  }
+  return false;
+};
+
+const dispatchPerformanceModeChange = (enabled) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const detail = { enabled: !!enabled };
+  try {
+    window.dispatchEvent(new CustomEvent('helen:performance-mode', { detail }));
+  } catch (error) {
+    if (typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent({ type: 'helen:performance-mode', detail });
+    }
+  }
+};
+
+const applyPerformanceMode = (value, options = {}) => {
+  const { silent = false, skipStore = false } = options;
+  const enabled = parsePerformancePreference(value);
+  currentPerformanceMode = enabled;
+
+  if (typeof document !== 'undefined' && document.documentElement) {
+    const root = document.documentElement;
+    if (root.classList && typeof root.classList.toggle === 'function') {
+      root.classList.toggle('perf-mode', enabled);
+    } else {
+      const currentClass = root.getAttribute('class') || '';
+      const hasPerf = currentClass.includes('perf-mode');
+      if (enabled && !hasPerf) {
+        root.setAttribute('class', `${currentClass} perf-mode`.trim());
+      } else if (!enabled && hasPerf) {
+        root.setAttribute('class', currentClass.replace(/\bperf-mode\b/, '').replace(/\s{2,}/g, ' ').trim());
+      }
+    }
+    root.setAttribute('data-perf-mode', enabled ? 'on' : 'off');
+  }
+
+  if (typeof document !== 'undefined' && document.body) {
+    document.body.setAttribute('data-perf-mode', enabled ? 'on' : 'off');
+  }
+
+  if (!skipStore && typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(PERFORMANCE_MODE_STORAGE_KEY, enabled ? '1' : '0');
+      hasStoredPerformancePreference = true;
+    } catch (error) {
+      console.warn('[Helen] No se pudo guardar el modo rendimiento:', error);
+    }
+  }
+
+  if (!silent) {
+    dispatchPerformanceModeChange(enabled);
+  }
+
+  return enabled;
+};
+
+const readStoredPerformanceMode = () => {
+  if (typeof localStorage === 'undefined') {
+    return resolveReducedMotionPreference();
+  }
+  try {
+    const stored = localStorage.getItem(PERFORMANCE_MODE_STORAGE_KEY);
+    if (stored === null) {
+      hasStoredPerformancePreference = false;
+      return resolveReducedMotionPreference();
+    }
+    hasStoredPerformancePreference = true;
+    return parsePerformancePreference(stored);
+  } catch (error) {
+    console.warn('[Helen] No se pudo leer el modo rendimiento almacenado:', error);
+    return resolveReducedMotionPreference();
+  }
+};
+
+const initialPerformanceMode = applyPerformanceMode(readStoredPerformanceMode(), { silent: true, skipStore: true });
+
+if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+  try {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const handleMotionChange = (event) => {
+      if (!hasStoredPerformancePreference) {
+        applyPerformanceMode(event.matches, { silent: false, skipStore: true });
+      }
+    };
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleMotionChange);
+    } else if (typeof mediaQuery.addListener === 'function') {
+      mediaQuery.addListener(handleMotionChange);
+    }
+  } catch (error) {
+    console.warn('[Helen] No se pudo registrar el listener de prefers-reduced-motion:', error);
+  }
+}
 
 const raspberryFit = (() => {
   if (typeof window === 'undefined') {
@@ -377,14 +695,33 @@ if (typeof window !== 'undefined') {
 
   window.HelenTheme = window.HelenTheme || {};
   window.HelenTheme.background = {
-    get: () => currentBackgroundColor,
-    set: (color) => applyBackgroundColor(color),
-    options: () => Object.entries(BACKGROUND_COLOR_MAP).map(([key, entry]) => ({
+    get: () => currentTheme,
+    set: (theme) => applyTheme(theme),
+    options: () => Object.entries(THEME_PRESETS).map(([key, preset]) => ({
       key,
-      label: entry.label,
-      value: entry.value,
+      label: preset.label,
+      value: preset.background,
     })),
-    storageKey: BACKGROUND_COLOR_STORAGE_KEY,
+    storageKey: THEME_STORAGE_KEY,
+  };
+
+  window.HelenPersonalization = {
+    theme: window.HelenTheme.background,
+    fontScale: {
+      get: () => currentFontScale,
+      set: (scale) => applyFontScale(scale),
+      options: () => Object.entries(FONT_SCALE_MAP).map(([key, entry]) => ({
+        key,
+        label: entry.label,
+        scale: entry.scale,
+      })),
+      storageKey: FONT_SCALE_STORAGE_KEY,
+    },
+    performance: {
+      get: () => currentPerformanceMode,
+      set: (enabled) => applyPerformanceMode(enabled),
+      storageKey: PERFORMANCE_MODE_STORAGE_KEY,
+    },
   };
 
   window.addEventListener('storage', (event) => {
@@ -394,8 +731,22 @@ if (typeof window !== 'undefined') {
     if (event.key === DISPLAY_MODE_STORAGE_KEY && event.newValue) {
       applyDisplayMode(event.newValue);
     }
-    if (event.key === BACKGROUND_COLOR_STORAGE_KEY && event.newValue) {
-      applyBackgroundColor(event.newValue, { skipStore: true });
+    if (event.key === THEME_STORAGE_KEY && event.newValue) {
+      applyTheme(event.newValue, { skipStore: true });
+    }
+    if (event.key === LEGACY_THEME_STORAGE_KEY && event.newValue) {
+      applyTheme(event.newValue, { skipStore: true });
+    }
+    if (event.key === FONT_SCALE_STORAGE_KEY && event.newValue) {
+      applyFontScale(event.newValue, { skipStore: true });
+    }
+    if (event.key === PERFORMANCE_MODE_STORAGE_KEY) {
+      hasStoredPerformancePreference = event.newValue !== null;
+      if (event.newValue === null) {
+        applyPerformanceMode(resolveReducedMotionPreference(), { skipStore: true });
+      } else {
+        applyPerformanceMode(event.newValue, { skipStore: true });
+      }
     }
   });
 
@@ -404,7 +755,9 @@ if (typeof window !== 'undefined') {
   });
 
   dispatchDisplayModeChange(initialDisplayMode);
-  dispatchBackgroundColorChange(initialBackgroundColor);
+  dispatchThemeChange(initialTheme, THEME_PRESETS[initialTheme]);
+  dispatchFontScaleChange(initialFontScale);
+  dispatchPerformanceModeChange(initialPerformanceMode);
 }
 
 // Inicializar la conexión al socket (SSE)
