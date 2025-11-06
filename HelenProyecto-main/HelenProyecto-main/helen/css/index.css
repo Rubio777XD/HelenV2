@@ -51,6 +51,7 @@ body{
   margin:0;
   font-family: "Roboto", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
   color: var(--fg);
+  background-color: var(--bg);
   background:
     radial-gradient(1200px 600px at 12% 10%, var(--halo-a), transparent 60%),
     radial-gradient(1200px 700px at 88% 92%, var(--halo-b), transparent 60%),
@@ -111,7 +112,7 @@ body{
 .home-left{ display: grid; grid-auto-rows: min-content; gap: 24px }
 .home-time{ text-align:center }
 .home-time .clock{
-  font-size: clamp(56px, 12vw, 124px);
+  font-size: clamp(84px, 18vw, 186px);
   line-height: .9;
   font-weight: 200;  /* menos grueso */
   color: #fff;

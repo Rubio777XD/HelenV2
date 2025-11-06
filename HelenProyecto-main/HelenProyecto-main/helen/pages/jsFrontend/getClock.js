@@ -1,37 +1,20 @@
 const ZONAS_HORARIAS = {
-  mexicali: "America/Tijuana",
-  ensenada: "America/Tijuana",
-  tecate: "America/Tijuana",
-  rosarito: "America/Tijuana",
-  tijuana: "America/Tijuana",
-  chiapas: "America/Mexico_City",
+  mexicali: 'America/Tijuana',
+  ensenada: 'America/Tijuana',
+  tecate: 'America/Tijuana',
+  rosarito: 'America/Tijuana',
+  tijuana: 'America/Tijuana',
+  chiapas: 'America/Mexico_City',
 };
 
 const CONFIG = {
-  STORAGE_KEY: "selectedCity",
-  DEFAULT_CITY: "tijuana",
-  TIMEZONEDB_API_KEY: "SJABR4Q4XL7D",
+  STORAGE_KEY: 'selectedCity',
+  FORMAT_KEY: 'clockFormatMode',
+  DEFAULT_CITY: 'tijuana',
 };
 
 (function () {
   'use strict';
-
-  const MONTHS = [
-    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-  ];
-  const ONE_HOUR_MS = 60 * 60 * 1000;
-  const RETRY_DELAY_MS = 60 * 1000;
-
-  const state = {
-    timezoneKey: CONFIG.DEFAULT_CITY,
-    is24h: true,
-    localBaseMs: 0,
-    syncClientMs: 0,
-    tickTimer: null,
-    refreshTimer: null,
-    lastRenderedMs: 0,
-  };
 
   const elements = {
     clock: null,
@@ -40,7 +23,28 @@ const CONFIG = {
     selector: null,
   };
 
-  const pad2 = (value) => String(value).padStart(2, '0');
+  const state = {
+    timezoneKey: CONFIG.DEFAULT_CITY,
+    is24h: true,
+    tickId: null,
+    localTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    timeFormatter: null,
+    dateFormatter: null,
+  };
+
+  const MONTHS = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+  ];
+
+  const pad = (value) => String(value).padStart(2, '0');
+
+  const sanitizeDayPeriod = (value) => {
+    if (!value) {
+      return '';
+    }
+    return value.replace(/\./g, '').replace(/\s+/g, '').toUpperCase();
+  };
 
   const setElementText = (element, value) => {
     if (!element) {
@@ -51,152 +55,156 @@ const CONFIG = {
     }
   };
 
-  const computeParts = (ms) => {
-    const date = new Date(ms);
-    return {
-      hours: date.getUTCHours(),
-      minutes: date.getUTCMinutes(),
-      seconds: date.getUTCSeconds(),
-      day: date.getUTCDate(),
-      monthIndex: date.getUTCMonth(),
-      year: date.getUTCFullYear(),
-    };
+  const resolveTimezoneKey = () => {
+    if (!state.localTimeZone) {
+      return CONFIG.DEFAULT_CITY;
+    }
+    const match = Object.entries(ZONAS_HORARIAS).find(([, zone]) => zone === state.localTimeZone);
+    return match ? match[0] : CONFIG.DEFAULT_CITY;
   };
 
-  const formatTime = (parts) => {
+  const activeTimeZone = () => ZONAS_HORARIAS[state.timezoneKey] || state.localTimeZone || 'UTC';
+
+  const buildFormatters = () => {
+    const tz = activeTimeZone();
+    try {
+      state.timeFormatter = new Intl.DateTimeFormat('es-MX', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: !state.is24h,
+        timeZone: tz,
+      });
+      state.dateFormatter = new Intl.DateTimeFormat('es-MX', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: tz,
+      });
+    } catch (error) {
+      console.error('[Helen] No se pudo construir formateadores de hora:', error);
+      state.timeFormatter = null;
+      state.dateFormatter = null;
+    }
+  };
+
+  const formatTime = (date) => {
+    if (!state.timeFormatter) {
+      buildFormatters();
+    }
+    if (!state.timeFormatter) {
+      const fallback = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+      return state.is24h ? fallback : `${pad((date.getHours() % 12) || 12)}:${pad(date.getMinutes())}:${pad(date.getSeconds())} ${date.getHours() >= 12 ? 'PM' : 'AM'}`;
+    }
+
+    const parts = state.timeFormatter.formatToParts(date);
+    const map = parts.reduce((acc, part) => {
+      acc[part.type] = part.value;
+      return acc;
+    }, {});
+
+    const hour = pad(map.hour || date.getHours());
+    const minute = pad(map.minute || date.getMinutes());
+    const second = pad(map.second || date.getSeconds());
     if (state.is24h) {
-      return `${pad2(parts.hours)}:${pad2(parts.minutes)}:${pad2(parts.seconds)}`;
+      return `${hour}:${minute}:${second}`;
     }
-    const hour12 = parts.hours % 12 || 12;
-    const suffix = parts.hours >= 12 ? 'PM' : 'AM';
-    return `${pad2(hour12)}:${pad2(parts.minutes)}:${pad2(parts.seconds)} ${suffix}`;
+    const suffix = sanitizeDayPeriod(map.dayPeriod || '');
+    return suffix ? `${hour}:${minute}:${second} ${suffix}` : `${hour}:${minute}:${second}`;
   };
 
-  const formatDate = (parts) => `${parts.day} de ${MONTHS[parts.monthIndex]}, ${parts.year}`;
-
-  const renderFromMs = (ms) => {
-    if (!ms) {
-      return;
+  const formatDate = (date) => {
+    if (!state.dateFormatter) {
+      buildFormatters();
     }
-    const parts = computeParts(ms);
-    setElementText(elements.clock, formatTime(parts));
-    setElementText(elements.date, formatDate(parts));
-    state.lastRenderedMs = ms;
+    if (!state.dateFormatter) {
+      const month = MONTHS[date.getMonth()] || '';
+      const monthCap = month ? month.charAt(0).toUpperCase() + month.slice(1) : '';
+      return `${date.getDate()} de ${monthCap}, ${date.getFullYear()}`;
+    }
+    const parts = state.dateFormatter.formatToParts(date);
+    const day = parts.find((part) => part.type === 'day')?.value || String(date.getDate());
+    const month = parts.find((part) => part.type === 'month')?.value || (MONTHS[date.getMonth()] || '');
+    const year = parts.find((part) => part.type === 'year')?.value || String(date.getFullYear());
+    const monthCap = month ? month.charAt(0).toUpperCase() + month.slice(1) : '';
+    return `${day} de ${monthCap || month}, ${year}`;
+  };
+
+  const updateClock = () => {
+    const now = new Date();
+    setElementText(elements.clock, formatTime(now));
+    setElementText(elements.date, formatDate(now));
   };
 
   const stopTick = () => {
-    if (state.tickTimer) {
-      window.clearTimeout(state.tickTimer);
-      state.tickTimer = null;
+    if (state.tickId) {
+      window.clearInterval(state.tickId);
+      state.tickId = null;
     }
-  };
-
-  const runTick = () => {
-    if (!state.localBaseMs) {
-      return;
-    }
-    const now = Date.now();
-    const elapsed = now - state.syncClientMs;
-    const currentMs = state.localBaseMs + elapsed;
-    renderFromMs(currentMs);
-    const remainder = currentMs % 1000;
-    const delay = remainder ? 1000 - remainder : 1000;
-    state.tickTimer = window.setTimeout(runTick, Math.max(200, delay));
   };
 
   const startTick = () => {
     stopTick();
-    runTick();
+    buildFormatters();
+    updateClock();
+    state.tickId = window.setInterval(updateClock, 1000);
   };
 
-  const scheduleRefresh = (delayMs) => {
-    if (state.refreshTimer) {
-      window.clearTimeout(state.refreshTimer);
-      state.refreshTimer = null;
-    }
-    const delay = Math.max(RETRY_DELAY_MS, typeof delayMs === 'number' ? delayMs : ONE_HOUR_MS);
-    state.refreshTimer = window.setTimeout(() => {
-      state.refreshTimer = null;
-      actualizarHoraLocal();
-    }, delay);
-  };
-
-  const fetchWithRetry = async (timezone) => {
-    const url = `https://api.timezonedb.com/v2.1/get-time-zone?key=${CONFIG.TIMEZONEDB_API_KEY}&format=json&by=zone&zone=${encodeURIComponent(timezone)}`;
-    let attempt = 0;
-    let backoff = 2000;
-
-    while (attempt <= 5) {
-      try {
-        const response = await fetch(url, { cache: 'no-store' });
-        if (!response.ok) {
-          throw new Error(`Error en la solicitud: ${response.status}`);
-        }
-        const data = await response.json();
-        return {
-          formatted: data.formatted,
-          timestamp: Number(data.timestamp),
-          gmtOffset: Number(data.gmtOffset),
-          zoneName: data.zoneName || timezone,
-        };
-      } catch (error) {
-        attempt += 1;
-        if (attempt > 5) {
-          throw error;
-        }
-        await new Promise((resolve) => window.setTimeout(resolve, backoff));
-        backoff = Math.min(backoff * 1.5, 8000);
-      }
-    }
-    throw new Error('No se pudo obtener la hora.');
-  };
-
-  async function actualizarHoraLocal() {
-    const timezoneKey = state.timezoneKey || CONFIG.DEFAULT_CITY;
-    const timezone = ZONAS_HORARIAS[timezoneKey];
-    if (!timezone) {
-      console.error('[Helen] Zona horaria no válida:', timezoneKey);
-      return;
-    }
-
-    let success = false;
-
+  const persistTimezone = (key) => {
     try {
-      const result = await fetchWithRetry(timezone);
-      const timestamp = Number(result.timestamp);
-      const offset = Number(result.gmtOffset);
-
-      if (!Number.isFinite(timestamp) || !Number.isFinite(offset)) {
-        throw new Error('Datos de hora incompletos.');
-      }
-
-      const localBaseMs = (timestamp + offset) * 1000;
-      state.localBaseMs = localBaseMs;
-      state.syncClientMs = Date.now();
-      renderFromMs(localBaseMs);
-      startTick();
-      success = true;
+      window.localStorage.setItem(CONFIG.STORAGE_KEY, key);
     } catch (error) {
-      console.error('[Helen] No se pudo sincronizar la hora:', error);
-      stopTick();
-      setElementText(elements.clock, '--:--:--');
-      setElementText(elements.date, 'Sin conexión');
-    } finally {
-      scheduleRefresh(success ? ONE_HOUR_MS : RETRY_DELAY_MS);
+      console.warn('[Helen] No se pudo guardar la zona horaria seleccionada:', error);
     }
-  }
+  };
 
   const loadSavedTimezone = () => {
     try {
       const saved = window.localStorage.getItem(CONFIG.STORAGE_KEY);
       if (saved && ZONAS_HORARIAS[saved]) {
         state.timezoneKey = saved;
-      } else {
-        state.timezoneKey = CONFIG.DEFAULT_CITY;
+        return;
       }
     } catch (error) {
-      console.warn('[Helen] No se pudo leer localStorage:', error);
-      state.timezoneKey = CONFIG.DEFAULT_CITY;
+      console.warn('[Helen] No se pudo leer la zona horaria guardada:', error);
+    }
+    state.timezoneKey = resolveTimezoneKey();
+  };
+
+  const persistFormat = () => {
+    try {
+      window.localStorage.setItem(CONFIG.FORMAT_KEY, state.is24h ? '24' : '12');
+    } catch (error) {
+      console.warn('[Helen] No se pudo guardar el formato de hora:', error);
+    }
+  };
+
+  const loadSavedFormat = () => {
+    try {
+      const saved = window.localStorage.getItem(CONFIG.FORMAT_KEY);
+      if (saved === '12') {
+        state.is24h = false;
+      }
+    } catch (error) {
+      console.warn('[Helen] No se pudo leer el formato de hora guardado:', error);
+    }
+  };
+
+  const updateToggleLabel = () => {
+    if (elements.toggleButton) {
+      elements.toggleButton.textContent = state.is24h ? 'Cambiar a 12 horas' : 'Cambiar a 24 horas';
+    }
+  };
+
+  const highlightSelector = () => {
+    if (!elements.selector) {
+      return;
+    }
+    const target = ZONAS_HORARIAS[state.timezoneKey] ? state.timezoneKey : '';
+    if (target) {
+      elements.selector.value = target;
+    } else {
+      elements.selector.value = '';
     }
   };
 
@@ -206,16 +214,21 @@ const CONFIG = {
       return;
     }
     if (state.timezoneKey === selected) {
-      actualizarHoraLocal();
       return;
     }
     state.timezoneKey = selected;
-    try {
-      window.localStorage.setItem(CONFIG.STORAGE_KEY, selected);
-    } catch (error) {
-      console.warn('[Helen] No se pudo guardar la zona horaria seleccionada:', error);
+    persistTimezone(selected);
+    buildFormatters();
+    updateClock();
+    console.debug('[Helen] Zona horaria actualizada a', selected, activeTimeZone());
+  };
+
+  const handleVisibilityChange = () => {
+    if (document.hidden) {
+      stopTick();
+    } else {
+      startTick();
     }
-    actualizarHoraLocal();
   };
 
   const init = () => {
@@ -224,39 +237,36 @@ const CONFIG = {
     elements.toggleButton = document.querySelector('.toggle-format-btn');
     elements.selector = document.getElementById('citySelector');
 
+    loadSavedFormat();
     loadSavedTimezone();
+    highlightSelector();
+    updateToggleLabel();
 
     if (elements.selector) {
-      elements.selector.value = state.timezoneKey;
       elements.selector.addEventListener('change', handleSelectorChange);
     }
 
-    if (elements.toggleButton) {
-      elements.toggleButton.textContent = state.is24h ? 'Cambiar a 12 horas' : 'Cambiar a 24 horas';
-    }
-
-    actualizarHoraLocal();
+    startTick();
   };
 
   const cleanup = () => {
     stopTick();
-    if (state.refreshTimer) {
-      window.clearTimeout(state.refreshTimer);
-      state.refreshTimer = null;
+    if (elements.selector) {
+      elements.selector.removeEventListener('change', handleSelectorChange);
     }
   };
 
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
   window.addEventListener('beforeunload', cleanup);
   window.addEventListener('pagehide', cleanup);
 
+  document.addEventListener('DOMContentLoaded', init);
+
   window.alternarFormatoHora = function alternarFormatoHora() {
     state.is24h = !state.is24h;
-    if (elements.toggleButton) {
-      elements.toggleButton.textContent = state.is24h ? 'Cambiar a 12 horas' : 'Cambiar a 24 horas';
-    }
-    if (state.lastRenderedMs) {
-      renderFromMs(state.lastRenderedMs);
-    }
+    updateToggleLabel();
+    persistFormat();
+    buildFormatters();
+    updateClock();
   };
 })();

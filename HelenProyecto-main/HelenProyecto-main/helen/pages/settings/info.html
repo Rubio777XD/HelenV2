@@ -220,6 +220,33 @@
           <button class="mode-toggle" type="button" data-mode-toggle>Cambiar a modo Raspberry (7&quot;)</button>
         </div>
 
+        <div class="mode-color">
+          <h2 class="mode-color__title">Color de fondo de HELEN</h2>
+          <p class="mode-color__hint">Elige un color base; los destellos y burbujas seguirán activos.</p>
+          <div class="color-picker" role="radiogroup" aria-label="Color de fondo de HELEN" data-theme-color-picker>
+            <button class="color-chip" type="button" role="radio" data-color="blue" aria-checked="false" tabindex="0">
+              <span class="color-chip__swatch" style="--chip-color: #0b1220"></span>
+              <span class="color-chip__label">Azul</span>
+            </button>
+            <button class="color-chip" type="button" role="radio" data-color="red" aria-checked="false" tabindex="-1">
+              <span class="color-chip__swatch" style="--chip-color: #200b13"></span>
+              <span class="color-chip__label">Rojo</span>
+            </button>
+            <button class="color-chip" type="button" role="radio" data-color="green" aria-checked="false" tabindex="-1">
+              <span class="color-chip__swatch" style="--chip-color: #0b2016"></span>
+              <span class="color-chip__label">Verde</span>
+            </button>
+            <button class="color-chip" type="button" role="radio" data-color="purple" aria-checked="false" tabindex="-1">
+              <span class="color-chip__swatch" style="--chip-color: #1a0b2b"></span>
+              <span class="color-chip__label">Morado</span>
+            </button>
+            <button class="color-chip" type="button" role="radio" data-color="pink" aria-checked="false" tabindex="-1">
+              <span class="color-chip__swatch" style="--chip-color: #260b1d"></span>
+              <span class="color-chip__label">Rosa</span>
+            </button>
+          </div>
+        </div>
+
         <p class="mode-note">El modo seleccionado se aplicará a toda la interfaz, sin depender del tamaño de la pantalla.</p>
       </div>
 
@@ -250,6 +277,9 @@
       const modeStatus = document.querySelector('[data-mode-status]');
       const modeButton = document.querySelector('[data-mode-toggle]');
       const modeHelper = window.HelenDisplayMode;
+      const colorPicker = document.querySelector('[data-theme-color-picker]');
+      const colorButtons = colorPicker ? Array.from(colorPicker.querySelectorAll('[data-color]')) : [];
+      const backgroundHelper = window.HelenTheme && window.HelenTheme.background;
 
       const updateModeUI = (mode) => {
         const normalized = (mode || '').toLowerCase() === 'raspberry' ? 'raspberry' : 'windows';
@@ -263,10 +293,63 @@
         }
       };
 
+      const updateColorSelection = (color) => {
+        if (!colorButtons.length) {
+          return;
+        }
+        let hasActive = false;
+        colorButtons.forEach((button) => {
+          const isSelected = button.dataset.color === color;
+          button.classList.toggle('is-selected', isSelected);
+          button.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+          button.setAttribute('tabindex', isSelected ? '0' : '-1');
+          if (isSelected) {
+            hasActive = true;
+          }
+        });
+        if (!hasActive) {
+          const [first] = colorButtons;
+          if (first) {
+            first.setAttribute('tabindex', '0');
+          }
+        }
+      };
+
       if (modeButton && modeHelper) {
         modeButton.addEventListener('click', () => {
           const nextMode = modeHelper.current() === 'raspberry' ? 'windows' : 'raspberry';
           modeHelper.set(nextMode);
+        });
+      }
+
+      if (colorPicker && colorButtons.length && backgroundHelper) {
+        colorButtons.forEach((button) => {
+          button.addEventListener('click', () => {
+            const color = button.dataset.color;
+            if (!color) {
+              return;
+            }
+            console.debug('[Helen] Cambio de color de fondo solicitado:', color);
+            const applied = backgroundHelper.set(color);
+            updateColorSelection(applied);
+          });
+
+          button.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              button.click();
+            }
+          });
+        });
+
+        const initialColor = backgroundHelper.get();
+        updateColorSelection(initialColor);
+
+        window.addEventListener('helen:background-color', (event) => {
+          const color = event?.detail?.color;
+          if (color) {
+            updateColorSelection(color);
+          }
         });
       }
 

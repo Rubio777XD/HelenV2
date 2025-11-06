@@ -13,6 +13,8 @@
   };
 
   let scheduler = null;
+  const SCHEDULER_POLL_INTERVAL_MS = 60;
+  const SCHEDULER_MAX_WAIT_MS = 5000;
   let displayEl;
   let labelEl;
   let statusEl;
@@ -385,6 +387,7 @@
     state.timers = Array.isArray(items)
       ? items.filter((item) => item && item.type === 'timer')
       : [];
+    console.debug('[Timer] Evento de actualización recibido.', { total: state.timers.length });
     render();
     updateVisualCountdowns();
   };
@@ -402,6 +405,7 @@
     const id = scheduler.createTimer({ durationMs: duration, label: trimmedLabel || undefined, autoRemove: true });
     state.selectedId = id;
     clearStatusOverride();
+    console.debug('[Timer] Temporizador creado.', { id, duracionMs: duration, etiqueta: trimmedLabel || undefined });
     return id;
   };
 
@@ -432,6 +436,7 @@
     if (!timer || !scheduler) {
       return;
     }
+    console.debug('[Timer] Acción principal ejecutada.', { id: timer.id, estado: timer.state });
     if (timer.state === 'running') {
       scheduler.pauseTimer(timer.id);
     } else if (timer.state === 'paused') {
@@ -439,6 +444,9 @@
     } else {
       scheduler.resetTimer(timer.id);
     }
+    window.setTimeout(() => {
+      updateVisualCountdowns();
+    }, 80);
   };
 
   const handleResetAction = () => {
@@ -446,7 +454,11 @@
     if (!timer || !scheduler) {
       return;
     }
+    console.debug('[Timer] Reinicio solicitado.', { id: timer.id, estado: timer.state });
     scheduler.resetTimer(timer.id);
+    window.setTimeout(() => {
+      updateVisualCountdowns();
+    }, 80);
   };
 
   const handleTimersListClick = (event) => {
@@ -622,13 +634,27 @@
     };
   };
 
-  const init = () => {
-    scheduler = window.HelenScheduler;
-    if (!scheduler) {
-      console.warn('[Timer] HelenScheduler no está disponible.');
+  const waitForScheduler = () => new Promise((resolve, reject) => {
+    if (window.HelenScheduler) {
+      resolve(window.HelenScheduler);
       return;
     }
+    const deadline = Date.now() + SCHEDULER_MAX_WAIT_MS;
+    const poll = () => {
+      if (window.HelenScheduler) {
+        resolve(window.HelenScheduler);
+        return;
+      }
+      if (Date.now() >= deadline) {
+        reject(new Error('HelenScheduler no disponible'));
+        return;
+      }
+      window.setTimeout(poll, SCHEDULER_POLL_INTERVAL_MS);
+    };
+    poll();
+  });
 
+  const init = () => {
     displayEl = document.getElementById('timerDisplay');
     labelEl = document.getElementById('timerLabel');
     statusEl = document.getElementById('timerStatus');
@@ -682,12 +708,54 @@
     setupStepperButtons();
     exposeTimerAPI();
 
-    scheduler.on('update', handleSchedulerUpdate);
-    scheduler.ready().then(() => {
-      handleSchedulerUpdate(scheduler.list('timer'));
-      startVisualTicker();
-    });
-    startVisualTicker();
+    waitForScheduler()
+      .then((instance) => {
+        console.debug('[Timer] HelenScheduler detectado.');
+        scheduler = instance;
+
+        if (typeof scheduler.on === 'function') {
+          scheduler.on('update', handleSchedulerUpdate);
+        }
+
+        const listTimers = () => {
+          if (typeof scheduler.list === 'function') {
+            try {
+              return scheduler.list('timer');
+            } catch (error) {
+              console.warn('[Timer] No se pudo obtener la lista de temporizadores:', error);
+            }
+          }
+          return [];
+        };
+
+        const bootstrapTimers = () => {
+          const snapshot = listTimers();
+          handleSchedulerUpdate(Array.isArray(snapshot) ? snapshot : []);
+        };
+
+        if (typeof scheduler.ready === 'function') {
+          scheduler.ready()
+            .then(() => {
+              const snapshot = listTimers();
+              console.debug('[Timer] HelenScheduler listo.', { temporizadores: snapshot.length });
+              handleSchedulerUpdate(snapshot);
+            })
+            .catch((error) => {
+              console.error('[Timer] Error al preparar HelenScheduler:', error);
+              bootstrapTimers();
+            })
+            .finally(() => {
+              startVisualTicker();
+            });
+        } else {
+          bootstrapTimers();
+          startVisualTicker();
+        }
+      })
+      .catch((error) => {
+        console.error('[Timer] No se pudo inicializar HelenScheduler:', error);
+        setStatusOverride('No se pudo inicializar el temporizador.', 'warning', 4800);
+      });
   };
 
   if (document.readyState === 'loading') {
