@@ -77,6 +77,7 @@ body{
   --mode-inner-padding: 24px;
   --mode-touch-target: 44px;
   font-size: calc(100% * var(--mode-font-scale, 1));
+  background-color: var(--bg);
   background:
     radial-gradient(1200px 600px at 12% 10%, var(--halo-a), transparent 60%),
     radial-gradient(1200px 700px at 88% 92%, var(--halo-b), transparent 60%),

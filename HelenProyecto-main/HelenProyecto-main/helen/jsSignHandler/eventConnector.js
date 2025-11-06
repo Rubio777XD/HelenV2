@@ -8,6 +8,86 @@ const MODE_API_BASE = '/mode';
 const MODE_GET_URL = `${MODE_API_BASE}/get`;
 const MODE_SET_URL = `${MODE_API_BASE}/set`;
 
+const BACKGROUND_COLOR_STORAGE_KEY = 'helen:background-color';
+const DEFAULT_BACKGROUND_COLOR = 'blue';
+const BACKGROUND_COLOR_MAP = {
+  blue: { label: 'Azul', value: '#0b1220' },
+  red: { label: 'Rojo', value: '#200b13' },
+  green: { label: 'Verde', value: '#0b2016' },
+  purple: { label: 'Morado', value: '#1a0b2b' },
+  pink: { label: 'Rosa', value: '#260b1d' },
+};
+
+let currentBackgroundColor = DEFAULT_BACKGROUND_COLOR;
+
+const normalizeBackgroundColor = (color) => (BACKGROUND_COLOR_MAP[color] ? color : DEFAULT_BACKGROUND_COLOR);
+
+const dispatchBackgroundColorChange = (color) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const detail = {
+    color,
+    value: BACKGROUND_COLOR_MAP[color] ? BACKGROUND_COLOR_MAP[color].value : BACKGROUND_COLOR_MAP[DEFAULT_BACKGROUND_COLOR].value,
+  };
+  try {
+    const event = new CustomEvent('helen:background-color', { detail });
+    window.dispatchEvent(event);
+  } catch (error) {
+    if (typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent({ type: 'helen:background-color', detail });
+    }
+  }
+};
+
+const applyBackgroundColor = (color, options = {}) => {
+  const { silent = false, skipStore = false } = options;
+  const normalized = normalizeBackgroundColor(color);
+  const entry = BACKGROUND_COLOR_MAP[normalized];
+  const value = entry ? entry.value : BACKGROUND_COLOR_MAP[DEFAULT_BACKGROUND_COLOR].value;
+  const previous = currentBackgroundColor;
+  currentBackgroundColor = normalized;
+
+  if (typeof document !== 'undefined' && document.documentElement) {
+    document.documentElement.style.setProperty('--bg', value);
+    document.documentElement.setAttribute('data-bg-color', normalized);
+    if (document.body) {
+      document.body.style.setProperty('--bg', value);
+      document.body.setAttribute('data-bg-color', normalized);
+      document.body.style.backgroundColor = value;
+    }
+  }
+
+  if (!skipStore && typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(BACKGROUND_COLOR_STORAGE_KEY, normalized);
+    } catch (error) {
+      console.warn('[Helen] No se pudo guardar el color de fondo:', error);
+    }
+  }
+
+  if (!silent && normalized !== previous) {
+    dispatchBackgroundColorChange(normalized);
+  }
+
+  return normalized;
+};
+
+const readStoredBackgroundColor = () => {
+  if (typeof localStorage === 'undefined') {
+    return DEFAULT_BACKGROUND_COLOR;
+  }
+  try {
+    const stored = localStorage.getItem(BACKGROUND_COLOR_STORAGE_KEY);
+    return stored ? normalizeBackgroundColor(stored) : DEFAULT_BACKGROUND_COLOR;
+  } catch (error) {
+    console.warn('[Helen] No se pudo leer el color de fondo almacenado:', error);
+    return DEFAULT_BACKGROUND_COLOR;
+  }
+};
+
+const initialBackgroundColor = applyBackgroundColor(readStoredBackgroundColor(), { silent: true, skipStore: true });
+
 const raspberryFit = (() => {
   if (typeof window === 'undefined') {
     return { schedule: () => {}, measure: () => {}, reset: () => {} };
@@ -295,9 +375,27 @@ if (typeof window !== 'undefined') {
     storageKey: DISPLAY_MODE_STORAGE_KEY,
   };
 
+  window.HelenTheme = window.HelenTheme || {};
+  window.HelenTheme.background = {
+    get: () => currentBackgroundColor,
+    set: (color) => applyBackgroundColor(color),
+    options: () => Object.entries(BACKGROUND_COLOR_MAP).map(([key, entry]) => ({
+      key,
+      label: entry.label,
+      value: entry.value,
+    })),
+    storageKey: BACKGROUND_COLOR_STORAGE_KEY,
+  };
+
   window.addEventListener('storage', (event) => {
-    if (event && event.key === DISPLAY_MODE_STORAGE_KEY && event.newValue) {
+    if (!event || typeof event.key !== 'string') {
+      return;
+    }
+    if (event.key === DISPLAY_MODE_STORAGE_KEY && event.newValue) {
       applyDisplayMode(event.newValue);
+    }
+    if (event.key === BACKGROUND_COLOR_STORAGE_KEY && event.newValue) {
+      applyBackgroundColor(event.newValue, { skipStore: true });
     }
   });
 
@@ -306,6 +404,7 @@ if (typeof window !== 'undefined') {
   });
 
   dispatchDisplayModeChange(initialDisplayMode);
+  dispatchBackgroundColorChange(initialBackgroundColor);
 }
 
 // Inicializar la conexión al socket (SSE)
