@@ -5,3 +5,5 @@
 - Limpieza de scripts: nuevos `run_windows_lstm.bat`, `run_pi5_lstm.sh` y `verify_tf_model.py`; se eliminaron scripts legacy.
 - Documentación renovada en `README.md` para instalación y ejecución en Windows y Raspberry Pi.
 - Ajustes en el clasificador TensorFlow para manejar 42 o 126 features y mantener el buffer de 96 frames.
+- Perfil `debug_lstm` añadido con umbrales relajados y logging detallado (`HELEN_DEBUG=1`), más reporte de sesión extendido con ejemplos de decisiones y máximos por clase.
+- Nuevo script `scripts/debug_lstm_offline.py` para reproducir inferencias LSTM sin cámara.
