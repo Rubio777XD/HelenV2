@@ -1,3 +1,4 @@
+#!/usr/bin/env python3.10
 """Camera probing utilities for HELEN deployments.
 
 This module enumerates available capture sources (V4L2, libcamera and

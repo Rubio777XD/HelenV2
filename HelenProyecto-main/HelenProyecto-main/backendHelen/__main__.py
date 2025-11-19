@@ -1,3 +1,4 @@
+#!/usr/bin/env python3.10
 """CLI entrypoint for ``python -m backendHelen``."""
 
 from .server import main

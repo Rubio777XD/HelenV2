@@ -1,7 +1,7 @@
 # HELEN – Asistente visual por gestos (backend LSTM)
 
 ## Descripción general
-HELEN es un asistente tipo "Echo Show" para personas sordas. Captura gestos de mano con MediaPipe y OpenCV, forma secuencias compactas de **32 fotogramas × 126 características** (21 landmarks × 3 coords × 2 manos) y las reexpande a **96 frames** para alimentar el modelo **LSTM en TensorFlow**. El backend expone eventos SSE para que la interfaz web en `helen/` encienda el anillo de activación y navegue entre pantallas al reconocer los gestos.
+HELEN es un asistente tipo "Echo Show" para personas sordas. Captura gestos de mano con MediaPipe y OpenCV, forma secuencias compactas de **24 fotogramas × 126 características** (21 landmarks × 3 coords × 2 manos) y las reexpande a **96 frames** para alimentar el modelo **LSTM en TensorFlow**. El backend expone eventos SSE para que la interfaz web en `helen/` encienda el anillo de activación y navegue entre pantallas al reconocer los gestos.
 
 - Backend: Python (Flask + SSE) en `backendHelen/`, clasificador principal `TensorFlowSequenceGestureClassifier`.
 - Frontend: HTML/JS servido desde `/`, escucha `/events` y mantiene el mismo contrato histórico de eventos (`message` con `gesture`, `score`, `active`, etc.).
@@ -37,15 +37,21 @@ HELEN es un asistente tipo "Echo Show" para personas sordas. Captura gestos de m
 5. Para modo kiosk persistente, invoca el script desde un servicio `systemd` o un `.desktop` que ejecute Chromium apuntando a `http://localhost:5000`.
 
 ## Uso del backend LSTM
-- Buffer: la primera predicción requiere llenar 32 frames. Con el `poll_interval` por defecto (0.03s) equivale a ~33 FPS, así que basta ~1 segundo sosteniendo la seña para tener suficiente contexto; la secuencia se rellena hasta 96 frames para mantener la forma del modelo.
+- Buffer: la primera predicción requiere solo 3 frames reales (la ventana admite hasta 24). Con el `poll_interval` por defecto (0.01s) basta ~0.1s para empezar a emitir; el resto se rellena hasta 96 frames para mantener la forma del modelo.
 - Entrada esperada del modelo: tensor `(1, 96, 126)` en `float32`, rellenado a partir de la ventana corta.
-- Si MediaPipe produce 42 features (x, y de una mano), el backend rellena `z=0` y duplica la mano para simular dos manos mientras se captura la otra. La ventana compacta siempre preserva la forma final `(1, 32, 126)` antes de rellenar a `(1, 96, 126)`.
+- Si MediaPipe produce 42 features (x, y de una mano), el backend rellena `z=0` y duplica la mano para simular dos manos mientras se captura la otra. La ventana compacta siempre preserva la forma final `(1, 24, 126)` antes de rellenar a `(1, 96, 126)`.
 - Si el modelo TensorFlow no carga, el servidor usa un clasificador **dummy** (siempre `score=0.0`) para no caer en XGBoost ni detener el servicio.
+
+## Prueba rápida (modo ligero)
+1. Activa el entorno: `source .venv/bin/activate` (o `\.venv\Scripts\activate` en Windows).
+2. Lanza el backend optimizado: `HELEN_DEBUG=0 python3.10 -m backendHelen.server --poll-interval 0.01 --process-every-n 1`.
+3. Acerca la mano a cámara y mantén la seña ~0.1–0.2s; el backend aceptará con un solo voto (`window_size=1`).
+4. Observa en consola las etiquetas emitidas; el frontend en `http://localhost:5000` reflejará los cambios casi inmediato aun con FPS bajos.
 
 ## Gestos y anillo de activación
 - Las etiquetas se toman de `labels.json` del modelo. La seña de activación suele mapear a `Start`.
 - El endpoint `/events` mantiene el contrato SSE existente. Cuando `active=true` se enciende el anillo en el frontend; `active=false` lo apaga.
-- La `DecisionEngine` usa umbrales rápidos para el LSTM: `global_min_score=0.30`, ventanas de consenso de `3` frames con `1` voto mínimo (Clima mantiene ventana 2/voto único) y la geometría de la seña **Start** está desactivada para este backend.
+- La `DecisionEngine` usa umbrales rápidos para el LSTM: `global_min_score=0.30`, ventanas de consenso de `1` frame con `1` voto mínimo en todas las etiquetas y la geometría de la seña **Start** está desactivada para este backend.
 
 ## Solución de problemas
 - **No se enciende el anillo**: verifica la cámara, revisa logs del backend, confirma que `scripts/check_tf_model.py` carga el modelo y que `HELEN_MODEL_BACKEND` no apunta a backends legacy.
@@ -54,7 +60,7 @@ HELEN es un asistente tipo "Echo Show" para personas sordas. Captura gestos de m
 - **Modelo faltante**: copia un SavedModel dentro de `Hellen_model_TF/video_gesture_model/data/models/gesture_model_*`.
 
 ## Cómo depurar si las señas no se detectan (LSTM)
-Activa el modo de depuración para ver por consola cada ventana de 32 frames (rellenadas a 96 antes de inferir) y las razones de descarte de la `DecisionEngine`:
+Activa el modo de depuración para ver por consola cada ventana de 24 frames (rellenadas a 96 antes de inferir) y las razones de descarte de la `DecisionEngine`:
 
 ```bat
 cd C:\...\HelenProyecto-main\HelenProyecto-main
