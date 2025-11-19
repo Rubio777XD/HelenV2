@@ -5,9 +5,9 @@ pipeline, invoke the machine-learning model and broadcast results to the
 frontend.  This module consolidates that behaviour in a single HTTP server that
 is production-ready:
 
-* Uses the real ``model.p`` XGBoost model when available.
-* Falls back to the synthetic centroid classifier only when the production
-  model or the camera pipeline cannot be initialised.
+* Usa únicamente el clasificador LSTM de video basado en TensorFlow.
+* Evita depender del modelo XGBoost legacy y recurre a un clasificador dummy
+  solo si el SavedModel está ausente o corrupto.
 * Serves the static frontend from the ``helen/`` directory so the packaged
   application works out of the box.
 * Exposes a comprehensive ``/health`` endpoint that reports the state of the
@@ -56,17 +56,16 @@ try:  # pragma: no cover - optional dependency in CI
 except Exception:  # pragma: no cover - handled gracefully at runtime
     mp = None  # type: ignore
 
-from Hellen_model_RN.helpers import labels_dict
-from Hellen_model_RN.simple_classifier import (
-    Prediction,
-    SimpleGestureClassifier,
-    SyntheticGestureStream,
-)
-from .tf_gesture_classifier import TensorFlowSequenceGestureClassifier
+from .tf_gesture_classifier import DummyGestureClassifier, Prediction, TensorFlowSequenceGestureClassifier
 from . import camera_probe
 
 if TYPE_CHECKING:  # pragma: no cover - typing aid only
     from .camera_probe import CameraSelection
+
+# Mapa de etiquetas legacy conservado vacío para evitar depender del paquete
+# Hellen_model_RN. Las clases XGBoost están obsoletas y no se instancian en
+# runtime.
+labels_dict: Dict[int, str] = {}
 
 
 LOGGER = logging.getLogger("helen.backend")
@@ -181,13 +180,7 @@ def _resolve_repo_root() -> Path:
 
 REPO_ROOT = _resolve_repo_root()
 FRONTEND_ROOT = REPO_ROOT / "helen"
-MODEL_DIR = REPO_ROOT / "Hellen_model_RN"
-MODEL_PATH = MODEL_DIR / "model.p"
 TF_MODEL_BASE_DIR = REPO_ROOT / "Hellen_model_TF" / "video_gesture_model" / "data" / "models"
-MODEL_BACKEND = os.environ.get("HELEN_MODEL_BACKEND", "lstm").lower()
-
-PRIMARY_DATASET_NAME = "data.pickle"
-LEGACY_DATASET_NAME = "data1.pickle"
 
 # port: int = 5000  # Referencia para pruebas de integración (mantener sincronizado con run()).
 
@@ -195,45 +188,48 @@ LEGACY_DATASET_NAME = "data1.pickle"
 _MISSING_DATASET_NOTIFIED: set[Path] = set()
 
 
-def _default_dataset_path() -> Path:
-    """Pick the best available dataset shipped with the build.
+class RuntimeModelConfig:
+    """Centralise model backend selection for the whole application.
 
-    ``data.pickle`` is the preferred bundle. When it is not present (for example
-    in source checkouts where the large artifact is omitted) we fall back to the
-    legacy ``data1.pickle`` file so development environments can keep working.
-    The returned path may not exist – call sites are responsible for logging the
-    appropriate warning to the operator.
+    The repository now prioritises the TensorFlow/LSTM video classifier. Any
+    request to use the legacy XGBoost backend is logged and automatically
+    redirected to LSTM to keep the runtime stable.
     """
 
-    candidate = MODEL_DIR / PRIMARY_DATASET_NAME
-    if candidate.exists():
-        LOGGER.debug("Dataset principal detectado: %s", candidate)
-        return candidate
+    ENV_VAR = "HELEN_MODEL_BACKEND"
+    DEFAULT_BACKEND = "lstm"
 
-    _notify_missing_dataset(candidate)
+    def __init__(self) -> None:
+        requested = os.environ.get(self.ENV_VAR, self.DEFAULT_BACKEND)
+        self.requested_backend = str(requested or "").strip().lower() or self.DEFAULT_BACKEND
+        self.effective_backend = self._resolve_backend(self.requested_backend)
 
-    legacy = MODEL_DIR / LEGACY_DATASET_NAME
-    if legacy.exists():
-        LOGGER.info("Se utilizará el dataset legado %s", legacy)
-        return legacy
+    def _resolve_backend(self, requested: str) -> str:
+        if requested == "lstm":
+            return "lstm"
 
-    return candidate
-
-
-def _notify_missing_dataset(dataset_path: Path) -> None:
-    resolved = dataset_path.resolve()
-    if resolved in _MISSING_DATASET_NOTIFIED:
-        return
-
-    _MISSING_DATASET_NOTIFIED.add(resolved)
-
-    if dataset_path.name.lower() == PRIMARY_DATASET_NAME:
         LOGGER.warning(
-            "data.pickle no encontrado (archivo grande omitido del repo, ver documentación de build). "
-            "Fallback activo; la calibración puede degradar accuracy."
+            "El backend %s está obsoleto; backend efectivo=lstm", requested or "<desconocido>"
         )
-    else:
-        LOGGER.error("Dataset no encontrado en %s", dataset_path)
+        return "lstm"
+
+    def tf_model_dir(self, override: Optional[Path]) -> Path:
+        if override:
+            return Path(override)
+        return _default_tf_model_dir()
+
+    def announce(self) -> None:
+        if self.requested_backend != self.effective_backend:
+            LOGGER.warning(
+                "HELEN_MODEL_BACKEND=%s fue solicitado pero se usará %s",
+                self.requested_backend,
+                self.effective_backend,
+            )
+        else:
+            LOGGER.info("Backend de modelo seleccionado: %s", self.effective_backend)
+
+
+RUNTIME_MODEL_CONFIG = RuntimeModelConfig()
 
 
 def _default_tf_model_dir() -> Path:
@@ -253,8 +249,6 @@ def _default_tf_model_dir() -> Path:
 
     return sorted(candidates, key=lambda item: item.stat().st_mtime, reverse=True)[0]
 
-
-DATASET_PATH = _default_dataset_path()
 
 TRACKED_GESTURES = {"Start", "Clima", "Reloj", "Inicio"}
 GESTURE_ALIASES = {"Start": "H", "Clima": "C", "Reloj": "R", "Inicio": "I"}
@@ -441,7 +435,7 @@ class ThresholdSuggestion:
 class FeatureNormalizer:
     """Apply the same normalisation used during model training when available."""
 
-    def __init__(self, dataset_path: Path) -> None:
+    def __init__(self, dataset_path: Optional[Path] = None) -> None:
         self._dataset_path = dataset_path
         self._transformer: Optional[Any] = None
         self._mean: Optional[List[float]] = None
@@ -453,7 +447,7 @@ class FeatureNormalizer:
     # ------------------------------------------------------------------
     def reload_if_available(self) -> None:
         path = self._dataset_path
-        if not path.exists():
+        if path is None or not path.exists():
             return
 
         try:
@@ -516,7 +510,7 @@ class FeatureNormalizer:
     def snapshot(self) -> Dict[str, Any]:
         with self._lock:
             return {
-                "dataset": str(self._dataset_path),
+                "dataset": str(self._dataset_path) if self._dataset_path else "<desactivado>",
                 "loaded": self._loaded,
                 "uses_transformer": bool(self._transformer),
                 "uses_stats": bool(self._mean and self._scale),
@@ -2305,10 +2299,8 @@ class RuntimeConfig:
     poll_interval_s: Optional[float] = None
     enable_camera: bool = True
     fallback_to_synthetic: bool = True
-    model_path: Path = MODEL_PATH
-    model_backend: str = MODEL_BACKEND
+    model_backend: str = field(default_factory=lambda: RUNTIME_MODEL_CONFIG.effective_backend)
     tf_model_dir: Optional[Path] = None
-    dataset_path: Path = field(default_factory=_default_dataset_path)
     process_every_n: Optional[int] = None
     display_mode: str = DEFAULT_DISPLAY_MODE
     camera_profile: Optional[PiCameraProfile] = None
@@ -3245,17 +3237,9 @@ class HelenRuntime:
         if self.config.enable_camera:
             self._camera_selection = self._ensure_camera_selection(force=False)
 
-        dataset_path = self.config.dataset_path
-        primary_exists = (MODEL_DIR / PRIMARY_DATASET_NAME).exists()
-        using_fallback = dataset_path.exists() and dataset_path.name != PRIMARY_DATASET_NAME
-        self.dataset_info = {
-            "path": str(dataset_path),
-            "primary_available": primary_exists,
-            "using_fallback": using_fallback,
-            "exists": dataset_path.exists(),
-        }
+        self.dataset_info = {"path": None, "primary_available": False, "using_fallback": False, "exists": False}
 
-        self.feature_normalizer = FeatureNormalizer(dataset_path)
+        self.feature_normalizer = FeatureNormalizer()
         self.geometry_verifier = self._create_geometry_verifier()
         self.decision_engine = GestureDecisionEngine(
             metrics=self.metrics,
@@ -3266,8 +3250,14 @@ class HelenRuntime:
 
         classifier, classifier_meta = self._create_classifier()
         self.classifier = classifier
-        self.model_source = classifier_meta["source"]
-        self.model_loaded = classifier_meta["loaded"]
+        self.model_source = classifier_meta.get("source", "")
+        self.model_loaded = classifier_meta.get("loaded", False)
+        self.dataset_info = {
+            "path": classifier_meta.get("path"),
+            "primary_available": classifier_meta.get("loaded", False),
+            "using_fallback": False,
+            "exists": classifier_meta.get("loaded", False),
+        }
 
         stream, stream_meta = self._create_stream()
         self.stream = stream
@@ -3392,49 +3382,33 @@ class HelenRuntime:
 
     # ------------------------------------------------------------------
     def _create_geometry_verifier(self) -> Optional[LandmarkGeometryVerifier]:
-        primary_dataset = MODEL_DIR / PRIMARY_DATASET_NAME
-        if primary_dataset.exists():
-            LOGGER.info("Verificación geométrica activada con %s", primary_dataset.name)
-            return LandmarkGeometryVerifier()
-
-        LOGGER.warning(
-            "Verificación geométrica deshabilitada: %s no está presente. Se utilizarán solo las predicciones del modelo.",
-            primary_dataset.name,
-        )
-        return None
+        return LandmarkGeometryVerifier()
 
     # ------------------------------------------------------------------
     def _create_classifier(self) -> Tuple[Any, Dict[str, Any]]:
-        backend = str(getattr(self.config, "model_backend", MODEL_BACKEND) or "lstm").lower()
+        RUNTIME_MODEL_CONFIG.announce()
+        backend = RUNTIME_MODEL_CONFIG.effective_backend
 
+        model_dir = RUNTIME_MODEL_CONFIG.tf_model_dir(getattr(self.config, "tf_model_dir", None))
+        model_dir = Path(model_dir)
         try:
-            if backend == "lstm":
-                model_dir = getattr(self.config, "tf_model_dir", None) or _default_tf_model_dir()
-                model_dir = Path(model_dir)
-                if not model_dir.exists():
-                    raise FileNotFoundError(
-                        f"No se encontró el modelo TensorFlow en {model_dir!s}. "
-                        "Ajusta HELEN_MODEL_BACKEND o especifica tf_model_dir."
-                    )
-
-                classifier = TensorFlowSequenceGestureClassifier(model_dir)
-                LOGGER.info(
-                    "Modelo LSTM cargado desde %s (backend seleccionable via HELEN_MODEL_BACKEND)",
-                    model_dir,
+            if not model_dir.exists():
+                raise FileNotFoundError(
+                    f"No se encontró el modelo TensorFlow en {model_dir!s}. "
+                    "Configura tf_model_dir o coloca el SavedModel entrenado."
                 )
-                return classifier, {"source": TensorFlowSequenceGestureClassifier.source, "loaded": True}
 
-            classifier = ProductionGestureClassifier(self.config.model_path)
-            LOGGER.info("Modelo de producción cargado desde %s", self.config.model_path)
-            return classifier, {"source": ProductionGestureClassifier.source, "loaded": True}
+            classifier = TensorFlowSequenceGestureClassifier(model_dir)
+            LOGGER.info(
+                "Modelo LSTM cargado desde %s (backend efectivo=%s)",
+                model_dir,
+                backend,
+            )
+            return classifier, {"source": TensorFlowSequenceGestureClassifier.source, "loaded": True, "path": str(model_dir)}
         except Exception as error:
-            LOGGER.warning("No se pudo cargar el modelo (%s): %s", backend, error)
-            dataset_path = self.config.dataset_path
-            if not dataset_path.exists():
-                _notify_missing_dataset(dataset_path)
-                raise RuntimeError("No hay dataset disponible para el clasificador de respaldo") from error
-            fallback = SimpleGestureClassifier(dataset_path)
-            return fallback, {"source": "synthetic", "loaded": True}
+            LOGGER.error("No se pudo cargar el modelo LSTM (%s). Se usará clasificador dummy: %s", backend, error)
+            fallback = DummyGestureClassifier()
+            return fallback, {"source": fallback.source, "loaded": False, "path": str(model_dir)}
 
     # ------------------------------------------------------------------
     def _create_stream(self) -> Tuple[Any, Dict[str, Any]]:
@@ -3479,14 +3453,7 @@ class HelenRuntime:
                         return stream, {"source": CameraGestureStream.source}
                     except Exception as retry_error:
                         LOGGER.warning("Reintento de cámara fallido: %s", retry_error)
-
-        dataset_path = self.config.dataset_path
-        if not dataset_path.exists():
-            _notify_missing_dataset(dataset_path)
-            raise RuntimeError("No se puede iniciar el flujo sintético: falta el dataset")
-
-        LOGGER.info("Usando flujo sintético de gestos desde %s", dataset_path)
-        return SyntheticStreamAdapter(dataset_path), {"source": "synthetic"}
+        raise RuntimeError("No se pudo inicializar la cámara y no hay flujo alternativo habilitado")
 
     # ------------------------------------------------------------------
     def start(self) -> None:
