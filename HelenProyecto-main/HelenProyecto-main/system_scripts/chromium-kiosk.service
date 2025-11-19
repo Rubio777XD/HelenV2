@@ -1,0 +1,19 @@
+# /etc/systemd/system/chromium-kiosk.service
+[Unit]
+Description=Chromium en modo kiosk para HELEN
+After=graphical.target network-online.target helen.service
+Wants=network-online.target
+
+[Service]
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/pi/.Xauthority
+ExecStart=/usr/bin/chromium-browser \
+    --kiosk --incognito --noerrdialogs --disable-session-crashed-bubble \
+    --autoplay-policy=no-user-gesture-required \
+    http://localhost:5000
+Restart=always
+User=pi
+Group=pi
+
+[Install]
+WantedBy=graphical.target
