@@ -73,6 +73,8 @@ LOGGER.setLevel(logging.INFO)
 if not LOGGER.handlers:
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s %(message)s")
 
+DECISION_DEBUG = bool(int(os.environ.get("HELEN_DEBUG_DECISION", "0") or 0))
+
 with contextlib.suppress(Exception):
     import absl.logging as absl_logging  # type: ignore
 
@@ -167,6 +169,11 @@ def _log_vision_runtime_snapshot() -> Dict[str, Any]:
     return snapshot
 
 
+def _debug_decision(message: str, *args: Any) -> None:
+    if DECISION_DEBUG:
+        LOGGER.debug(message, *args)
+
+
 VISION_RUNTIME_SNAPSHOT = _log_vision_runtime_snapshot()
 
 
@@ -230,6 +237,7 @@ class RuntimeModelConfig:
 
 
 RUNTIME_MODEL_CONFIG = RuntimeModelConfig()
+LSTM_BACKEND_ACTIVE = RUNTIME_MODEL_CONFIG.effective_backend == "lstm"
 
 
 def _default_tf_model_dir() -> Path:
@@ -251,6 +259,22 @@ def _default_tf_model_dir() -> Path:
 
 
 TRACKED_GESTURES = {"Start", "Clima", "Reloj", "Inicio"}
+# Tabla de alias entre las etiquetas de labels.json (ej. "activar", "clima") y
+# las etiquetas canónicas que consume la DecisionEngine (Start, Clima, Reloj,
+# Inicio). Mantener sincronizada con ``_LABEL_NORMALIZATION`` en
+# ``tf_gesture_classifier.py`` para que las predicciones LSTM y los reportes
+# usen los mismos nombres.
+MODEL_LABEL_ALIASES: Dict[str, str] = {
+    "activar": "Start",
+    "start": "Start",
+    "wake": "Start",
+    "clima": "Clima",
+    "weather": "Clima",
+    "reloj": "Reloj",
+    "clock": "Reloj",
+    "home": "Inicio",
+    "inicio": "Inicio",
+}
 GESTURE_ALIASES = {"Start": "H", "Clima": "C", "Reloj": "R", "Inicio": "I"}
 
 MODE_STORAGE_PATH = REPO_ROOT / "backendHelen" / "runtime_mode.json"
@@ -329,13 +353,13 @@ LEGACY_CLIMA_THRESHOLD = ClassThreshold(enter=0.8, release=0.7)
 UPDATED_CLIMA_THRESHOLD = ClassThreshold(enter=0.66, release=0.56)
 
 DEFAULT_CLASS_THRESHOLDS: Dict[str, ClassThreshold] = {
-    "Start": ClassThreshold(enter=0.75, release=0.65),
-    "Clima": UPDATED_CLIMA_THRESHOLD,
-    "Reloj": ClassThreshold(enter=0.78, release=0.68),
-    "Inicio": ClassThreshold(enter=0.76, release=0.66),
+    "Start": ClassThreshold(enter=0.45, release=0.35),
+    "Clima": ClassThreshold(enter=0.40, release=0.30),
+    "Reloj": ClassThreshold(enter=0.45, release=0.35),
+    "Inicio": ClassThreshold(enter=0.45, release=0.35),
 }
 
-GLOBAL_MIN_SCORE = 0.6
+GLOBAL_MIN_SCORE = 0.3
 DEFAULT_POLL_INTERVAL_S = 0.12
 
 
@@ -359,8 +383,8 @@ class PlatformRuntimeDefaults:
 
 @dataclass(frozen=True)
 class ConsensusConfig:
-    window_size: int = 5
-    required_votes: int = 3
+    window_size: int = 3
+    required_votes: int = 2
 
 
 DEFAULT_CONSENSUS_CONFIG = ConsensusConfig()
@@ -595,6 +619,9 @@ class GestureMetrics:
             return ""
         text = str(label).strip()
         lowered = text.lower()
+        alias = MODEL_LABEL_ALIASES.get(lowered)
+        if alias:
+            return alias
         for candidate in TRACKED_GESTURES:
             if lowered == candidate.lower():
                 return candidate
@@ -1104,6 +1131,9 @@ class LandmarkGeometryVerifier:
             return finger_states.get(name, {}).get("curl", 0.0) <= 135.0
 
         if canonical == "Start":
+            if LSTM_BACKEND_ACTIVE:
+                _debug_decision("Geometría Start omitida (backend LSTM activo)")
+                return True, None
             if is_extended("index") and is_extended("middle") and is_folded("ring") and is_folded("pinky"):
                 if index_middle_distance >= 0.035:
                     return True, None
@@ -1215,6 +1245,27 @@ class GestureDecisionEngine:
         self._lock = threading.Lock()
         self._last_clima_warning: Optional[str] = None
         self._last_clima_accept_signature: Optional[Tuple[int, int, int, int]] = None
+
+    # ------------------------------------------------------------------
+    def _debug_outcome(
+        self,
+        *,
+        label: str,
+        score: float,
+        reason: str,
+        state: str,
+        support: int,
+        required_votes: int,
+    ) -> None:
+        _debug_decision(
+            "DecisionEngine: label=%s score=%.3f reason=%s state=%s votos=%d/%d",
+            label,
+            score,
+            reason,
+            state,
+            support,
+            required_votes,
+        )
 
     # ------------------------------------------------------------------
     def _reset_consensus(self) -> None:
@@ -1343,6 +1394,14 @@ class GestureDecisionEngine:
                 window_ms=window_ms,
                 total_votes=total_votes,
             )
+        self._debug_outcome(
+            label=canonical_label,
+            score=score,
+            reason=reason,
+            state=state,
+            support=support,
+            required_votes=required_votes,
+        )
         return DecisionOutcome(emit, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
 
     # ------------------------------------------------------------------
@@ -2509,6 +2568,7 @@ class CameraGestureStream:
         self._last_landmarks: Optional[List[LandmarkPoint]] = None
         self._last_frame_shape: Optional[Tuple[int, int]] = None
         self._last_roi: Optional[Dict[str, Any]] = None
+        self._lenient_quality = LSTM_BACKEND_ACTIVE
 
     # ------------------------------------------------------------------
     def _desired_dimensions(self) -> Tuple[int, int, float]:
@@ -2944,14 +3004,25 @@ class CameraGestureStream:
         min_y = min(y_coords)
         max_y = max(y_coords)
 
-        if (
-            min_x < -0.05
-            or min_y < -0.05
-            or max_x > 1.05
-            or max_y > 1.05
-        ):
-            self._register_quality_check(False, "roi_out_of_bounds")
-            return False
+        out_of_bounds = (
+            min_x < -0.05 or min_y < -0.05 or max_x > 1.05 or max_y > 1.05
+        )
+        extreme_bounds = (
+            min_x < -0.2 or min_y < -0.2 or max_x > 1.2 or max_y > 1.2
+        )
+        if out_of_bounds:
+            if self._lenient_quality and not extreme_bounds:
+                _debug_decision(
+                    "ROI fuera de límites pero permitido (min=(%.3f, %.3f), max=(%.3f, %.3f))",
+                    min_x,
+                    min_y,
+                    max_x,
+                    max_y,
+                )
+                self._register_quality_check(True, "roi_out_of_bounds_warning")
+            else:
+                self._register_quality_check(False, "roi_out_of_bounds")
+                return False
 
         if (
             min_x <= QUALITY_EDGE_MARGIN
@@ -2959,8 +3030,14 @@ class CameraGestureStream:
             or max_x >= (1.0 - QUALITY_EDGE_MARGIN)
             or max_y >= (1.0 - QUALITY_EDGE_MARGIN)
         ):
-            self._register_quality_check(False, "hand_near_edge")
-            return False
+            if self._lenient_quality:
+                _debug_decision(
+                    "Mano cerca del borde, marcando warning pero sin descartar"
+                )
+                self._register_quality_check(True, "hand_near_edge_warning")
+            else:
+                self._register_quality_check(False, "hand_near_edge")
+                return False
 
         width = max_x - min_x
         height = max_y - min_y
@@ -3180,6 +3257,13 @@ class GesturePipeline:
                     landmarks_candidate = last_landmarks_getter()
                     if landmarks_candidate:
                         landmarks = list(landmarks_candidate)
+            _debug_decision(
+                "Predicción LSTM: label=%s score=%.3f hint=%s latency=%.1f ms",
+                prediction.label,
+                prediction.score,
+                source_label or "",
+                latency_ms,
+            )
             decision = self._runtime.decision_engine.process(
                 prediction,
                 timestamp=timestamp,

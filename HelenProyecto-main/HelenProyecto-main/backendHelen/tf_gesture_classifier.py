@@ -57,6 +57,8 @@ class TensorFlowSequenceGestureClassifier:
     """
 
     source = "tensorflow_sequence"
+    # Mantener sincronizado con ``MODEL_LABEL_ALIASES`` en ``backendHelen/server.py``
+    # para que las predicciones del LSTM se alineen con la DecisionEngine.
     _LABEL_NORMALIZATION = {
         "activar": "Start",
         "start": "Start",
