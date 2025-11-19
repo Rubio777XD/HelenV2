@@ -32,7 +32,7 @@ from backendHelen.tf_gesture_classifier import TensorFlowSequenceGestureClassifi
 LOGGER = logging.getLogger("helen.debug_lstm_offline")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s %(message)s")
 
-DEFAULT_SEQUENCE_LEN = 96
+DEFAULT_SEQUENCE_LEN = 32
 DEFAULT_FEATURE_DIM = 42
 
 

@@ -6,13 +6,13 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [ ! -f .venv/bin/activate ]; then
-  echo "No se encontró el entorno virtual en .venv. Créalo con 'python3 -m venv .venv'" >&2
+  echo "No se encontró el entorno virtual en .venv. Créalo con 'python3.10 -m venv .venv'" >&2
   exit 1
 fi
 
 source .venv/bin/activate
 export HELEN_MODEL_BACKEND=lstm
-python -m backendHelen.server &
+python3.10 -m backendHelen.server &
 SERVER_PID=$!
 
 # Lanzar Chromium en modo kiosk hacia el frontend

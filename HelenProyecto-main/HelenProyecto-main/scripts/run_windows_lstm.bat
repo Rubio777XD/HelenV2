@@ -6,10 +6,10 @@ setlocal
 title HELEN - backend LSTM
 
 if not exist .\.venv\Scripts\activate.bat (
-    echo No se encontró el entorno virtual en .\.venv. Crea uno con "python -m venv .venv".
+    echo No se encontró el entorno virtual en .\.venv. Crea uno con "py -3.10 -m venv .venv".
     exit /b 1
 )
 
 call .\.venv\Scripts\activate.bat
 set HELEN_MODEL_BACKEND=lstm
-python -m backendHelen.server
+py -3.10 -m backendHelen.server
