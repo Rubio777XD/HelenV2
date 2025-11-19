@@ -19,6 +19,7 @@ from typing import Callable, Dict, Iterable, List
 
 
 LOGGER = logging.getLogger("helen.backend.tf")
+DEBUG_ENABLED = bool(int(__import__("os").environ.get("HELEN_DEBUG", "0") or 0))
 
 
 class Prediction(tuple):
@@ -106,6 +107,14 @@ class TensorFlowSequenceGestureClassifier:
 
         self._predict_fn = self._build_predict_fn(Path(model_path))
         self._labels = self._load_labels(Path(model_path))
+
+        if DEBUG_ENABLED:
+            LOGGER.debug(
+                "Inicializando LSTM: ventana=%d, feature_dim=%d, modelo=%s",
+                self.sequence_length,
+                self.feature_dim,
+                Path(model_path),
+            )
 
     # ------------------------------------------------------------------
     def _build_predict_fn(self, model_path: Path) -> Callable[[List[List[float]]], "np.ndarray"]:
@@ -203,10 +212,22 @@ class TensorFlowSequenceGestureClassifier:
         frame = self._convert_helen_features_to_model_frame(features)
         self._buffer.append(frame)
 
+        if DEBUG_ENABLED:
+            LOGGER.debug(
+                "Ventana LSTM: %d/%d frames llenos", len(self._buffer), self.sequence_length
+            )
+
         # The LSTM requires a full sequence. Emit a neutral prediction while the
         # buffer is filling up; the DecisionEngine will handle stability.
         if len(self._buffer) < self.sequence_length:
             neutral_label = self._labels.get(0, "Start")
+            if DEBUG_ENABLED:
+                LOGGER.debug(
+                    "Secuencia incompleta (%d/%d); devolviendo %s score=0",
+                    len(self._buffer),
+                    self.sequence_length,
+                    neutral_label,
+                )
             return Prediction(label=str(neutral_label), score=0.0)
 
         np = self._np
@@ -218,6 +239,9 @@ class TensorFlowSequenceGestureClassifier:
             )
 
         batch = np.expand_dims(sequence, axis=0)
+
+        assert batch.dtype == np.float32, "El batch debe ser float32"
+        assert batch.shape == (1, self.sequence_length, self.feature_dim)
 
         try:
             with self._lock:
@@ -235,6 +259,16 @@ class TensorFlowSequenceGestureClassifier:
         best_idx = int(np.argmax(probs))
         confidence = float(probs[best_idx]) if probs.size else 0.0
         label = self._labels.get(best_idx, str(best_idx))
+
+        if DEBUG_ENABLED:
+            LOGGER.debug(
+                "Inferencia LSTM: idx=%d label=%s score=%.3f top5=%s",
+                best_idx,
+                label,
+                confidence,
+                [round(float(v), 4) for v in probs[:5]],
+            )
+
         return Prediction(label=str(label), score=confidence)
 
 

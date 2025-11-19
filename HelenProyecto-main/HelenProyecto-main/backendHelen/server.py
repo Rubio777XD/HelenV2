@@ -73,7 +73,8 @@ LOGGER.setLevel(logging.INFO)
 if not LOGGER.handlers:
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s %(message)s")
 
-DECISION_DEBUG = bool(int(os.environ.get("HELEN_DEBUG_DECISION", "0") or 0))
+DEBUG_MODE = bool(int(os.environ.get("HELEN_DEBUG", "0") or 0))
+DECISION_DEBUG = DEBUG_MODE or bool(int(os.environ.get("HELEN_DEBUG_DECISION", "0") or 0))
 
 with contextlib.suppress(Exception):
     import absl.logging as absl_logging  # type: ignore
@@ -390,6 +391,7 @@ class ConsensusConfig:
 DEFAULT_CONSENSUS_CONFIG = ConsensusConfig()
 
 CLIMA_CONSENSUS_OVERRIDE = ConsensusConfig(window_size=2, required_votes=1)
+DEBUG_LSTM_PROFILE = "debug_lstm"
 
 CLIMA_POST_START_DELAY = 0.4
 
@@ -849,6 +851,17 @@ class GestureMetrics:
         total_rejections = sum(quality_rejections.values())
         quality_ratio = (total_rejections / quality_checks) if quality_checks else 0.0
 
+        max_scores: Dict[str, Optional[float]] = {}
+        combined_scores: Dict[str, List[float]] = defaultdict(list)
+        for label, scores in accepted_scores.items():
+            combined_scores[label].extend(scores)
+        for label, scores in rejected_scores.items():
+            combined_scores[label].extend(scores)
+
+        for label in TRACKED_GESTURES:
+            values = combined_scores.get(label, [])
+            max_scores[label] = max(values) if values else None
+
         per_label: Dict[str, Any] = {}
         for label in TRACKED_GESTURES:
             tp, fp, fn = self._f1_counts(samples, label)
@@ -876,6 +889,21 @@ class GestureMetrics:
             confusion[actual][predicted] += 1
 
         suggestions = [suggestion.__dict__ for suggestion in self.threshold_suggestions(thresholds)]
+
+        decision_examples = [
+            {
+                "timestamp": datetime.fromtimestamp(rec.timestamp, tz=timezone.utc).isoformat(),
+                "pred_label": rec.label,
+                "hint_label": rec.hint_label,
+                "score": rec.score,
+                "accepted": rec.accepted,
+                "reason": rec.reason,
+                "state": rec.state,
+                "support": rec.support,
+                "window_ms": rec.window_ms,
+            }
+            for rec in samples[-60:]
+        ]
 
         consensus_block: Dict[str, Any] = {
             "window_size": consensus.window_size,
@@ -906,6 +934,8 @@ class GestureMetrics:
             "classes": per_label,
             "confusion_matrix": {actual: dict(preds) for actual, preds in confusion.items()},
             "suggested_thresholds": suggestions,
+            "max_scores": max_scores,
+            "decision_examples": decision_examples,
         }
 
     # ------------------------------------------------------------------
@@ -1000,6 +1030,37 @@ class GestureMetrics:
                         f1=suggestion["expected_f1"],
                     )
                 )
+
+        lines.append("")
+        lines.append("### Resumen rápido de puntajes observados")
+        lines.append("| Clase | Máximo score observado |")
+        lines.append("|-------|------------------------|")
+        for label in TRACKED_GESTURES:
+            value = report.get("max_scores", {}).get(label)
+            display = f"{value:.3f}" if value is not None else "N/D"
+            lines.append(f"| {label} | {display} |")
+
+        lines.append("")
+        examples = report.get("decision_examples") or []
+        if examples:
+            lines.append("### Ejemplos recientes de decisiones")
+            lines.append("| Tiempo | Predicción | Puntaje | Hint | Estado | Aceptado | Motivo | Votos | Ventana ms |")
+            lines.append("|--------|------------|---------|------|--------|----------|--------|-------|-----------|")
+            for example in examples[-20:]:
+                lines.append(
+                    "| {ts} | {pred} | {score:.2f} | {hint} | {state} | {acc} | {reason} | {support} | {window:.1f} |".format(
+                        ts=example.get("timestamp", ""),
+                        pred=example.get("pred_label", ""),
+                        score=float(example.get("score", 0.0)),
+                        hint=example.get("hint_label", ""),
+                        state=example.get("state", ""),
+                        acc="sí" if example.get("accepted") else "no",
+                        reason=example.get("reason", ""),
+                        support=int(example.get("support", 0)),
+                        window=float(example.get("window_ms", 0.0)),
+                    )
+                )
+
 
         return "\n".join(lines) + "\n"
 
@@ -1256,15 +1317,19 @@ class GestureDecisionEngine:
         state: str,
         support: int,
         required_votes: int,
+        hint: Optional[str],
+        window_ms: float,
     ) -> None:
         _debug_decision(
-            "DecisionEngine: label=%s score=%.3f reason=%s state=%s votos=%d/%d",
+            "DecisionEngine: label=%s score=%.3f reason=%s state=%s votos=%d/%d hint=%s ventana=%.1fms",
             label,
             score,
             reason,
             state,
             support,
             required_votes,
+            hint or "",
+            window_ms,
         )
 
     # ------------------------------------------------------------------
@@ -1401,6 +1466,8 @@ class GestureDecisionEngine:
             state=state,
             support=support,
             required_votes=required_votes,
+            hint=canonical_hint,
+            window_ms=window_ms,
         )
         return DecisionOutcome(emit, canonical_label, score, payload, reason, state, canonical_hint, support, window_ms)
 
@@ -2795,6 +2862,7 @@ class CameraGestureStream:
                     image.flags.writeable = True
 
             if not results.multi_hand_landmarks:
+                self._register_quality_check(False, "no_hand_detected")
                 self._frames_without_hand += 1
                 if self._frames_without_hand > 2:
                     self._landmark_buffer.clear()
@@ -3281,10 +3349,21 @@ class GesturePipeline:
                     latency_ms=latency_ms,
                     timestamp=timestamp,
                     sequence=self._sequence,
-                    origin="pipeline",
+                    origin=self._runtime.classifier.source,
                     hint_label=decision.hint_label,
                     payload=decision.payload,
                 )
+                if DEBUG_MODE:
+                    LOGGER.info(
+                        "EMIT gesture=%s (alias=%s) score=%.3f backend=%s reason=%s votos=%d ventana=%.1fms",
+                        event.get("gesture"),
+                        decision.label,
+                        decision.score,
+                        self._runtime.classifier.source,
+                        decision.reason,
+                        decision.support,
+                        decision.window_ms,
+                    )
                 self._runtime.push_prediction(event)
                 self._sequence += 1
             time.sleep(self._interval)
@@ -3312,6 +3391,7 @@ class HelenRuntime:
 
         self._apply_runtime_defaults(profile)
         self._configure_mode_runtime(active_mode, profile)
+        self.debug_profile = self._detect_debug_profile()
         self.session_id = uuid.uuid4().hex
         self.started_at = time.time()
         self.event_stream = EventStream()
@@ -3325,10 +3405,35 @@ class HelenRuntime:
 
         self.feature_normalizer = FeatureNormalizer()
         self.geometry_verifier = self._create_geometry_verifier()
+
+        thresholds_override: Optional[Dict[str, ClassThreshold]] = None
+        consensus_cfg = DEFAULT_CONSENSUS_CONFIG
+        global_min_score = GLOBAL_MIN_SCORE
+        per_label_consensus: Dict[str, ConsensusConfig] = {"Clima": CLIMA_CONSENSUS_OVERRIDE}
+
+        if self.debug_profile == DEBUG_LSTM_PROFILE:
+            thresholds_override = {
+                "Start": ClassThreshold(enter=0.5, release=0.25),
+                "Clima": ClassThreshold(enter=0.5, release=0.28),
+                "Reloj": ClassThreshold(enter=0.5, release=0.28),
+                "Inicio": ClassThreshold(enter=0.5, release=0.28),
+            }
+            consensus_cfg = ConsensusConfig(window_size=3, required_votes=1)
+            global_min_score = 0.2
+            per_label_consensus = {}
+            self.geometry_verifier = None
+            LOGGER.warning(
+                "Perfil %s activo: umbrales relajados, consenso corto y filtros geométricos deshabilitados",
+                self.debug_profile,
+            )
+
         self.decision_engine = GestureDecisionEngine(
             metrics=self.metrics,
+            thresholds=thresholds_override,
+            consensus=consensus_cfg,
+            global_min_score=global_min_score,
             geometry_verifier=self.geometry_verifier,
-            per_label_consensus={"Clima": CLIMA_CONSENSUS_OVERRIDE},
+            per_label_consensus=per_label_consensus,
         )
         self._log_clima_tuning()
 
@@ -3382,6 +3487,13 @@ class HelenRuntime:
         if stride is None:
             stride = defaults.frame_stride
         self.config.process_every_n = max(1, int(stride))
+
+    # ------------------------------------------------------------------
+    def _detect_debug_profile(self) -> Optional[str]:
+        requested = str(os.environ.get("HELEN_PROFILE", "") or "").strip().lower()
+        if requested == DEBUG_LSTM_PROFILE:
+            return requested
+        return None
 
     # ------------------------------------------------------------------
     def _configure_mode_runtime(self, mode: str, profile: Optional[PiCameraProfile]) -> None:

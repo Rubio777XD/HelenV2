@@ -37,7 +37,7 @@ HELEN es un asistente tipo "Echo Show" para personas sordas. Captura gestos de m
 5. Para modo kiosk persistente, invoca el script desde un servicio `systemd` o un `.desktop` que ejecute Chromium apuntando a `http://localhost:5000`.
 
 ## Uso del backend LSTM
-- Buffer: la primera predicción requiere llenar 96 frames (≈3 segundos a 30 FPS).
+- Buffer: la primera predicción requiere llenar 96 frames. Con el `poll_interval` por defecto (0.12s) equivale a ~8 FPS, así que espera ~10-12 segundos sosteniendo la seña antes de que el modelo tenga suficiente contexto.
 - Entrada esperada del modelo: tensor `(1, 96, 126)` en `float32`.
 - Si MediaPipe produce 42 features (x, y de una mano), el backend rellena `z=0` y duplica la mano para simular dos manos mientras se captura la otra.
 - Si el modelo TensorFlow no carga, el servidor usa un clasificador **dummy** (siempre `score=0.0`) para no caer en XGBoost ni detener el servicio.
@@ -52,6 +52,24 @@ HELEN es un asistente tipo "Echo Show" para personas sordas. Captura gestos de m
 - **La página no carga**: asegúrate de que `python -m backendHelen.server` esté corriendo en `http://localhost:5000` y que el navegador apunte a esa URL.
 - **Warnings de TensorFlow (AVX/AVX2)**: son informativos en CPU; no bloquean la inferencia.
 - **Modelo faltante**: copia un SavedModel dentro de `Hellen_model_TF/video_gesture_model/data/models/gesture_model_*`.
+
+## Cómo depurar si las señas no se detectan (LSTM)
+Activa el modo de depuración para ver por consola cada ventana de 96 frames y las razones de descarte de la `DecisionEngine`:
+
+```bat
+cd C:\...\HelenProyecto-main\HelenProyecto-main
+.\.venv\Scripts\activate
+set HELEN_MODEL_BACKEND=lstm
+set HELEN_DEBUG=1
+set HELEN_PROFILE=debug_lstm
+python -m backendHelen.server
+```
+
+- **Qué verás en logs**: líneas `Inferencia LSTM` (score por etiqueta), `DecisionEngine` (motivo exacto de descarte) y `EMIT gesture=...` cuando se envía SSE al frontend.
+- **Si el modelo nunca sube de 0.1**: revisa `reports/gesture_session_report.md/json`, sección "Máximo score observado" para confirmar si el modelo está saturado.
+- **Si el modelo predice pero se descarta**: la tabla "Ejemplos recientes de decisiones" muestra `reason` (ej. `score_below_threshold`, `consensus_short`).
+- **Si no hay landmarks**: el reporte contará descartes `no_hand_detected`; revisa alineación y luz.
+- **Prueba offline**: ejecuta `python scripts/debug_lstm_offline.py --profile debug_lstm` para simular secuencias sin cámara.
 
 ## Scripts disponibles
 - `scripts/check_tf_model.py`: confirma carga del SavedModel y muestra etiquetas.
