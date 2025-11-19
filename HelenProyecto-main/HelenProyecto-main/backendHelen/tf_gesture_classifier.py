@@ -1,21 +1,42 @@
-"""TensorFlow sequence gesture classifier compatible with HELEN's contract.
+"""TensorFlow sequence gesture classifier compatible con el contrato de HELEN.
 
-This wrapper adapts the LSTM-based video gesture model to the existing
-``predict(features) -> Prediction`` interface used by the backend. It keeps a
-fixed-length buffer of frames and only triggers the TensorFlow model when the
-sequence is complete.
+Este envoltorio adapta el modelo LSTM de video al contrato existente
+``predict(features) -> Prediction`` usado por el backend. Mantiene una ventana
+deslizante de 96 fotogramas con 126 características (21 landmarks × 3 coords ×
+2 manos) y solo dispara el modelo cuando la secuencia está completa. Las
+primeras predicciones retornan una clase neutra para que la ``DecisionEngine``
+conserve la misma lógica de consenso que el backend histórico.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from collections import deque
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List
 
-from Hellen_model_RN.helpers import labels_dict
-from Hellen_model_RN.simple_classifier import Prediction
+
+LOGGER = logging.getLogger("helen.backend.tf")
+
+
+class Prediction(tuple):
+    """Minimal prediction tuple used por el backend."""
+
+    __slots__ = ()
+    _fields = ("label", "score")
+
+    def __new__(cls, label: str, score: float):  # type: ignore[override]
+        return super().__new__(cls, (label, float(score)))
+
+    @property
+    def label(self) -> str:
+        return self[0]
+
+    @property
+    def score(self) -> float:
+        return float(self[1])
 
 
 class TensorFlowSequenceGestureClassifier:
@@ -23,11 +44,16 @@ class TensorFlowSequenceGestureClassifier:
 
     The model consumes sequences shaped as ``(sequence_length, feature_dim)``
     with ``sequence_length=96`` and ``feature_dim=126`` (21 landmarks × 3
-    coordinates × 2 hands). HELEN currently emits 42 features per frame (x/y
-    only, single hand). To bridge both worlds we expand the 42-D vector to 126
-    dimensions by adding ``z=0`` for every landmark and duplicating the hand
-    coordinates into the second hand slot. This is a temporary compatibility
-    shim until the capture pipeline emits full 3D landmarks for both hands.
+    coordinates × 2 hands). The internal buffer keeps a sliding window of the
+    last ``sequence_length`` frames and triggers inference only when the window
+    is full.
+
+    HELEN currently emits 42 features per frame (x/y only, single hand). To
+    bridge both worlds we expand the 42-D vector to 126 dimensions by adding
+    ``z=0`` for every landmark and duplicating the hand coordinates into the
+    second hand slot. If the capture pipeline already provides 126 features the
+    frame is passed through untouched. This makes the migration to real dual
+    hand 3D landmarks explicit and documented.
     """
 
     source = "tensorflow_sequence"
@@ -48,6 +74,18 @@ class TensorFlowSequenceGestureClassifier:
         "tutorial": "Tutorial",
         "alarma": "Alarma",
         "foco": "Foco",
+    }
+
+    _DEFAULT_LABELS = {
+        0: "Start",
+        1: "Clima",
+        2: "Reloj",
+        3: "Inicio",
+        4: "Ajustes",
+        5: "Dispositivos",
+        6: "Tutorial",
+        7: "Alarma",
+        8: "Foco",
     }
 
     def __init__(self, model_path: Path, *, sequence_length: int = 96, feature_dim: int = 126) -> None:
@@ -107,14 +145,15 @@ class TensorFlowSequenceGestureClassifier:
             candidate = model_path.parent / "labels.json"
 
         if candidate.exists():
-            with candidate.open("r", encoding="utf-8") as fp:
-                raw = json.load(fp)
-            # Training artifacts store gesture→idx; invert to idx→gesture.
-            return {int(idx): self._canonical_label(label) for label, idx in raw.items()}
+            try:
+                with candidate.open("r", encoding="utf-8") as fp:
+                    raw = json.load(fp)
+                return {int(idx): self._canonical_label(label) for label, idx in raw.items()}
+            except Exception as error:
+                LOGGER.warning("labels.json corrupto en %s: %s", candidate, error)
 
-        # Fallback: reuse legacy labels_dict to keep the pipeline usable even if
-        # labels.json is missing or corrupted.
-        return {int(idx): self._canonical_label(value) for idx, value in labels_dict.items()}
+        LOGGER.warning("labels.json no encontrado en %s, usando etiquetas por defecto", candidate.parent)
+        return dict(self._DEFAULT_LABELS)
 
     # ------------------------------------------------------------------
     def _canonical_label(self, label: str) -> str:
@@ -127,19 +166,16 @@ class TensorFlowSequenceGestureClassifier:
         return text.title() if text else text
 
     # ------------------------------------------------------------------
-    def _convert_helen_features_to_model_frame(self, features_42: Iterable[float]):
-        """Expand HELEN's 42-D frame into the 126-D format expected by the LSTM.
-
-        Strategy (compatibility shim): assume a single hand is present, inject
-        ``z=0`` for every landmark and duplicate the hand into the second hand
-        slot. This preserves the spatial layout while the capture pipeline is
-        upgraded to emit full 3D coordinates for both hands.
-        """
+    def _convert_helen_features_to_model_frame(self, features: Iterable[float]):
+        """Map HELEN frames into the 126-D format expected by the LSTM."""
 
         np = self._np
-        values = np.asarray(list(features_42), dtype=np.float32)
+        values = np.asarray(list(features), dtype=np.float32)
+        if values.size == self.feature_dim:
+            return values
+
         if values.size != 42:
-            raise ValueError(f"Se esperaban 42 features por frame, recibido {values.size}")
+            raise ValueError(f"Se esperaban 42 o {self.feature_dim} features por frame, recibido {values.size}")
 
         frame = np.zeros(self.feature_dim, dtype=np.float32)
         per_hand = self.feature_dim // 2  # 63 values per hand
@@ -181,8 +217,12 @@ class TensorFlowSequenceGestureClassifier:
 
         batch = np.expand_dims(sequence, axis=0)
 
-        with self._lock:
-            probabilities = self._predict_fn(batch)
+        try:
+            with self._lock:
+                probabilities = self._predict_fn(batch)
+        except Exception as error:  # pragma: no cover - runtime safety net
+            LOGGER.error("Fallo en inferencia TensorFlow: %s", error)
+            return Prediction(label=self._labels.get(0, "Start"), score=0.0)
 
         # Normalise output shape to (num_classes,)
         if probabilities.ndim >= 2:
@@ -196,4 +236,20 @@ class TensorFlowSequenceGestureClassifier:
         return Prediction(label=str(label), score=confidence)
 
 
-__all__ = ["TensorFlowSequenceGestureClassifier"]
+class DummyGestureClassifier:
+    """Clasificador neutral para mantener vivo el backend sin modelo real."""
+
+    source = "dummy"
+
+    def __init__(self, neutral_label: str = "none") -> None:
+        self._neutral_label = neutral_label
+
+    def predict(self, features: Iterable[float]) -> Prediction:  # noqa: ARG002 - interfaz establecida
+        return Prediction(label=self._neutral_label, score=0.0)
+
+
+__all__ = [
+    "TensorFlowSequenceGestureClassifier",
+    "Prediction",
+    "DummyGestureClassifier",
+]

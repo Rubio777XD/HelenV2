@@ -1,55 +1,63 @@
-# HELEN
+# HELEN – Asistente visual por gestos (backend LSTM)
 
-HELEN es un asistente doméstico controlado por gestos compuesto por un backend en Python (Flask + Socket.IO) y una
-interfaz web optimizada para ejecutarse en Google Chrome o Chromium. A partir de esta versión se abandona cualquier
-flujo de empaquetado en ejecutables: el proyecto se distribuye como código fuente y se ejecuta directamente con Python.
-El backend selecciona por defecto el clasificador **TensorFlow LSTM** si `HELEN_MODEL_BACKEND` no está definido.
+## Descripción general
+HELEN es un asistente tipo "Echo Show" para personas sordas. Captura gestos de mano con MediaPipe y OpenCV, forma secuencias de **96 fotogramas × 126 características** (21 landmarks × 3 coords × 2 manos) y las clasifica con un modelo **LSTM en TensorFlow**. El backend expone eventos SSE para que la interfaz web en `helen/` encienda el anillo de activación y navegue entre pantallas al reconocer los gestos.
 
-## Documentación principal
+- Backend: Python (Flask + SSE) en `backendHelen/`, clasificador principal `TensorFlowSequenceGestureClassifier`.
+- Frontend: HTML/JS servido desde `/`, escucha `/events` y mantiene el mismo contrato histórico de eventos (`message` con `gesture`, `score`, `active`, etc.).
+- Modelo: se carga automáticamente el SavedModel más reciente de `Hellen_model_TF/video_gesture_model/data/models/gesture_model_*`.
+- Backend efectivo: **siempre LSTM**. `HELEN_MODEL_BACKEND=xgboost` genera un warning pero igualmente se usa LSTM. XGBoost queda como código legacy no ejecutado.
 
-- [HELEN – Guía completa para ejecutar en Chrome (Windows)](README-windows-chrome.md)
-- [HELEN – Guía completa para ejecutar en Chrome (Linux / Raspberry Pi)](README-linux-rpi-chrome.md)
-- [CHANGELOG](CHANGELOG.md)
+## Requisitos
+- Python 3.10 o superior.
+- TensorFlow CPU `tensorflow==2.15.0` (incluido en `requirements.txt`).
+- Dependencias clave: `mediapipe`, `opencv-python`, `numpy`, `Flask`, `Flask-SocketIO`.
+- Cámara compatible con OpenCV/MediaPipe.
+- Navegador: Google Chrome (Windows) o Chromium (Raspberry Pi) para la UI.
 
-Cada guía cubre requisitos, instalación, comandos de ejecución, validaciones manuales y solución de problemas específicas
-por plataforma. El CHANGELOG detalla cualquier eliminación o movimiento de archivos legacy relacionados con empaquetado o
-scripts obsoletos.
+## Instalación en Windows (paso a paso)
+1. Clona el repositorio y entra al directorio raíz.
+2. Crea el entorno virtual: `python -m venv .venv`.
+3. Actívalo: `\.venv\Scripts\activate`.
+4. Instala dependencias: `pip install -r requirements.txt`.
+5. Verifica el modelo: `python scripts/check_tf_model.py` (confirma SavedModel y labels).
+6. Ejecuta con LSTM (valor por defecto):
+   ```bat
+   .\.venv\Scripts\activate
+   set HELEN_MODEL_BACKEND=lstm
+   python -m backendHelen.server
+   ```
+   También puedes usar `scripts\run_windows_lstm.bat` que realiza estos pasos.
+7. Abre `http://localhost:5000` en Google Chrome.
 
-## Arquitectura resumida
+## Instalación y ejecución en Raspberry Pi 5
+1. Instala Python y crea entorno virtual: `python3 -m venv .venv && source .venv/bin/activate`.
+2. Instala dependencias (`tensorflow` CPU o wheel compatible con ARM) y librerías del requirements: `pip install -r requirements.txt`.
+3. Comprueba el modelo: `python scripts/check_tf_model.py`.
+4. Lanza el backend y Chromium kiosk con `bash scripts/run_pi5_lstm.sh`.
+5. Para modo kiosk persistente, invoca el script desde un servicio `systemd` o un `.desktop` que ejecute Chromium apuntando a `http://localhost:5000`.
 
-```
-+----------------------+        Eventos / SSE        +-------------------------+
-|  Google Chrome /     |  <----------------------->  |  backendHelen.server    |
-|  Chromium (Frontend) |                            |  Flask + Socket.IO      |
-+----------+-----------+                            +-----------+-------------+
-           |  HTTP/WebSocket                                   |
-           v                                                   v
-   UI, timers, tutoriales                              MediaPipe / OpenCV, cámara
-```
+## Uso del backend LSTM
+- Buffer: la primera predicción requiere llenar 96 frames (≈3 segundos a 30 FPS).
+- Entrada esperada del modelo: tensor `(1, 96, 126)` en `float32`.
+- Si MediaPipe produce 42 features (x, y de una mano), el backend rellena `z=0` y duplica la mano para simular dos manos mientras se captura la otra.
+- Si el modelo TensorFlow no carga, el servidor usa un clasificador **dummy** (siempre `score=0.0`) para no caer en XGBoost ni detener el servicio.
 
-- **Frontend**: vive en `helen/` y se sirve directamente desde Flask. Las preferencias de UI (p. ej. color de fondo) se
-guardan en `localStorage` para que persistan entre reinicios.
-- **Backend**: contenido en `backendHelen/`, expone la API REST, streaming de video y diagnósticos.
+## Gestos y anillo de activación
+- Las etiquetas se toman de `labels.json` del modelo. La seña de activación suele mapear a `Start`.
+- El endpoint `/events` mantiene el contrato SSE existente. Cuando `active=true` se enciende el anillo en el frontend; `active=false` lo apaga.
+- La `DecisionEngine` conserva thresholds y consenso históricos, ajustados para el LSTM.
 
-## Scripts de apoyo vigentes
+## Solución de problemas
+- **No se enciende el anillo**: verifica la cámara, revisa logs del backend, confirma que `scripts/check_tf_model.py` carga el modelo y que `HELEN_MODEL_BACKEND` no apunta a backends legacy.
+- **La página no carga**: asegúrate de que `python -m backendHelen.server` esté corriendo en `http://localhost:5000` y que el navegador apunte a esa URL.
+- **Warnings de TensorFlow (AVX/AVX2)**: son informativos en CPU; no bloquean la inferencia.
+- **Modelo faltante**: copia un SavedModel dentro de `Hellen_model_TF/video_gesture_model/data/models/gesture_model_*`.
 
-Los únicos scripts mantenidos para automatizar la instalación y ejecución son los que residen en `scripts/`:
+## Scripts disponibles
+- `scripts/check_tf_model.py`: confirma carga del SavedModel y muestra etiquetas.
+- `scripts/run_windows_lstm.bat`: arranca backend en Windows con `HELEN_MODEL_BACKEND=lstm`.
+- `scripts/run_pi5_lstm.sh`: arranca backend en Raspberry Pi 5 y abre Chromium en modo kiosk.
 
-- `scripts/helen-run.ps1` / `scripts/helen-run.bat`
-- `scripts/setup-windows.ps1`
-- `scripts/run-windows.ps1`
-- `scripts/start-helen-windows-tf.bat` / `scripts/start-frontend-chrome-windows.bat` / `scripts/start-helen-all-windows.bat`
-- `scripts/setup-pi.sh`
-- `scripts/run-pi.sh`
-- `scripts/start-helen-backend-pi5.sh` / `scripts/start-helen-frontend-pi5.sh`
-
-El resto de los scripts históricos (`run*.bat`, `run*.sh`) fueron archivados en `legacy/` y no reciben soporte.
-
-## Activos legacy
-
-Todo el material relacionado con empaquetado (PyInstaller, Inno Setup, kioskos heredados, etc.) ahora vive en el
-_directorio_ [`legacy/`](legacy/README_legacy.md). Conserva la estructura original únicamente como referencia para equipos
-que aún dependan de esos artefactos, pero no forma parte del flujo oficial.
-
-Para cualquier contribución nueva utiliza las guías actualizadas y mantén sincronizados los cambios funcionales entre el
-código y la documentación.
+## Registro de cambios
+Consulta `CHANGELOG.md` para un historial resumido de modificaciones.
