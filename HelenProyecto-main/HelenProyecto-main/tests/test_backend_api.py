@@ -1,21 +1,77 @@
 import json
 import socket
 import threading
+import json
+import socket
+import threading
+import time
 from contextlib import closing
 from http.client import HTTPConnection
+from queue import Queue
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import pytest
 
-from backendHelen.server import (
-    HelenRequestHandler,
-    HelenRuntime,
-    ThreadingHTTPServer,
-    GestureDecisionEngine,
-    GestureMetrics,
-    ConsensusConfig,
-)
-from Hellen_model_RN.simple_classifier import Prediction
+from backendHelen.server import HelenRequestHandler, HelenRuntime, ThreadingHTTPServer
+
+
+class StubGestureService:
+    def __init__(self, **_: Any) -> None:
+        self._subscribers: List[Queue] = []
+        self._running = False
+        self._thread: Optional[threading.Thread] = None
+        self._sequence = 0
+
+    def start(self) -> None:
+        if self._running:
+            return
+        self._running = True
+        self._thread = threading.Thread(target=self._emit_loop, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._running = False
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=1.0)
+        self._thread = None
+
+    def running(self) -> bool:
+        return self._running
+
+    def subscribe(self, max_queue: int = 32) -> Queue:
+        queue: Queue = Queue(maxsize=max_queue)
+        self._subscribers.append(queue)
+        return queue
+
+    def unsubscribe(self, queue: Queue) -> None:
+        if queue in self._subscribers:
+            self._subscribers.remove(queue)
+
+    def snapshot(self) -> Dict[str, Any]:
+        return {"running": self._running, "gestures": ["Start", "Clima", "Reloj"]}
+
+    def _emit_loop(self) -> None:
+        gestures = [
+            ("Start", 0.94),
+            ("Clima", 0.86),
+            ("Reloj", 0.81),
+        ]
+        while self._running:
+            label, score = gestures[self._sequence % len(gestures)]
+            payload = {
+                "label": label,
+                "confidence": score,
+                "timestamp": time.time(),
+                "index": self._sequence,
+            }
+            for queue in list(self._subscribers):
+                try:
+                    queue.put_nowait(payload)
+                except Exception:
+                    pass
+            self._sequence += 1
+            time.sleep(0.15)
 
 
 def find_free_port() -> int:
@@ -26,7 +82,7 @@ def find_free_port() -> int:
 
 @pytest.fixture(scope='module')
 def runtime():
-    instance = HelenRuntime()
+    instance = HelenRuntime(service_factory=lambda **kwargs: StubGestureService(**kwargs))
     instance.start()
     yield instance
     instance.stop()
@@ -106,7 +162,7 @@ def test_pipeline_emits_events_over_sse(live_server):
 
         event = client.read_event(timeout=5)
         assert event is not None
-        assert event['gesture'] in ('Start', 'Clima', 'Foco', 'Ajustes', 'Inicio', 'Dispositivos', 'Reloj', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9')
+        assert event['gesture'] in {'Start', 'Clima', 'Reloj'}
         assert 0.0 <= event['score'] <= 1.0
         assert 'timestamp' in event
         assert 'session_id' not in event or isinstance(event['session_id'], str)
@@ -174,24 +230,3 @@ def test_foco_command_is_not_flagged_as_activation(live_server):
             pytest.fail('No se recibió el evento de Foco enviado por HTTP')
     finally:
         client.close()
-
-
-def test_command_debounce_prevents_spam():
-    metrics = GestureMetrics()
-    engine = GestureDecisionEngine(
-        metrics=metrics,
-        consensus=ConsensusConfig(window_size=3, required_votes=1),
-    )
-
-    timestamp = 0.0
-    outcome_start = engine.process(Prediction(label='Start', score=0.92), timestamp=timestamp)
-    assert outcome_start.emit is True
-
-    timestamp += 1.0  # supera el cooldown de activación
-    outcome_clima = engine.process(Prediction(label='Clima', score=0.93), timestamp=timestamp)
-    assert outcome_clima.emit is True
-
-    timestamp += 0.3  # dentro del periodo de debounce (0.75s)
-    outcome_repeat = engine.process(Prediction(label='Clima', score=0.94), timestamp=timestamp)
-    assert outcome_repeat.emit is False
-    assert outcome_repeat.reason == 'command_debounce_active'

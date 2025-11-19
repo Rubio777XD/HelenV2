@@ -14,17 +14,22 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-import cv2
-import mediapipe as mp
+try:  # pragma: no cover - optional dependency en CI
+    import cv2  # type: ignore
+except Exception:  # pragma: no cover
+    cv2 = None  # type: ignore
+
+try:  # pragma: no cover - optional dependency en CI
+    import mediapipe as mp  # type: ignore
+except Exception:  # pragma: no cover
+    mp = None  # type: ignore
 import numpy as np
 
 # Permite ejecutar como paquete (python -m pkg.mod) o como script directo
 try:
     from . import config
-    from .cli_utils import gesture_inventory, prompt_for_multiple_gestures
 except ImportError:  # ejecución directa
     import config  # type: ignore
-    from cli_utils import gesture_inventory, prompt_for_multiple_gestures  # type: ignore
 
 
 @dataclass
@@ -129,7 +134,13 @@ def main() -> None:
     """Recorrer los videos de cada gesto y generar el dataset comprimido."""
     args = parse_args()
 
-    gestures = args.gestures or prompt_for_multiple_gestures(gesture_inventory())
+    gestures = list(args.gestures or [])
+    if not gestures:
+        try:  # imports diferidos para evitar dependencias al usarse como módulo
+            from .cli_utils import gesture_inventory, prompt_for_multiple_gestures
+        except ImportError:  # ejecución directa
+            from cli_utils import gesture_inventory, prompt_for_multiple_gestures  # type: ignore
+        gestures = prompt_for_multiple_gestures(gesture_inventory())
     print(f"Procesando las señas: {', '.join(gestures)}")
 
     samples: List[Sample] = []

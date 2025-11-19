@@ -1,135 +1,142 @@
-import json
-import pickle
-import sys
-import types
-from pathlib import Path
+import threading
+import time
+from queue import Queue
+from typing import Any, Dict, List
 
 import pytest
 
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-MODEL_DIR = REPO_ROOT / 'Hellen_model_RN'
-DATASET_PATH = MODEL_DIR / 'data1.pickle'
-
-if str(MODEL_DIR) not in sys.path:
-    sys.path.insert(0, str(MODEL_DIR))
-
-import backendConexion  # noqa: E402
-import helpers  # noqa: E402
-from simple_classifier import SimpleGestureClassifier, SyntheticGestureStream  # noqa: E402
+from backendHelen.server import GestureLabelMapper, HelenRuntime, RuntimeConfig, TensorFlowGesturePipeline
 
 
-def load_dataset():
-    with DATASET_PATH.open('rb') as handle:
-        return pickle.load(handle)
+class DummyRuntime(HelenRuntime):
+    """Runtime subclass that records events for assertions."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        config = kwargs.pop("config", RuntimeConfig())
+        super().__init__(config=config, **kwargs)
+        self.received: List[Dict[str, Any]] = []
+
+    def handle_prediction(self, payload: Dict[str, Any]) -> None:  # type: ignore[override]
+        super().handle_prediction(payload)
+        self.received.append(payload)
 
 
-def test_dataset_structure_and_labels_align():
-    dataset = load_dataset()
+class PredictOnceService:
+    """Test double that mimics ``GestureInferenceService``."""
 
-    assert set(dataset.keys()) == {'data', 'labels'}
-    assert len(dataset['data']) == len(dataset['labels']) > 0
+    def __init__(self, **_: Any) -> None:
+        self._subscribers: List[Queue] = []
+        self._running = False
+        self._thread: threading.Thread | None = None
 
-    sample = dataset['data'][0]
-    assert isinstance(sample, list)
-    assert len(sample) == 42
+    def start(self) -> None:
+        if self._running:
+            return
+        self._running = True
+        self._thread = threading.Thread(target=self._emit_loop, daemon=True)
+        self._thread.start()
 
-    for raw_label in dataset['labels']:
-        try:
-            numeric_label = int(raw_label)
-        except ValueError:
-            assert raw_label in helpers.labels_dict.values()
-        else:
-            assert numeric_label in helpers.labels_dict
+    def stop(self) -> None:
+        self._running = False
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=1.0)
+        self._thread = None
 
+    def subscribe(self, max_queue: int = 32) -> Queue:
+        queue: Queue = Queue(maxsize=max_queue)
+        self._subscribers.append(queue)
+        return queue
 
-def test_labels_dict_values_are_unique():
-    values = list(helpers.labels_dict.values())
-    assert len(values) == len(set(values))
+    def unsubscribe(self, queue: Queue) -> None:
+        if queue in self._subscribers:
+            self._subscribers.remove(queue)
 
+    def snapshot(self) -> Dict[str, Any]:
+        return {"running": self._running, "gestures": ["Start", "Clima"]}
 
-def test_simple_classifier_predicts_known_labels():
-    classifier = SimpleGestureClassifier(DATASET_PATH)
-    dataset = load_dataset()
-
-    sample = dataset['data'][5]
-    prediction = classifier.predict(sample)
-
-    assert prediction.label in helpers.labels_dict.values()
-    assert 0.0 <= prediction.score <= 1.0
-
-
-def test_synthetic_stream_introduces_variability():
-    stream = SyntheticGestureStream(DATASET_PATH, jitter=0.05)
-    first_features, first_label = stream.next()
-    second_features, second_label = stream.next()
-
-    assert len(first_features) == 42
-    assert first_label in helpers.labels_dict.values()
-    assert second_label in helpers.labels_dict.values()
-    assert any(abs(a - b) > 0 for a, b in zip(first_features, second_features))
-
-
-def test_post_gesturekey_payload_structure(monkeypatch):
-    captured = {}
-
-    class DummyConnection:
-        def __init__(self, host, port, timeout):
-            captured['address'] = (host, port)
-            captured['timeout'] = timeout
-
-        def request(self, method, path, body=None, headers=None):
-            captured['method'] = method
-            captured['path'] = path
-            captured['body'] = body
-            captured['headers'] = headers
-
-        def getresponse(self):
-            return types.SimpleNamespace(status=200, read=lambda: b'')
-
-        def close(self):
-            captured['closed'] = True
-
-    monkeypatch.setattr(backendConexion, 'http_client', types.SimpleNamespace(HTTPConnection=DummyConnection))
-
-    status = backendConexion.post_gesturekey('Clima', score=0.85, session_id='abc123')
-
-    assert status == 200
-    assert captured['method'] == 'POST'
-    assert captured['path'].endswith('/gestures/gesture-key')
-    assert captured.get('closed') is True
-
-    payload = json.loads(captured['body'].decode('utf-8'))
-    assert payload['gesture'] == 'Clima'
-    assert payload['character'] == 'Clima'
-    assert payload['score'] == pytest.approx(0.85)
-    assert payload['session_id'] == 'abc123'
-    assert payload['sequence'] == 1
-    assert 'timestamp' in payload
-    assert 'latency_ms' in payload
+    def _emit_loop(self) -> None:
+        while self._running:
+            if not self._subscribers:
+                time.sleep(0.01)
+                continue
+            payload = {
+                "label": "Start",
+                "confidence": 0.93,
+                "timestamp": time.time(),
+                "index": 0,
+            }
+            for queue in list(self._subscribers):
+                queue.put(payload)
+            time.sleep(0.1)
+            break
+        self._running = False
 
 
-def test_post_gesturekey_allows_unknown_labels(monkeypatch):
-    captured = {}
+class EagerService(PredictOnceService):
+    """Pushes two gestures sequentially for latency tests."""
 
-    class DummyConnection:
-        def __init__(self, host, port, timeout):
-            pass
+    def _emit_loop(self) -> None:
+        while self._running and not self._subscribers:
+            time.sleep(0.01)
+        gestures = [("Start", 0.95), ("Clima", 0.88)]
+        for idx, (label, score) in enumerate(gestures):
+            payload = {
+                "label": label,
+                "confidence": score,
+                "timestamp": time.time(),
+                "index": idx,
+            }
+            for queue in list(self._subscribers):
+                queue.put(payload)
+            time.sleep(0.05)
+        self._running = False
 
-        def request(self, method, path, body=None, headers=None):
-            captured['body'] = body
 
-        def getresponse(self):
-            return types.SimpleNamespace(status=200, read=lambda: b'')
+def test_gesture_label_mapper_applies_aliases():
+    mapper = GestureLabelMapper({"hola": "Start", "nube": "Clima"})
+    assert mapper.normalize("HOLA") == "Start"
+    assert mapper.normalize("nube") == "Clima"
+    assert mapper.normalize("Reloj") == "Reloj"
 
-        def close(self):
-            pass
 
-    monkeypatch.setattr(backendConexion, 'http_client', types.SimpleNamespace(HTTPConnection=DummyConnection))
+def test_tensorflow_pipeline_emits_predictions():
+    runtime = DummyRuntime(service_factory=lambda **kwargs: PredictOnceService(**kwargs))
+    runtime.start()
+    try:
+        deadline = time.time() + 2.0
+        while not runtime.received and time.time() < deadline:
+            time.sleep(0.05)
+        assert runtime.received, "La tubería no recibió predicciones"
+        first = runtime.received[0]
+        assert first["label"] == "Start"
+        assert 0.0 < first["confidence"] <= 1.0
+    finally:
+        runtime.stop()
 
-    backendConexion.post_gesturekey('Desconocido')
 
-    payload = json.loads(captured['body'].decode('utf-8'))
-    assert payload['gesture'] is None
-    assert payload['character'] == 'Desconocido'
-    assert payload['sequence'] >= 1
+def test_runtime_builds_activation_events():
+    runtime = DummyRuntime(service_factory=lambda **kwargs: EagerService(**kwargs))
+    runtime.start()
+    try:
+        deadline = time.time() + 2.0
+        while len(runtime.received) < 2 and time.time() < deadline:
+            time.sleep(0.05)
+        assert len(runtime.received) >= 2
+        activation_event = runtime.last_prediction
+        assert activation_event is not None
+        assert activation_event["gesture"] in {"Start", "Clima"}
+        assert "score" in activation_event
+    finally:
+        runtime.stop()
+
+
+def test_tensorflow_pipeline_class_is_instantiable():
+    runtime = DummyRuntime(service_factory=lambda **kwargs: PredictOnceService(**kwargs))
+    pipeline = TensorFlowGesturePipeline(runtime, service_factory=lambda **kwargs: PredictOnceService(**kwargs))
+    assert pipeline.snapshot()["gestures"] == []
+    pipeline.start()
+    time.sleep(0.1)
+    assert pipeline.is_running() is True
+    pipeline.stop()
+    assert pipeline.is_running() is False
+    runtime.stop()

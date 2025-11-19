@@ -11,19 +11,29 @@ from collections import deque
 from pathlib import Path
 from typing import Callable, Deque, Dict, Optional
 
-import cv2
-import mediapipe as mp
+try:  # pragma: no cover - optional dependency en CI
+    import cv2  # type: ignore
+except Exception:  # pragma: no cover
+    cv2 = None  # type: ignore
+
+try:  # pragma: no cover - optional dependency en CI
+    import mediapipe as mp  # type: ignore
+except Exception:  # pragma: no cover
+    mp = None  # type: ignore
+
 import numpy as np
-import tensorflow as tf
+
+try:  # pragma: no cover - optional dependency en CI
+    import tensorflow as tf  # type: ignore
+except Exception:  # pragma: no cover
+    tf = None  # type: ignore
 
 # Imports robustos: paquete o script directo
 try:
     from . import config
-    from .cli_utils import list_saved_models, prompt_for_model_dir
     from .extract_landmarks import normalise_landmarks
 except Exception:
     import config  # type: ignore
-    from cli_utils import list_saved_models, prompt_for_model_dir  # type: ignore
     from extract_landmarks import normalise_landmarks  # type: ignore
 
 
@@ -61,6 +71,10 @@ def build_predict_fn(model_path: Path) -> Callable[[np.ndarray], np.ndarray]:
       - SavedModel exportado en carpeta (contiene saved_model.pb)
       - Archivo Keras (.keras / .h5)
     """
+    if tf is None:
+        raise RuntimeError(
+            "TensorFlow no está disponible en este entorno. Instala tensorflow==2.12.0 para usar el modelo."
+        )
     if model_path.is_dir() and (model_path / "saved_model.pb").exists():
         # SavedModel exportado con model.export(...)
         saved = tf.saved_model.load(str(model_path))
@@ -102,8 +116,17 @@ def main() -> None:
     """Configurar MediaPipe, cargar el modelo y realizar inferencia cuadro a cuadro."""
     args = parse_args()
 
+    if cv2 is None or mp is None:
+        raise RuntimeError(
+            "OpenCV/MediaPipe no están disponibles en este entorno. Instala opencv-python y mediapipe."
+        )
+
     model_dir_or_file: Optional[Path] = args.model_dir
     if model_dir_or_file is None:
+        try:  # import diferido
+            from .cli_utils import list_saved_models, prompt_for_model_dir
+        except ImportError:
+            from cli_utils import list_saved_models, prompt_for_model_dir  # type: ignore
         # Selección interactiva de un SavedModel reciente
         model_dir_or_file = prompt_for_model_dir(list_saved_models())
 
