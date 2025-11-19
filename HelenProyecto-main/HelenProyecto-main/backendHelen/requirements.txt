@@ -10,8 +10,10 @@ h11==0.14.0
 itsdangerous==2.2.0
 Jinja2==3.1.4
 MarkupSafe==2.1.5
+numpy==1.26.4
 python-engineio==4.9.1
 python-socketio==5.11.2
 simple-websocket==1.0.0
+tensorflow-cpu==2.16.1
 Werkzeug==3.0.3
 wsproto==1.2.0

@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 2024-11-05
+
+### Añadido
+- Clasificador TensorFlow LSTM habilitado por defecto cuando `HELEN_MODEL_BACKEND` no está definido, conservando compatibilidad con la seña de activación y el contrato del `DecisionEngine`.
+- Normalización de etiquetas en `TensorFlowSequenceGestureClassifier` para mapear `activar`→`Start` y mantener los alias históricos de gestos.
+- Scripts nuevos para Windows (`scripts/start-helen-windows-tf.bat`, `scripts/start-frontend-chrome-windows.bat`, `scripts/start-helen-all-windows.bat`) y Raspberry Pi 5 (`scripts/start-helen-backend-pi5.sh`, `scripts/start-helen-frontend-pi5.sh`).
+- Unidad de ejemplo `system_scripts/helen-pi5.service` y guía `docs/RaspberryPi5_TF.md` con pasos de instalación y arranque en modo kiosk.
+
+### Cambiado
+- `backendHelen/requirements.txt` incluye TensorFlow CPU y NumPy para soportar el backend LSTM sin dependencias externas adicionales.
+
 ## 2024-06-03
 
 ### Añadido
