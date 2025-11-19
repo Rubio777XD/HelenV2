@@ -1,5 +1,23 @@
 # CHANGELOG
 
+# 2024-05-22 – README de instalación paso a paso para Raspberry Pi 5
+- Se añadió `README-raspi-install.md`, una guía lineal desde el formateo de la Pi
+  hasta la ejecución en modo kiosk, cumpliendo con la solicitud de documentar el
+  proceso completo de instalación.
+
+# 2024-05-21 – Guía dedicada para Raspberry Pi 5
+- `README-linux-rpi-chrome.md` ahora se enfoca exclusivamente en Raspberry Pi 5 con
+  Raspberry Pi OS 64 bits, eliminando referencias a otras distribuciones Linux para
+  evitar confusiones.
+
+# 2024-05-20 – Flujo Raspberry Pi 5 y documentación actualizada
+- `scripts/setup-pi.sh` y `scripts/run-pi.sh` ahora son scripts nativos (sin `legacy/`)
+  que preparan `.venv`, exportan `HELEN_*` y permiten lanzar Chromium/kiosk.
+- Se añadieron `HELEN_CAMERA_WIDTH/HEIGHT` para ajustar la resolución de captura vía
+  variables de entorno.
+- Nuevo `system_scripts/chromium-kiosk.service` y guía `README-linux-rpi-chrome.md`
+  detallando la instalación en Raspberry Pi 5 con la cámara Obsbot Tiny 2.
+
 ## 2024-05-14 – Documentación multiplataforma y guías actualizadas
 - Se añadió `README-linux-rpi-chrome.md` con el flujo detallado para Ubuntu/Raspberry Pi usando el modelo TF.
 - Se corrigió `scripts/setup-pi.sh` para que utilice el instalador soportado en `legacy/packaging/linux-rpi/`.

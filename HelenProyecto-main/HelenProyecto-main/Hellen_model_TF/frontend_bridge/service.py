@@ -1,6 +1,7 @@
 """High-level orchestration to feed gesture predictions to web clients."""
 from __future__ import annotations
 
+import os
 import threading
 import time
 from collections import deque
@@ -28,6 +29,19 @@ from video_gesture_model.realtime_inference import (
 )
 
 from . import config
+
+
+def _camera_dimension(env_name: str, fallback: int) -> int:
+    """Read positive integers from the environment for camera overrides."""
+
+    value = os.getenv(env_name)
+    if not value:
+        return fallback
+    try:
+        parsed = int(value)
+    except ValueError:
+        return fallback
+    return parsed if parsed > 0 else fallback
 
 
 class GestureInferenceService:
@@ -176,9 +190,12 @@ class GestureInferenceService:
             min_tracking_confidence=0.5,
         )
 
+        frame_width = _camera_dimension("HELEN_CAMERA_WIDTH", model_config.FRAME_WIDTH)
+        frame_height = _camera_dimension("HELEN_CAMERA_HEIGHT", model_config.FRAME_HEIGHT)
+
         cap = cv2.VideoCapture(self.camera_index)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, model_config.FRAME_WIDTH)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, model_config.FRAME_HEIGHT)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, frame_width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_height)
 
         buffer = deque(maxlen=self.sequence_length)
 
