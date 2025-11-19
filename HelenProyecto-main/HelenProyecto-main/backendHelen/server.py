@@ -1,3 +1,4 @@
+#!/usr/bin/env python3.10
 """HELEN backend exposing Server-Sent Events for gesture navigation.
 
 The original repository relied on several disparate scripts to run the camera
@@ -69,9 +70,9 @@ labels_dict: Dict[int, str] = {}
 
 
 LOGGER = logging.getLogger("helen.backend")
-LOGGER.setLevel(logging.INFO)
+LOGGER.setLevel(logging.WARNING)
 if not LOGGER.handlers:
-    logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s %(message)s")
+    logging.basicConfig(level=logging.WARNING, format="[%(asctime)s] %(levelname)s %(message)s")
 
 DEBUG_MODE = bool(int(os.environ.get("HELEN_DEBUG", "0") or 0))
 DECISION_DEBUG = DEBUG_MODE or bool(int(os.environ.get("HELEN_DEBUG_DECISION", "0") or 0))
@@ -190,7 +191,7 @@ REPO_ROOT = _resolve_repo_root()
 FRONTEND_ROOT = REPO_ROOT / "helen"
 TF_MODEL_BASE_DIR = REPO_ROOT / "Hellen_model_TF" / "video_gesture_model" / "data" / "models"
 
-LSTM_RUNTIME_SEQUENCE_LENGTH = 32
+LSTM_RUNTIME_SEQUENCE_LENGTH = 24
 LSTM_MODEL_SEQUENCE_LENGTH = 96
 
 # port: int = 5000  # Referencia para pruebas de integración (mantener sincronizado con run()).
@@ -364,7 +365,7 @@ DEFAULT_CLASS_THRESHOLDS: Dict[str, ClassThreshold] = {
 }
 
 GLOBAL_MIN_SCORE = 0.3
-DEFAULT_POLL_INTERVAL_S = 0.03
+DEFAULT_POLL_INTERVAL_S = 0.01
 
 
 @dataclass(frozen=True)
@@ -387,20 +388,20 @@ class PlatformRuntimeDefaults:
 
 @dataclass(frozen=True)
 class ConsensusConfig:
-    window_size: int = 3
+    window_size: int = 1
     required_votes: int = 1
 
 
 DEFAULT_CONSENSUS_CONFIG = ConsensusConfig()
 
-CLIMA_CONSENSUS_OVERRIDE = ConsensusConfig(window_size=2, required_votes=1)
+CLIMA_CONSENSUS_OVERRIDE = ConsensusConfig(window_size=1, required_votes=1)
 DEBUG_LSTM_PROFILE = "debug_lstm"
 
 CLIMA_POST_START_DELAY = 0.4
 
 ACTIVATION_DELAY = 0.8
 
-SMOOTHING_WINDOW_SIZE = 4
+SMOOTHING_WINDOW_SIZE = 1
 COOLDOWN_SECONDS = ACTIVATION_DELAY
 LISTENING_WINDOW_SECONDS = 4.0
 COMMAND_DEBOUNCE_SECONDS = 0.75
@@ -2039,15 +2040,15 @@ RASPBERRY_MODE_PROFILE = PiCameraProfile(
     960,
     540,
     24,
-    0.03,
+    0.01,
     1,
 )
 
 
-WINDOWS_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.72, 0.62, 0.03, 1)
-PI5_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.58, 0.55, 0.03, 1)
-PI4_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.6, 0.55, 0.03, 1)
-GENERIC_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.68, 0.6, 0.03, 1)
+WINDOWS_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.3, 0.3, 0.01, 1)
+PI5_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.3, 0.3, 0.01, 1)
+PI4_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.3, 0.3, 0.01, 1)
+GENERIC_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.3, 0.3, 0.01, 1)
 
 
 def _resolve_runtime_defaults(profile: Optional[PiCameraProfile]) -> PlatformRuntimeDefaults:
@@ -2578,8 +2579,8 @@ class CameraGestureStream:
         self,
         *,
         camera_index: Optional[Union[int, str]] = None,
-        detection_confidence: float = 0.7,
-        tracking_confidence: float = 0.6,
+        detection_confidence: float = 0.3,
+        tracking_confidence: float = 0.3,
         metrics: Optional[GestureMetrics] = None,
         profile: Optional[PiCameraProfile] = None,
         selection: Optional[CameraSelection] = None,
@@ -2801,6 +2802,8 @@ class CameraGestureStream:
             max_num_hands=1,
             min_detection_confidence=self._detection_confidence,
             min_tracking_confidence=self._tracking_confidence,
+            model_complexity=0,
+            smooth_landmarks=False,
         )
         self._opened = True
         self._healthy = True
@@ -2865,22 +2868,16 @@ class CameraGestureStream:
                     image.flags.writeable = True
 
             if not results.multi_hand_landmarks:
-                self._register_quality_check(False, "no_hand_detected")
                 self._frames_without_hand += 1
                 if self._frames_without_hand > 2:
                     self._landmark_buffer.clear()
                     self._last_landmarks = None
                     self._last_roi = None
-                time.sleep(0.02)
+                time.sleep(0.005)
                 continue
 
             self._frames_without_hand = 0
             landmarks = results.multi_hand_landmarks[0]
-            if not self._validate_landmarks(frame, results, landmarks, width, height):
-                self._last_landmarks = None
-                self._last_roi = None
-                continue
-
             coords = [
                 (
                     self._clamp_normalized(float(lm.x)),
@@ -2889,20 +2886,12 @@ class CameraGestureStream:
                 )
                 for lm in landmarks.landmark
             ]
-            roi_snapshot = self._snapshot_roi(coords, width, height)
-            if roi_snapshot is None:
-                self._register_quality_check(False, "roi_projection")
-                self._landmark_buffer.clear()
-                self._last_landmarks = None
-                self._last_roi = None
-                continue
 
+            self._landmark_buffer.clear()
             self._landmark_buffer.append(coords)
-            smoothed = self._smooth_landmarks()
-            self._last_landmarks = [tuple(point) for point in smoothed]
-            self._last_roi = roi_snapshot
-            features = self._extract_features(smoothed)
-            self._register_quality_check(True, None)
+            self._last_landmarks = [tuple(point) for point in coords]
+            self._last_roi = None
+            features = self._extract_features(coords)
             self._last_capture = time.time()
             self._last_error = None
             self._healthy = True
@@ -3474,17 +3463,17 @@ class HelenRuntime:
         detection = self.config.detection_confidence
         if detection is None:
             detection = defaults.detection_confidence
-        self.config.detection_confidence = max(0.2, min(float(detection), 0.99))
+        self.config.detection_confidence = max(0.3, min(float(detection), 0.99))
 
         tracking = self.config.tracking_confidence
         if tracking is None:
             tracking = defaults.tracking_confidence
-        self.config.tracking_confidence = max(0.2, min(float(tracking), 0.99))
+        self.config.tracking_confidence = max(0.3, min(float(tracking), 0.99))
 
         poll_interval = self.config.poll_interval_s
         if poll_interval is None:
             poll_interval = defaults.poll_interval
-        self.config.poll_interval_s = max(0.02, float(poll_interval))
+        self.config.poll_interval_s = max(0.01, float(poll_interval))
 
         stride = self.config.process_every_n
         if stride is None:
@@ -3581,7 +3570,7 @@ class HelenRuntime:
 
     # ------------------------------------------------------------------
     def _create_geometry_verifier(self) -> Optional[LandmarkGeometryVerifier]:
-        return LandmarkGeometryVerifier()
+        return None
 
     # ------------------------------------------------------------------
     def _create_classifier(self) -> Tuple[Any, Dict[str, Any]]:

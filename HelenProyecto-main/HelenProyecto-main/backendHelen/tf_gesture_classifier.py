@@ -1,20 +1,20 @@
+#!/usr/bin/env python3.10
 """TensorFlow sequence gesture classifier compatible con el contrato de HELEN.
 
-Este envoltorio adapta el modelo LSTM de video al contrato existente
-``predict(features) -> Prediction`` usado por el backend. Mantiene una ventana
-deslizante compacta (32 fotogramas por defecto) con 126 características (21
-landmarks × 3 coords × 2 manos) y solo dispara el modelo cuando la secuencia
-está completa. Si el modelo requiere secuencias más largas (96 frames), la
-ventana corta se reexpande rellenando con el primer frame capturado para
-preservar la forma esperada. Las primeras predicciones retornan una clase
-neutra para que la ``DecisionEngine`` conserve la misma lógica de consenso que
-el backend histórico.
+En modo ultra ligero mantiene una ventana deslizante de **24 fotogramas** y
+permite inferir tan pronto se hayan capturado ``min_frames`` (3 por defecto),
+rellenando el resto con el primer frame para cumplir con la forma requerida de
+**96 frames × 126 features**. La prioridad es emitir una etiqueta rápido aun si
+se sacrifica precisión; las primeras predicciones retornan una clase neutral
+solo mientras se junta el mínimo de frames reales.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
+import os
 import threading
 from collections import deque
 from pathlib import Path
@@ -23,6 +23,9 @@ from typing import Callable, Dict, Iterable, List
 
 LOGGER = logging.getLogger("helen.backend.tf")
 DEBUG_ENABLED = bool(int(__import__("os").environ.get("HELEN_DEBUG", "0") or 0))
+
+os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
 
 
 class Prediction(tuple):
@@ -49,8 +52,8 @@ class TensorFlowSequenceGestureClassifier:
     The model consumes sequences shaped as ``(model_sequence_length, feature_dim)``
     with ``model_sequence_length=96`` and ``feature_dim=126`` (21 landmarks × 3
     coordinates × 2 hands). The internal buffer keeps a sliding window of the
-    last ``sequence_length`` frames and triggers inference only when the window
-    is full. A shorter runtime window (32 frames by default) is padded to the
+    last ``sequence_length`` frames and triggers inference as soon as the
+    minimum ``min_frames`` threshold is met, padding the remainder to the
     model's expected length so the DecisionEngine receives early predictions
     without breaking the SavedModel contract.
 
@@ -100,9 +103,10 @@ class TensorFlowSequenceGestureClassifier:
         self,
         model_path: Path,
         *,
-        sequence_length: int = 32,
+        sequence_length: int = 24,
         model_sequence_length: int = 96,
         feature_dim: int = 126,
+        min_frames: int = 3,
     ) -> None:
         try:
             import numpy as np  # type: ignore
@@ -112,9 +116,14 @@ class TensorFlowSequenceGestureClassifier:
 
         self._np = np
         self._tf = tf
+        with contextlib.suppress(Exception):
+            tf.config.set_visible_devices([], "GPU")
+            tf.config.threading.set_inter_op_parallelism_threads(1)
+            tf.config.threading.set_intra_op_parallelism_threads(1)
         self.sequence_length = int(sequence_length)
         self.model_sequence_length = int(model_sequence_length)
         self.feature_dim = int(feature_dim)
+        self._min_frames = max(1, int(min_frames))
         self._buffer: deque = deque(maxlen=self.sequence_length)
         self._lock = threading.Lock()
 
@@ -227,42 +236,23 @@ class TensorFlowSequenceGestureClassifier:
 
         if DEBUG_ENABLED:
             LOGGER.debug(
-                "Ventana LSTM: %d/%d frames llenos", len(self._buffer), self.sequence_length
+                "Ventana LSTM: %d/%d frames disponibles", len(self._buffer), self.sequence_length
             )
 
-        # The LSTM requires a full sequence. Emit a neutral prediction while the
-        # buffer is filling up; the DecisionEngine will handle stability.
-        if len(self._buffer) < self.sequence_length:
+        if len(self._buffer) < self._min_frames:
             neutral_label = self._labels.get(0, "Start")
-            if DEBUG_ENABLED:
-                LOGGER.debug(
-                    "Secuencia incompleta (%d/%d); devolviendo %s score=0",
-                    len(self._buffer),
-                    self.sequence_length,
-                    neutral_label,
-                )
             return Prediction(label=str(neutral_label), score=0.0)
 
         np = self._np
-        sequence = np.array(self._buffer, dtype=np.float32)
-        if sequence.shape != (self.sequence_length, self.feature_dim):
-            raise ValueError(
-                f"Secuencia con forma inesperada {sequence.shape}, se esperaba"
-                f" ({self.sequence_length}, {self.feature_dim})"
-            )
-
-        if self.model_sequence_length > self.sequence_length:
-            pad = self.model_sequence_length - self.sequence_length
+        effective_len = min(len(self._buffer), self.sequence_length)
+        sequence = np.array(list(self._buffer)[-effective_len:], dtype=np.float32)
+        target_len = self.model_sequence_length
+        if sequence.shape[0] < target_len:
+            pad = target_len - sequence.shape[0]
             pad_frame = sequence[:1]
             sequence = np.concatenate([np.repeat(pad_frame, pad, axis=0), sequence], axis=0)
-        elif self.model_sequence_length < self.sequence_length:
-            sequence = sequence[-self.model_sequence_length :]
-
-        if sequence.shape != (self.model_sequence_length, self.feature_dim):
-            raise ValueError(
-                f"Secuencia con forma inesperada {sequence.shape}, se esperaba"
-                f" ({self.model_sequence_length}, {self.feature_dim})"
-            )
+        elif sequence.shape[0] > target_len:
+            sequence = sequence[-target_len:]
 
         batch = np.expand_dims(sequence, axis=0)
 
