@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-MODEL_DIR = REPO_ROOT / 'Hellen_model_RN'
+MODEL_DIR = REPO_ROOT / 'Hellen_model_TF'
 
 for path in (str(REPO_ROOT), str(MODEL_DIR)):
     if path not in sys.path:

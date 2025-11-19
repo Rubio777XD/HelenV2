@@ -10,6 +10,7 @@ from backendHelen.server import ACTIVATION_ALIASES as BACKEND_ACTIVATION_ALIASES
 REPO_ROOT = Path(__file__).resolve().parents[1]
 HELEN_DIR = REPO_ROOT / 'helen'
 BACKEND_DIR = REPO_ROOT / 'backendHelen'
+CANONICAL_GESTURES = {'start', 'clima', 'foco', 'ajustes', 'inicio', 'dispositivos', 'reloj'}
 
 
 def read_text(path: Path) -> str:
@@ -24,7 +25,7 @@ def extract_activation_aliases(actions_js: str) -> Set[str]:
     aliases_match = re.search(r'const ACTIVATION_ALIASES = \[(.*?)\];', actions_js, re.S)
     assert aliases_match is not None
     return {
-        token.strip().strip("'\"")
+        token.strip().strip("'\"").lower()
         for token in aliases_match.group(1).split(',')
         if token.strip()
     }
@@ -133,25 +134,17 @@ def test_default_socket_url_matches_backend():
 
 
 def test_frontend_gesture_mappings_cover_model_labels():
-    from Hellen_model_RN import helpers as model_helpers
-
     actions_js = read_text(HELEN_DIR / 'jsSignHandler' / 'actions.js')
 
     actions_match = re.search(r'const gestureActions = \{(.*?)\};', actions_js, re.S)
     assert actions_match is not None
     action_block = actions_match.group(1)
-    action_keys = {match.strip() for match in re.findall(r'\s*([a-z]+):\s*\(\)\s*=>', action_block)}
+    action_keys = {match.strip().lower() for match in re.findall(r'\s*([a-z]+):\s*\(\)\s*=>', action_block)}
 
     alias_tokens = extract_activation_aliases(actions_js)
 
-    known_labels = {
-        value.lower()
-        for value in model_helpers.labels_dict.values()
-        if not value.isdigit()
-    }
-
     covered = action_keys.union(alias_tokens)
-    assert known_labels.issubset(covered)
+    assert CANONICAL_GESTURES.issubset(covered)
 
 
 def test_activation_trigger_is_exposed():

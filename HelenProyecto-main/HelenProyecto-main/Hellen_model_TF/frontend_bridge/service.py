@@ -8,8 +8,16 @@ from pathlib import Path
 from queue import Queue, Empty
 from typing import Dict, Iterator, List, Optional
 
-import cv2
-import mediapipe as mp
+try:  # pragma: no cover - optional dependency en CI
+    import cv2  # type: ignore
+except Exception:  # pragma: no cover
+    cv2 = None  # type: ignore
+
+try:  # pragma: no cover - optional dependency en CI
+    import mediapipe as mp  # type: ignore
+except Exception:  # pragma: no cover
+    mp = None  # type: ignore
+
 import numpy as np
 
 from video_gesture_model import config as model_config
@@ -147,6 +155,11 @@ class GestureInferenceService:
                     pass
 
     def _run(self) -> None:
+        if cv2 is None or mp is None:
+            self._ready_event.set()
+            raise RuntimeError(
+                "OpenCV/MediaPipe no están disponibles en este entorno. Instala opencv-python y mediapipe."
+            )
         try:
             self._load_model_and_labels()
         except Exception as exc:  # pragma: no cover - initialisation errors bubble up

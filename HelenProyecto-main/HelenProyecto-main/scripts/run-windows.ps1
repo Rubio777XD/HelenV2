@@ -167,11 +167,16 @@ function Ensure-ArgumentPair {
     $List.InsertRange(0, @($Name, $DefaultValue))
 }
 
-Ensure-ArgumentPair -List $effectiveArgsList -Name '--poll-interval' -DefaultValue '0.08'
-Ensure-ArgumentPair -List $effectiveArgsList -Name '--frame-stride' -DefaultValue '2'
-Ensure-ArgumentPair -List $effectiveArgsList -Name '--camera-height' -DefaultValue '720'
-Ensure-ArgumentPair -List $effectiveArgsList -Name '--camera-width' -DefaultValue '1280'
-Ensure-ArgumentPair -List $effectiveArgsList -Name '--camera-backend' -DefaultValue 'directshow'
+Ensure-ArgumentPair -List $effectiveArgsList -Name '--confidence-threshold' -DefaultValue '0.75'
+Ensure-ArgumentPair -List $effectiveArgsList -Name '--prediction-cooldown' -DefaultValue '0.5'
+
+if ($env:HELEN_TF_MODEL_PATH -and -not [string]::IsNullOrWhiteSpace($env:HELEN_TF_MODEL_PATH)) {
+    Ensure-ArgumentPair -List $effectiveArgsList -Name '--model-path' -DefaultValue $env:HELEN_TF_MODEL_PATH
+}
+
+if ($env:HELEN_TF_LABELS_PATH -and -not [string]::IsNullOrWhiteSpace($env:HELEN_TF_LABELS_PATH)) {
+    Ensure-ArgumentPair -List $effectiveArgsList -Name '--labels' -DefaultValue $env:HELEN_TF_LABELS_PATH
+}
 
 $effectiveArgsArray = $effectiveArgsList.ToArray()
 

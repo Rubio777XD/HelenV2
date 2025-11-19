@@ -27,8 +27,11 @@ scripts obsoletos.
 ```
 
 - **Frontend**: vive en `helen/` y se sirve directamente desde Flask. Las preferencias de UI (p. ej. color de fondo) se
-guardan en `localStorage` para que persistan entre reinicios.
+  guardan en `localStorage` para que persistan entre reinicios.
 - **Backend**: contenido en `backendHelen/`, expone la API REST, streaming de video y diagnósticos.
+- **Modelo de gestos**: el SavedModel de TensorFlow vive en `Hellen_model_TF/video_gesture_model/` y se carga desde
+  `backendHelen.server`. Ese módulo es ahora el **punto único de verdad** para la inferencia y para la emisión de eventos
+  hacia el ring de activación del frontend.
 
 ## Scripts de apoyo vigentes
 
