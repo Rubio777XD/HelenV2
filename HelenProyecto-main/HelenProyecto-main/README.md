@@ -3,6 +3,7 @@
 HELEN es un asistente doméstico controlado por gestos compuesto por un backend en Python (Flask + Socket.IO) y una
 interfaz web optimizada para ejecutarse en Google Chrome o Chromium. A partir de esta versión se abandona cualquier
 flujo de empaquetado en ejecutables: el proyecto se distribuye como código fuente y se ejecuta directamente con Python.
+El backend selecciona por defecto el clasificador **TensorFlow LSTM** si `HELEN_MODEL_BACKEND` no está definido.
 
 ## Documentación principal
 
@@ -37,8 +38,10 @@ Los únicos scripts mantenidos para automatizar la instalación y ejecución son
 - `scripts/helen-run.ps1` / `scripts/helen-run.bat`
 - `scripts/setup-windows.ps1`
 - `scripts/run-windows.ps1`
+- `scripts/start-helen-windows-tf.bat` / `scripts/start-frontend-chrome-windows.bat` / `scripts/start-helen-all-windows.bat`
 - `scripts/setup-pi.sh`
 - `scripts/run-pi.sh`
+- `scripts/start-helen-backend-pi5.sh` / `scripts/start-helen-frontend-pi5.sh`
 
 El resto de los scripts históricos (`run*.bat`, `run*.sh`) fueron archivados en `legacy/` y no reciben soporte.
 

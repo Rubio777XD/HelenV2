@@ -1,0 +1,16 @@
+[Unit]
+Description=HELEN backend (TensorFlow LSTM) para Raspberry Pi 5
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/HelenProyecto-main/HelenProyecto-main
+Environment=HELEN_MODEL_BACKEND=lstm
+ExecStart=/home/pi/HelenProyecto-main/HelenProyecto-main/scripts/start-helen-backend-pi5.sh
+ExecStartPost=/bin/bash -c 'sleep 6 && /home/pi/HelenProyecto-main/HelenProyecto-main/scripts/start-helen-frontend-pi5.sh'
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

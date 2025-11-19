@@ -184,7 +184,7 @@ FRONTEND_ROOT = REPO_ROOT / "helen"
 MODEL_DIR = REPO_ROOT / "Hellen_model_RN"
 MODEL_PATH = MODEL_DIR / "model.p"
 TF_MODEL_BASE_DIR = REPO_ROOT / "Hellen_model_TF" / "video_gesture_model" / "data" / "models"
-MODEL_BACKEND = os.environ.get("HELEN_MODEL_BACKEND", "xgboost").lower()
+MODEL_BACKEND = os.environ.get("HELEN_MODEL_BACKEND", "lstm").lower()
 
 PRIMARY_DATASET_NAME = "data.pickle"
 LEGACY_DATASET_NAME = "data1.pickle"
@@ -3405,7 +3405,7 @@ class HelenRuntime:
 
     # ------------------------------------------------------------------
     def _create_classifier(self) -> Tuple[Any, Dict[str, Any]]:
-        backend = str(getattr(self.config, "model_backend", MODEL_BACKEND) or "xgboost").lower()
+        backend = str(getattr(self.config, "model_backend", MODEL_BACKEND) or "lstm").lower()
 
         try:
             if backend == "lstm":

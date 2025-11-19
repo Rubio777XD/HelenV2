@@ -31,6 +31,24 @@ class TensorFlowSequenceGestureClassifier:
     """
 
     source = "tensorflow_sequence"
+    _LABEL_NORMALIZATION = {
+        "activar": "Start",
+        "start": "Start",
+        "wake": "Start",
+        "clima": "Clima",
+        "weather": "Clima",
+        "reloj": "Reloj",
+        "clock": "Reloj",
+        "home": "Inicio",
+        "inicio": "Inicio",
+        "configuracion": "Ajustes",
+        "ajustes": "Ajustes",
+        "dispositivos": "Dispositivos",
+        "devices": "Dispositivos",
+        "tutorial": "Tutorial",
+        "alarma": "Alarma",
+        "foco": "Foco",
+    }
 
     def __init__(self, model_path: Path, *, sequence_length: int = 96, feature_dim: int = 126) -> None:
         try:
@@ -92,11 +110,21 @@ class TensorFlowSequenceGestureClassifier:
             with candidate.open("r", encoding="utf-8") as fp:
                 raw = json.load(fp)
             # Training artifacts store gesture→idx; invert to idx→gesture.
-            return {int(idx): label for label, idx in raw.items()}
+            return {int(idx): self._canonical_label(label) for label, idx in raw.items()}
 
         # Fallback: reuse legacy labels_dict to keep the pipeline usable even if
         # labels.json is missing or corrupted.
-        return {int(idx): value for idx, value in labels_dict.items()}
+        return {int(idx): self._canonical_label(value) for idx, value in labels_dict.items()}
+
+    # ------------------------------------------------------------------
+    def _canonical_label(self, label: str) -> str:
+        text = str(label or "").strip()
+        lowered = text.lower()
+        normalized = self._LABEL_NORMALIZATION.get(lowered)
+        if normalized:
+            return normalized
+
+        return text.title() if text else text
 
     # ------------------------------------------------------------------
     def _convert_helen_features_to_model_frame(self, features_42: Iterable[float]):
