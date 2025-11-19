@@ -23,6 +23,8 @@ import argparse
 import contextlib
 import json
 import logging
+import math
+import os
 import platform
 import shutil
 import socketserver
@@ -33,7 +35,6 @@ import threading
 import time
 import urllib.request
 import uuid
-import math
 from collections import Counter, defaultdict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -61,6 +62,7 @@ from Hellen_model_RN.simple_classifier import (
     SimpleGestureClassifier,
     SyntheticGestureStream,
 )
+from .tf_gesture_classifier import TensorFlowSequenceGestureClassifier
 from . import camera_probe
 
 if TYPE_CHECKING:  # pragma: no cover - typing aid only
@@ -181,6 +183,8 @@ REPO_ROOT = _resolve_repo_root()
 FRONTEND_ROOT = REPO_ROOT / "helen"
 MODEL_DIR = REPO_ROOT / "Hellen_model_RN"
 MODEL_PATH = MODEL_DIR / "model.p"
+TF_MODEL_BASE_DIR = REPO_ROOT / "Hellen_model_TF" / "video_gesture_model" / "data" / "models"
+MODEL_BACKEND = os.environ.get("HELEN_MODEL_BACKEND", "xgboost").lower()
 
 PRIMARY_DATASET_NAME = "data.pickle"
 LEGACY_DATASET_NAME = "data1.pickle"
@@ -230,6 +234,24 @@ def _notify_missing_dataset(dataset_path: Path) -> None:
         )
     else:
         LOGGER.error("Dataset no encontrado en %s", dataset_path)
+
+
+def _default_tf_model_dir() -> Path:
+    """Pick the newest TensorFlow SavedModel shipped with the repository."""
+
+    if not TF_MODEL_BASE_DIR.exists():
+        return TF_MODEL_BASE_DIR
+
+    candidates = [
+        path
+        for path in TF_MODEL_BASE_DIR.iterdir()
+        if path.is_dir() and (path / "saved_model.pb").exists()
+    ]
+
+    if not candidates:
+        return TF_MODEL_BASE_DIR
+
+    return sorted(candidates, key=lambda item: item.stat().st_mtime, reverse=True)[0]
 
 
 DATASET_PATH = _default_dataset_path()
@@ -2284,6 +2306,8 @@ class RuntimeConfig:
     enable_camera: bool = True
     fallback_to_synthetic: bool = True
     model_path: Path = MODEL_PATH
+    model_backend: str = MODEL_BACKEND
+    tf_model_dir: Optional[Path] = None
     dataset_path: Path = field(default_factory=_default_dataset_path)
     process_every_n: Optional[int] = None
     display_mode: str = DEFAULT_DISPLAY_MODE
@@ -3381,12 +3405,30 @@ class HelenRuntime:
 
     # ------------------------------------------------------------------
     def _create_classifier(self) -> Tuple[Any, Dict[str, Any]]:
+        backend = str(getattr(self.config, "model_backend", MODEL_BACKEND) or "xgboost").lower()
+
         try:
+            if backend == "lstm":
+                model_dir = getattr(self.config, "tf_model_dir", None) or _default_tf_model_dir()
+                model_dir = Path(model_dir)
+                if not model_dir.exists():
+                    raise FileNotFoundError(
+                        f"No se encontró el modelo TensorFlow en {model_dir!s}. "
+                        "Ajusta HELEN_MODEL_BACKEND o especifica tf_model_dir."
+                    )
+
+                classifier = TensorFlowSequenceGestureClassifier(model_dir)
+                LOGGER.info(
+                    "Modelo LSTM cargado desde %s (backend seleccionable via HELEN_MODEL_BACKEND)",
+                    model_dir,
+                )
+                return classifier, {"source": TensorFlowSequenceGestureClassifier.source, "loaded": True}
+
             classifier = ProductionGestureClassifier(self.config.model_path)
             LOGGER.info("Modelo de producción cargado desde %s", self.config.model_path)
             return classifier, {"source": ProductionGestureClassifier.source, "loaded": True}
         except Exception as error:
-            LOGGER.warning("No se pudo cargar el modelo de producción: %s", error)
+            LOGGER.warning("No se pudo cargar el modelo (%s): %s", backend, error)
             dataset_path = self.config.dataset_path
             if not dataset_path.exists():
                 _notify_missing_dataset(dataset_path)
