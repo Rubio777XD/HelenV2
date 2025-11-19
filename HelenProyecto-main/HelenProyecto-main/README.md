@@ -6,7 +6,7 @@ HELEN es un asistente tipo "Echo Show" para personas sordas. Captura gestos de m
 - Backend: Python (Flask + SSE) en `backendHelen/`, clasificador principal `TensorFlowSequenceGestureClassifier`.
 - Frontend: HTML/JS servido desde `/`, escucha `/events` y mantiene el mismo contrato histórico de eventos (`message` con `gesture`, `score`, `active`, etc.).
 - Modelo: se carga automáticamente el SavedModel más reciente de `Hellen_model_TF/video_gesture_model/data/models/gesture_model_*`.
-- Backend efectivo: **siempre LSTM**. `HELEN_MODEL_BACKEND=xgboost` genera un warning pero igualmente se usa LSTM. XGBoost queda como código legacy no ejecutado.
+- Backend efectivo: **siempre LSTM**. La variable `HELEN_MODEL_BACKEND` se ignora salvo para registrar warnings. XGBoost queda como código legacy no ejecutado.
 
 ## Requisitos
 - Python 3.10 o superior.
@@ -24,7 +24,6 @@ HELEN es un asistente tipo "Echo Show" para personas sordas. Captura gestos de m
 6. Ejecuta con LSTM (valor por defecto):
    ```bat
    .\.venv\Scripts\activate
-   set HELEN_MODEL_BACKEND=lstm
    python -m backendHelen.server
    ```
    También puedes usar `scripts\run_windows_lstm.bat` que realiza estos pasos.
@@ -46,7 +45,7 @@ HELEN es un asistente tipo "Echo Show" para personas sordas. Captura gestos de m
 ## Gestos y anillo de activación
 - Las etiquetas se toman de `labels.json` del modelo. La seña de activación suele mapear a `Start`.
 - El endpoint `/events` mantiene el contrato SSE existente. Cuando `active=true` se enciende el anillo en el frontend; `active=false` lo apaga.
-- La `DecisionEngine` conserva thresholds y consenso históricos, ajustados para el LSTM.
+- La `DecisionEngine` usa umbrales relajados para probar el LSTM: `global_min_score=0.30`, ventanas de consenso de `3` frames con `2` votos mínimos (Clima mantiene ventana 2/voto único) y la geometría de la seña **Start** está desactivada para este backend.
 
 ## Solución de problemas
 - **No se enciende el anillo**: verifica la cámara, revisa logs del backend, confirma que `scripts/check_tf_model.py` carga el modelo y que `HELEN_MODEL_BACKEND` no apunta a backends legacy.
