@@ -17,7 +17,7 @@ Esta guía explica, paso a paso y con detalle técnico, cómo instalar, configur
 | Requisito | Detalle |
 | --- | --- |
 | Sistema operativo | Windows 10/11 de 64 bits. |
-| Python soportado | Python 3.11 (64 bits) agregado al `PATH` con el *launcher* `py`. |
+| Python soportado | Python 3.10 (64 bits) agregado al `PATH` con el *launcher* `py` (`py -3.10`). |
 | Dependencias obligatorias | TensorFlow (CPU), NumPy, OpenCV, MediaPipe, Flask, Flask-SocketIO y dependencias de `requirements.txt`. |
 | Navegador | Google Chrome o Chromium instalado localmente. |
 | Verificar Chrome en `PATH` | En `CMD`, ejecuta `where chrome` (Chrome) o `where chromium` (Chromium). Si no devuelve ruta, añade la carpeta de instalación al `PATH`. |
@@ -25,9 +25,9 @@ Esta guía explica, paso a paso y con detalle técnico, cómo instalar, configur
 
 ## 3. Instalación completa (paso a paso)
 
-### 3.1 Instalar Python 3.11
+### 3.1 Instalar Python 3.10
 
-1. Descarga el instalador de Python 3.11 (64 bits) desde python.org.
+1. Descarga el instalador de Python 3.10 (64 bits) desde python.org.
 2. Durante la instalación, marca **Add python.exe to PATH**.
 3. Reinicia la sesión de Windows tras instalar.
 
@@ -36,9 +36,9 @@ Esta guía explica, paso a paso y con detalle técnico, cómo instalar, configur
 ```cmd
 cd %USERPROFILE%\Documents
 :: Clona el repo o copia el código fuente
-python -m venv .venv
+py -3.10 -m venv .venv
 call .venv\Scripts\activate
-python -m pip install --upgrade pip
+py -3.10 -m pip install --upgrade pip
 ```
 
 ### 3.3 Instalar dependencias (TensorFlow CPU, NumPy, etc.)
@@ -83,7 +83,7 @@ cd RUTA\AL\REPOSITORIO\HelenProyecto-main\HelenProyecto-main
 call .venv\Scripts\activate
 set HELEN_MODEL_BACKEND=lstm
 set HELEN_ACTIVATION_SIGNAL=Start
-python -m backendHelen.server --host 0.0.0.0 --port 3000
+py -3.10 -m backendHelen.server --host 0.0.0.0 --port 3000
 ```
 
 - El puerto `3000` se usa para emparejarse con el modo kiosco solicitado; cambia a `5000` si prefieres el valor histórico.
@@ -135,7 +135,7 @@ Ejecuta con doble clic o desde `CMD`.
 | `TensorFlow DLL missing` | Falta VC++ Redistributable o TensorFlow corrupto. | Reinstala VC++ 2015-2022 x64 y vuelve a ejecutar `pip install --force-reinstall tensorflow`. |
 | Error en NumPy / Runtime | Mismatch de versiones al actualizar solo TensorFlow. | Ejecuta `pip install --upgrade --force-reinstall numpy tensorflow`. |
 | Chrome no abre | `chrome` no está en `PATH`. | Usa ruta completa del ejecutable o añade la carpeta a `PATH`. |
-| Puerto 3000 ocupado | Otro servicio usa el puerto. | Ejecuta `python -m backendHelen.server --port 5050` y abre `http://localhost:5050`. |
+| Puerto 3000 ocupado | Otro servicio usa el puerto. | Ejecuta `py -3.10 -m backendHelen.server --port 5050` y abre `http://localhost:5050`. |
 | Modelos corruptos | `saved_model.pb` o `variables/` dañados. | Reemplaza el SavedModel en `Hellen_model_TF/video_gesture_model/data/models/` por una copia intacta. |
 | Regenerar SavedModel | Solo si tienes el proyecto de entrenamiento. Vuelve a exportar el modelo y copia la carpeta completa a la ruta anterior. |
 | Cambiar backend manualmente | Soporta `cnn`, `lstm` o fallback sintético. | `set HELEN_MODEL_BACKEND=cnn` (o `lstm`) antes de ejecutar; si falla carga, cae al clasificador sintético con el dataset local. |
@@ -145,7 +145,7 @@ Ejecuta con doble clic o desde `CMD`.
 - **Actualizar HELEN**: ejecuta `git pull` y después `pip install -r requirements.txt` dentro de `.venv`.
 - **Cambiar de backend sin romper compatibilidad**: define `HELEN_MODEL_BACKEND` antes de arrancar; el sistema mantiene la forma `(1,96,126)` para LSTM y conserva la señal **Start** normalizada.
 - **Usar modelos antiguos sin reentrenarlos**: coloca el SavedModel legado en la carpeta de modelos; el backend elige el más reciente, pero puedes dejar solo el modelo que quieras usar.
-- **Rendimiento en Windows**: usa `--frame-stride 2` y `--poll-interval 0.08` si necesitas bajar carga de CPU; ejecuta Chrome con `--disable-gpu` si hay drivers inestables.
+- **Rendimiento en Windows**: los valores rápidos por defecto son `--poll-interval 0.03` y `--frame-stride 1`. Solo aumenta `frame-stride` o el `poll-interval` si necesitas bajar carga de CPU; ejecuta Chrome con `--disable-gpu` si hay drivers inestables.
 
 ---
 

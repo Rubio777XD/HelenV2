@@ -190,6 +190,9 @@ REPO_ROOT = _resolve_repo_root()
 FRONTEND_ROOT = REPO_ROOT / "helen"
 TF_MODEL_BASE_DIR = REPO_ROOT / "Hellen_model_TF" / "video_gesture_model" / "data" / "models"
 
+LSTM_RUNTIME_SEQUENCE_LENGTH = 32
+LSTM_MODEL_SEQUENCE_LENGTH = 96
+
 # port: int = 5000  # Referencia para pruebas de integración (mantener sincronizado con run()).
 
 
@@ -361,7 +364,7 @@ DEFAULT_CLASS_THRESHOLDS: Dict[str, ClassThreshold] = {
 }
 
 GLOBAL_MIN_SCORE = 0.3
-DEFAULT_POLL_INTERVAL_S = 0.12
+DEFAULT_POLL_INTERVAL_S = 0.03
 
 
 @dataclass(frozen=True)
@@ -385,7 +388,7 @@ class PlatformRuntimeDefaults:
 @dataclass(frozen=True)
 class ConsensusConfig:
     window_size: int = 3
-    required_votes: int = 2
+    required_votes: int = 1
 
 
 DEFAULT_CONSENSUS_CONFIG = ConsensusConfig()
@@ -2010,9 +2013,9 @@ def _detect_pi_camera_profile() -> Optional[PiCameraProfile]:
         return None
 
     if "raspberry pi 5" in model:
-        return PiCameraProfile("raspberry-pi-5", 1280, 720, 25, 0.04, 3)
+        return PiCameraProfile("raspberry-pi-5", 1280, 720, 25, 0.03, 1)
     if "raspberry pi 4" in model or "compute module 4" in model:
-        return PiCameraProfile("raspberry-pi-4", 640, 360, 24, 0.05, 4)
+        return PiCameraProfile("raspberry-pi-4", 640, 360, 24, 0.03, 1)
     return None
 
 
@@ -2036,15 +2039,15 @@ RASPBERRY_MODE_PROFILE = PiCameraProfile(
     960,
     540,
     24,
-    0.042,
-    2,
+    0.03,
+    1,
 )
 
 
-WINDOWS_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.72, 0.62, 0.08, 2)
-PI5_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.58, 0.55, 0.04, 3)
-PI4_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.6, 0.55, 0.05, 4)
-GENERIC_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.68, 0.6, 0.1, 3)
+WINDOWS_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.72, 0.62, 0.03, 1)
+PI5_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.58, 0.55, 0.03, 1)
+PI4_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.6, 0.55, 0.03, 1)
+GENERIC_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.68, 0.6, 0.03, 1)
 
 
 def _resolve_runtime_defaults(profile: Optional[PiCameraProfile]) -> PlatformRuntimeDefaults:
@@ -3251,7 +3254,7 @@ class GesturePipeline:
     def __init__(
         self,
         runtime: "HelenRuntime",
-        interval_s: float = 0.12,
+        interval_s: float = 0.03,
         *,
         frame_stride: int = 1,
     ) -> None:
@@ -3594,7 +3597,11 @@ class HelenRuntime:
                     "Configura tf_model_dir o coloca el SavedModel entrenado."
                 )
 
-            classifier = TensorFlowSequenceGestureClassifier(model_dir)
+            classifier = TensorFlowSequenceGestureClassifier(
+                model_dir,
+                sequence_length=LSTM_RUNTIME_SEQUENCE_LENGTH,
+                model_sequence_length=LSTM_MODEL_SEQUENCE_LENGTH,
+            )
             LOGGER.info(
                 "Modelo LSTM cargado desde %s (backend efectivo=%s)",
                 model_dir,

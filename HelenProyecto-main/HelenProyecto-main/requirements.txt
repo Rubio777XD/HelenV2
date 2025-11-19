@@ -19,4 +19,4 @@ numpy==1.26.4
 opencv-python==4.9.0.80
 mediapipe==0.10.18
 protobuf==4.25.3
-tensorflow==2.15.0
+tensorflow==2.15.0; python_version >= "3.10" and python_version < "3.11"

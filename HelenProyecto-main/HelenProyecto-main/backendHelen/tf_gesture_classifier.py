@@ -2,10 +2,13 @@
 
 Este envoltorio adapta el modelo LSTM de video al contrato existente
 ``predict(features) -> Prediction`` usado por el backend. Mantiene una ventana
-deslizante de 96 fotogramas con 126 características (21 landmarks × 3 coords ×
-2 manos) y solo dispara el modelo cuando la secuencia está completa. Las
-primeras predicciones retornan una clase neutra para que la ``DecisionEngine``
-conserve la misma lógica de consenso que el backend histórico.
+deslizante compacta (32 fotogramas por defecto) con 126 características (21
+landmarks × 3 coords × 2 manos) y solo dispara el modelo cuando la secuencia
+está completa. Si el modelo requiere secuencias más largas (96 frames), la
+ventana corta se reexpande rellenando con el primer frame capturado para
+preservar la forma esperada. Las primeras predicciones retornan una clase
+neutra para que la ``DecisionEngine`` conserve la misma lógica de consenso que
+el backend histórico.
 """
 
 from __future__ import annotations
@@ -43,11 +46,13 @@ class Prediction(tuple):
 class TensorFlowSequenceGestureClassifier:
     """Wrap the TensorFlow LSTM model maintaining HELEN's predict contract.
 
-    The model consumes sequences shaped as ``(sequence_length, feature_dim)``
-    with ``sequence_length=96`` and ``feature_dim=126`` (21 landmarks × 3
+    The model consumes sequences shaped as ``(model_sequence_length, feature_dim)``
+    with ``model_sequence_length=96`` and ``feature_dim=126`` (21 landmarks × 3
     coordinates × 2 hands). The internal buffer keeps a sliding window of the
     last ``sequence_length`` frames and triggers inference only when the window
-    is full.
+    is full. A shorter runtime window (32 frames by default) is padded to the
+    model's expected length so the DecisionEngine receives early predictions
+    without breaking the SavedModel contract.
 
     HELEN currently emits 42 features per frame (x/y only, single hand). To
     bridge both worlds we expand the 42-D vector to 126 dimensions by adding
@@ -91,7 +96,14 @@ class TensorFlowSequenceGestureClassifier:
         8: "Foco",
     }
 
-    def __init__(self, model_path: Path, *, sequence_length: int = 96, feature_dim: int = 126) -> None:
+    def __init__(
+        self,
+        model_path: Path,
+        *,
+        sequence_length: int = 32,
+        model_sequence_length: int = 96,
+        feature_dim: int = 126,
+    ) -> None:
         try:
             import numpy as np  # type: ignore
             import tensorflow as tf  # type: ignore
@@ -101,6 +113,7 @@ class TensorFlowSequenceGestureClassifier:
         self._np = np
         self._tf = tf
         self.sequence_length = int(sequence_length)
+        self.model_sequence_length = int(model_sequence_length)
         self.feature_dim = int(feature_dim)
         self._buffer: deque = deque(maxlen=self.sequence_length)
         self._lock = threading.Lock()
@@ -238,10 +251,23 @@ class TensorFlowSequenceGestureClassifier:
                 f" ({self.sequence_length}, {self.feature_dim})"
             )
 
+        if self.model_sequence_length > self.sequence_length:
+            pad = self.model_sequence_length - self.sequence_length
+            pad_frame = sequence[:1]
+            sequence = np.concatenate([np.repeat(pad_frame, pad, axis=0), sequence], axis=0)
+        elif self.model_sequence_length < self.sequence_length:
+            sequence = sequence[-self.model_sequence_length :]
+
+        if sequence.shape != (self.model_sequence_length, self.feature_dim):
+            raise ValueError(
+                f"Secuencia con forma inesperada {sequence.shape}, se esperaba"
+                f" ({self.model_sequence_length}, {self.feature_dim})"
+            )
+
         batch = np.expand_dims(sequence, axis=0)
 
         assert batch.dtype == np.float32, "El batch debe ser float32"
-        assert batch.shape == (1, self.sequence_length, self.feature_dim)
+        assert batch.shape == (1, self.model_sequence_length, self.feature_dim)
 
         try:
             with self._lock:
