@@ -1,2 +1,0 @@
-cd helen
-npm start
