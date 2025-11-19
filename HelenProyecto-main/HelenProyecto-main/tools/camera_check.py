@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.10
 """Auxiliary CLI to diagnose Raspberry Pi cameras without launching HELEN."""
 
 from __future__ import annotations

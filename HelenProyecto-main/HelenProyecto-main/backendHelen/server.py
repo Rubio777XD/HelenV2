@@ -191,7 +191,8 @@ REPO_ROOT = _resolve_repo_root()
 FRONTEND_ROOT = REPO_ROOT / "helen"
 TF_MODEL_BASE_DIR = REPO_ROOT / "Hellen_model_TF" / "video_gesture_model" / "data" / "models"
 
-LSTM_RUNTIME_SEQUENCE_LENGTH = 24
+DEFAULT_DETECTION_PROFILE = os.environ.get("HELEN_DETECTION_PROFILE", "normal").strip().lower() or "normal"
+LSTM_RUNTIME_SEQUENCE_LENGTH = 32
 LSTM_MODEL_SEQUENCE_LENGTH = 96
 
 # port: int = 5000  # Referencia para pruebas de integración (mantener sincronizado con run()).
@@ -354,18 +355,22 @@ class ClassThreshold:
     release: float
 
 
+def _build_thresholds(enter: float, release: float) -> Dict[str, ClassThreshold]:
+    return {
+        "Start": ClassThreshold(enter=enter, release=release),
+        "Clima": ClassThreshold(enter=enter, release=release),
+        "Reloj": ClassThreshold(enter=enter, release=release),
+        "Inicio": ClassThreshold(enter=enter, release=release),
+    }
+
+
 LEGACY_CLIMA_THRESHOLD = ClassThreshold(enter=0.8, release=0.7)
 UPDATED_CLIMA_THRESHOLD = ClassThreshold(enter=0.66, release=0.56)
 
-DEFAULT_CLASS_THRESHOLDS: Dict[str, ClassThreshold] = {
-    "Start": ClassThreshold(enter=0.45, release=0.35),
-    "Clima": ClassThreshold(enter=0.40, release=0.30),
-    "Reloj": ClassThreshold(enter=0.45, release=0.35),
-    "Inicio": ClassThreshold(enter=0.45, release=0.35),
-}
+DEFAULT_CLASS_THRESHOLDS: Dict[str, ClassThreshold] = _build_thresholds(0.5, 0.30)
 
 GLOBAL_MIN_SCORE = 0.3
-DEFAULT_POLL_INTERVAL_S = 0.01
+DEFAULT_POLL_INTERVAL_S = 0.03
 
 
 @dataclass(frozen=True)
@@ -392,9 +397,45 @@ class ConsensusConfig:
     required_votes: int = 1
 
 
-DEFAULT_CONSENSUS_CONFIG = ConsensusConfig()
+DEFAULT_CONSENSUS_CONFIG = ConsensusConfig(window_size=32, required_votes=1)
 
-CLIMA_CONSENSUS_OVERRIDE = ConsensusConfig(window_size=1, required_votes=1)
+
+@dataclass(frozen=True)
+class DetectionProfile:
+    name: str
+    sequence_length: int
+    min_frames: int
+    consensus: ConsensusConfig
+    thresholds: Dict[str, ClassThreshold]
+    poll_interval: float
+
+
+DETECTION_PROFILES: Dict[str, DetectionProfile] = {
+    "fast": DetectionProfile(
+        name="fast",
+        sequence_length=24,
+        min_frames=24,
+        consensus=ConsensusConfig(window_size=24, required_votes=1),
+        thresholds=_build_thresholds(0.45, 0.30),
+        poll_interval=0.03,
+    ),
+    "normal": DetectionProfile(
+        name="normal",
+        sequence_length=48,
+        min_frames=32,
+        consensus=ConsensusConfig(window_size=48, required_votes=2),
+        thresholds=_build_thresholds(0.5, 0.30),
+        poll_interval=0.03,
+    ),
+}
+
+
+def _resolve_detection_profile(name: Optional[str]) -> DetectionProfile:
+    normalized = str(name or "").strip().lower()
+    if normalized in DETECTION_PROFILES:
+        return DETECTION_PROFILES[normalized]
+    return DETECTION_PROFILES[DEFAULT_DETECTION_PROFILE]
+
 DEBUG_LSTM_PROFILE = "debug_lstm"
 
 CLIMA_POST_START_DELAY = 0.4
@@ -2040,15 +2081,15 @@ RASPBERRY_MODE_PROFILE = PiCameraProfile(
     960,
     540,
     24,
-    0.01,
+    0.03,
     1,
 )
 
 
-WINDOWS_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.3, 0.3, 0.01, 1)
-PI5_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.3, 0.3, 0.01, 1)
-PI4_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.3, 0.3, 0.01, 1)
-GENERIC_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.3, 0.3, 0.01, 1)
+WINDOWS_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.3, 0.3, 0.03, 1)
+PI5_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.3, 0.3, 0.03, 1)
+PI4_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.3, 0.3, 0.03, 1)
+GENERIC_RUNTIME_DEFAULTS = PlatformRuntimeDefaults(0.3, 0.3, 0.03, 1)
 
 
 def _resolve_runtime_defaults(profile: Optional[PiCameraProfile]) -> PlatformRuntimeDefaults:
@@ -2434,6 +2475,7 @@ class RuntimeConfig:
     process_every_n: Optional[int] = None
     display_mode: str = DEFAULT_DISPLAY_MODE
     camera_profile: Optional[PiCameraProfile] = None
+    detection_profile: str = DEFAULT_DETECTION_PROFILE
 
 
 @dataclass
@@ -2803,7 +2845,6 @@ class CameraGestureStream:
             min_detection_confidence=self._detection_confidence,
             min_tracking_confidence=self._tracking_confidence,
             model_complexity=0,
-            smooth_landmarks=False,
         )
         self._opened = True
         self._healthy = True
@@ -3377,6 +3418,11 @@ class HelenRuntime:
         active_mode = _normalize_display_mode(active_mode)
         self.config.display_mode = active_mode
 
+        self.detection_profile = _resolve_detection_profile(
+            getattr(self.config, "detection_profile", DEFAULT_DETECTION_PROFILE)
+        )
+        self.config.detection_profile = self.detection_profile.name
+
         profile_override = getattr(self.config, "camera_profile", None)
         profile = profile_override if profile_override is not None else _profile_for_mode(active_mode)
         self.config.camera_profile = profile
@@ -3398,10 +3444,10 @@ class HelenRuntime:
         self.feature_normalizer = FeatureNormalizer()
         self.geometry_verifier = self._create_geometry_verifier()
 
-        thresholds_override: Optional[Dict[str, ClassThreshold]] = None
-        consensus_cfg = DEFAULT_CONSENSUS_CONFIG
+        thresholds_override: Optional[Dict[str, ClassThreshold]] = self.detection_profile.thresholds
+        consensus_cfg = self.detection_profile.consensus
         global_min_score = GLOBAL_MIN_SCORE
-        per_label_consensus: Dict[str, ConsensusConfig] = {"Clima": CLIMA_CONSENSUS_OVERRIDE}
+        per_label_consensus: Dict[str, ConsensusConfig] = {}
 
         if self.debug_profile == DEBUG_LSTM_PROFILE:
             thresholds_override = {
@@ -3472,8 +3518,8 @@ class HelenRuntime:
 
         poll_interval = self.config.poll_interval_s
         if poll_interval is None:
-            poll_interval = defaults.poll_interval
-        self.config.poll_interval_s = max(0.01, float(poll_interval))
+            poll_interval = self.detection_profile.poll_interval
+        self.config.poll_interval_s = max(0.03, float(poll_interval))
 
         stride = self.config.process_every_n
         if stride is None:
@@ -3519,20 +3565,17 @@ class HelenRuntime:
         try:
             thresholds = self.decision_engine.thresholds().get("Clima") or UPDATED_CLIMA_THRESHOLD
             override = self.decision_engine.consensus_overrides().get("Clima")
-            override_votes = (
-                override.required_votes if override else DEFAULT_CONSENSUS_CONFIG.required_votes
-            )
-            override_window = (
-                override.window_size if override else DEFAULT_CONSENSUS_CONFIG.window_size
-            )
+            base_consensus = self.decision_engine.consensus_config
+            override_votes = override.required_votes if override else base_consensus.required_votes
+            override_window = override.window_size if override else base_consensus.window_size
             LOGGER.info(
                 "Ajuste 'C': threshold enter %.2f→%.2f; release %.2f→%.2f; consenso %s/%s→%s/%s",
                 LEGACY_CLIMA_THRESHOLD.enter,
                 thresholds.enter,
                 LEGACY_CLIMA_THRESHOLD.release,
                 thresholds.release,
-                DEFAULT_CONSENSUS_CONFIG.required_votes,
-                DEFAULT_CONSENSUS_CONFIG.window_size,
+                base_consensus.required_votes,
+                base_consensus.window_size,
                 override_votes,
                 override_window,
             )
@@ -3588,8 +3631,9 @@ class HelenRuntime:
 
             classifier = TensorFlowSequenceGestureClassifier(
                 model_dir,
-                sequence_length=LSTM_RUNTIME_SEQUENCE_LENGTH,
+                sequence_length=self.detection_profile.sequence_length,
                 model_sequence_length=LSTM_MODEL_SEQUENCE_LENGTH,
+                min_frames=self.detection_profile.min_frames,
             )
             LOGGER.info(
                 "Modelo LSTM cargado desde %s (backend efectivo=%s)",
@@ -4263,6 +4307,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         default=None,
         help="Procesa un frame de cada N muestras para reducir carga (>=1)",
     )
+    parser.add_argument(
+        "--detection-profile",
+        choices=sorted(DETECTION_PROFILES.keys()),
+        default=None,
+        help="Elige el perfil de captura (fast o normal) sin cambiar el modelo",
+    )
     parser.add_argument("--no-camera", action="store_true", help="Desactiva el uso de cámara física")
     parser.add_argument(
         "--no-synthetic-fallback",
@@ -4295,6 +4345,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         enable_camera=not args.no_camera,
         fallback_to_synthetic=not args.no_synthetic_fallback,
         process_every_n=frame_stride,
+        detection_profile=args.detection_profile or DEFAULT_DETECTION_PROFILE,
     )
 
     run(args.host, args.port, config=config)

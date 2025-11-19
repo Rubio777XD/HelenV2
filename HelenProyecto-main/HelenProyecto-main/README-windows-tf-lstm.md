@@ -87,6 +87,7 @@ py -3.10 -m backendHelen.server --host 0.0.0.0 --port 3000
 ```
 
 - El puerto `3000` se usa para emparejarse con el modo kiosco solicitado; cambia a `5000` si prefieres el valor histórico.
+- Perfiles de detección disponibles: `--detection-profile fast` (24 frames, 1 voto, umbral 0.45) o `--detection-profile normal` (48 frames, 2 votos, umbral 0.5). Si no se indica, usa `normal`.
 
 ### 4.2 Abrir Chrome automáticamente
 

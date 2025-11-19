@@ -1,12 +1,12 @@
 #!/usr/bin/env python3.10
 """TensorFlow sequence gesture classifier compatible con el contrato de HELEN.
 
-En modo ultra ligero mantiene una ventana deslizante de **24 fotogramas** y
-permite inferir tan pronto se hayan capturado ``min_frames`` (3 por defecto),
+Mantiene una ventana deslizante configurable (p. ej. 24 o 48 frames según el
+perfil) y permite inferir tan pronto se hayan capturado ``min_frames`` reales,
 rellenando el resto con el primer frame para cumplir con la forma requerida de
-**96 frames × 126 features**. La prioridad es emitir una etiqueta rápido aun si
-se sacrifica precisión; las primeras predicciones retornan una clase neutral
-solo mientras se junta el mínimo de frames reales.
+**96 frames × 126 features**. La prioridad es equilibrar velocidad y estabilidad:
+las primeras predicciones devuelven una clase neutral solo hasta alcanzar el
+umbral mínimo de frames genuinos.
 """
 
 from __future__ import annotations
@@ -103,10 +103,10 @@ class TensorFlowSequenceGestureClassifier:
         self,
         model_path: Path,
         *,
-        sequence_length: int = 24,
+        sequence_length: int = 32,
         model_sequence_length: int = 96,
         feature_dim: int = 126,
-        min_frames: int = 3,
+        min_frames: int = 24,
     ) -> None:
         try:
             import numpy as np  # type: ignore
